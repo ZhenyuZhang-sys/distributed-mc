@@ -59,3 +59,57 @@ def ratios(density: dict, ring: int = 1, base: int = 2) -> dict:
         b = density[base][f"{k}_per_chunk"]
         out[k] = density[ring][f"{k}_per_chunk"] / b if b else None
     return out
+
+
+def tree_direction(a_root, b_root, chunks) -> dict:
+    """在给定的 chunk 里，树类差异分方向数：a 是空的、b 是树（a 少了树，"截断"），a 是树、b 不是（a 多了树）。
+    两个数差不多大时，多半是树的位置偏了（一边的树在这，另一边在旁边）。"""
+    from analysis.mca.chunk import AIR
+    from analysis.mca.decor import classify, is_tree
+
+    def tree_block(s):
+        n = s.name
+        return n.endswith("_log") or n.endswith("_leaves") or n in ("minecraft:vine", "minecraft:cocoa")
+
+    out = {"missing": 0, "extra": 0, "other": 0}
+    for x, z in chunks:
+        ca, cb = read_chunk(a_root, x, z), read_chunk(b_root, x, z)
+        for sy in range(-4, 20):
+            sa, sb = ca.sections.get(sy), cb.sections.get(sy)
+            if sa == sb:
+                continue
+            pa, ia = sa if sa else ((AIR,), None)
+            pb, ib = sb if sb else ((AIR,), None)
+            for i in range(4096):
+                u = pa[0 if ia is None else ia[i]]
+                v = pb[0 if ib is None else ib[i]]
+                if u == v or classify(u, v) != "decor" or not is_tree(u, v):
+                    continue
+                if tree_block(v) and not tree_block(u):
+                    out["missing"] += 1
+                elif tree_block(u) and not tree_block(v):
+                    out["extra"] += 1
+                else:
+                    out["other"] += 1
+    return out
+
+
+def sign_test(pairs) -> dict:
+    """配对符号检验（单侧）：pairs 是 [(导入组, 原版组), ...]，看导入组是不是系统性地更高。平局不算。"""
+    from analysis.mca.decor import binomial_tail
+
+    higher = sum(1 for a, b in pairs if a > b)
+    n = sum(1 for a, b in pairs if a != b)
+    return {"higher": higher, "untied": n, "sites": len(pairs), "p": binomial_tail(higher, n, 0.5) if n else 1.0}
+
+
+def bootstrap_ratio(pairs, rounds: int = 10000, seed: int = 424242) -> dict:
+    """跨位置合计比值 Σ导入 ÷ Σ原版，按位置重抽样的 95% 区间。"""
+    import random
+
+    rng = random.Random(seed)
+    def ratio(ps):
+        a, b = sum(p[0] for p in ps), sum(p[1] for p in ps)
+        return a / b if b else float("inf")
+    samples = sorted(ratio([rng.choice(pairs) for _ in pairs]) for _ in range(rounds))
+    return {"ratio": ratio(pairs), "low": samples[int(rounds * 0.025)], "high": samples[int(rounds * 0.975) - 1]}
