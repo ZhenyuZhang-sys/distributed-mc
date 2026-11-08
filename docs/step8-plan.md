@@ -163,7 +163,7 @@ fish 的导入已经做了：DataVersion、坐标、状态是 full、tile 大小
 4. **删 chunk**：一个"确认不在内存里就从存档删掉这个 chunk"的主线程方法，规则和导入的冲突规则一致。
 5. **派重算任务**：任务队列能给受信任的本地 worker 派"重算 tile"任务，结果走验证器、不走导入。
 6. **规则清单共用**（调度 11-08 定，kexu 负责）：`decor.py` 的清单抽成 common 里的一份数据文件，Python 和 Java 都读它；fish 的 `decor.py` 和对应的 Java 改成读这份文件，不再各写一份。
-   - **合并 main 后的做法（11-08，待调度确认）**：反过来，`decor.py` 仍是唯一手改的源头（每一对都带出处注释，JSON 放不下），`analysis/export_decor.py` 把它导出成 `decor.json`；pytest 检查 JSON 和导出结果一模一样，`decor.py` 改了没重新导出就失败。这样 fish 不用改 `decor.py`，也不会出现两份不一致。调度仍要 `decor.py` 改读 JSON 的话再改。
+   - **合并 main 后的做法（11-08，调度同意，比原计划好）**：反过来，`decor.py` 仍是唯一手改的源头（每一对都带出处注释，JSON 放不下），`analysis/export_decor.py` 把它导出成 `decor.json`；pytest 检查 JSON 和导出结果一模一样，`decor.py` 改了没重新导出就失败。这样 fish 不用改 `decor.py`，也不会出现两份不一致。规矩：谁改 `decor.py`，就在同一个提交里跑 `analysis/export_decor.py` 并提交 JSON；一致性测试不过不能合进 main。
    - 地形互换的判法参数一起导出：`terrain_cluster_max`（66，原版矿团 size 33 的 2 倍）、`terrain_alpha`（0.01，导入部分处数的单侧二项检验）。
    - Java 比较器也按 6 邻接把地形互换连成"处"，一处超过 66 个方块整处改算严格：空气对水（湖）进了地形互换以后，donor 丢一大片海不能当成湖放过。只看单个 chunk，跨 chunk 的一处被切开只会更难超过上限。donor 抽查不用二项检验（那是导入部分对没导入部分的比较，fish 的导入验收用）。
    - 路径：`common/src/main/resources/mcdonate/decor.json`。Java 从 classpath 读 `/mcdonate/decor.json`，Python 从仓库路径读。
