@@ -27,7 +27,8 @@
 
 ### 2.1 视野和"就绪"
 
-- **视野**：玩家所在 chunk 为中心、视距 10 的集合。直接用原版的 `ChunkTrackingView.of(center, 10)` 判断，和原版给玩家发 chunk 的范围完全一样（近似圆形，按 1.21.1 的公式估计约 385 个 chunk，4.1 用原版类实测后写进协议），不自己算方形。
+- **视野**：玩家所在 chunk 为中心、视距 10 的集合。直接用原版的 `ChunkTrackingView.of(center, 10).contains(x, z)` 判断，和原版给玩家发 chunk 的范围完全一样，不自己算方形。1.21.1 源码核实：`contains` 默认把视距边界外紧挨的一圈也算进去（`includeOuterChunksAdjacentToViewBorder = true`），视距 10 时是 **453** 个 chunk；不含外圈是 385 个。用 453，和原版发包一致。
+- **视距用服务器视距 10，不用假玩家的请求值**：原版按 `clamp(玩家请求的视距, 2, 服务器视距)` 决定发多少 chunk，而 `ServerPlayer.requestedViewDistance` 默认是 2，要客户端发设置才会改；Carpet 假玩家可能一直是 2。加载和生成由服务器视距的票据决定，不受影响。所以统计里固定用 10，并在 4.2 里记下假玩家实际的请求视距。
 - **就绪**：这个 chunk 的 `ChunkHolder.getChunkToSend()` 不为空。这正是原版决定"可以发给玩家"的条件。
 - 不看网络：假玩家没有真客户端，发包节流和客户端渲染都不算。所以这里测的是**服务器那一侧的就绪**，也正是 donor 能改善的部分。报告里写清楚。
 
@@ -144,7 +145,7 @@ bench 注册监听写文件；coordinator 写入成功时报 `DONOR`，验证打
 | 4.2 | `FlightRecorder`、命令、文件输出 | GameTest：在测试结构里放一个 ServerPlayer，`fly start` 后位置按速度变化，`seconds.jsonl` 行数和时长对得上 | GameTest 通过 |
 | 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated`；跨 mod 检查（3.3 的 1～4 条） | 通过 |
 | 4.4 | Python 离线合成和统计 | pytest：已知事件算出的虚空率、分位数（含删失）、CSV 列；时间对齐 | 通过 |
-| 4.5 | 单轮端到端 | pytest 冒烟（非 slow）：新世界里走路速度飞 15 秒，CSV 有 15 行左右，每行视野数等于 4.1 实测的视野大小，日志无 ERROR | 通过 |
+| 4.5 | 单轮端到端 | pytest 冒烟（非 slow）：新世界里走路速度飞 15 秒，CSV 有 15 行左右，每行视野数等于 453，日志无 ERROR | 通过 |
 | 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过 |
 | 4.7 | 指标自检（slow） | 见 5.3 | 两条都满足 |
 | 4.8 | 正式矩阵（slow） | 15 轮 + 4 核鞘翅 5 轮全部通过；每配置 5 个有效结果；输出 p50/p95/p99 和 5 次波动 | `scripts/test.sh step4 --slow` 退出码 0 |
@@ -221,6 +222,6 @@ fish 加的占位 `tests/step4/test_00_pending.py` 在 4.5 时删掉。
 | 每 tick `teleportTo` 后原版不更新假玩家的视野中心 | 4.2 的 GameTest 先验证；不行就在移动后显式调 `ServerChunkCache.move(player)` |
 | `getChunkToSend()` 在 1.21.1 的语义和预想不同（比如还要等邻居） | 4.2 里对照原版实际发包时机核验；定义以原版发包条件为准，写进协议 |
 | 1 核时 MSPT 远超 50，按墙钟移动时玩家一 tick 跳很远 | 这是真实情况（客户端照样飞），如实记录；同时记每秒实际 tick 数 |
-| 逐 tick 扫约 385 个 chunk 拖慢服务器 | 只查哈希表，预计微秒级；pilot 用开 / 关对照测出来，超过 2% 就改成每 2 tick 扫一次 |
+| 逐 tick 扫约 453 个 chunk 拖慢服务器 | 只查哈希表，预计微秒级；pilot 用开 / 关对照测出来，超过 2% 就改成每 2 tick 扫一次 |
 | 走路速度虚空率接近 0，噪声基线没意义 | 改报绝对标准差（5.2） |
 | 假玩家的区块加载行为和真玩家不同 | Carpet 假玩家走原版 `ServerPlayer` 和 `ChunkMap` 的路径；第 9 步有真客户端后再抽查一次 |
