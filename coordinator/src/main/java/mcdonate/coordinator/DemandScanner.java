@@ -1,16 +1,14 @@
 package mcdonate.coordinator;
 
+import it.unimi.dsi.fastutil.ints.IntArrays;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import net.minecraft.Util;
-
-import java.util.List;
-
 import java.util.ArrayList;
-
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import mcdonate.common.Config;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.Util;
 import mcdonate.common.TilePos;
 import mcdonate.coordinator.RegionRules.ChunkInfo;
 import mcdonate.coordinator.mixin.ChunkMapAccessor;
@@ -36,7 +34,8 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
  * 最早按"视距 + 12"写死，没考虑原版的依赖范围，tile 回来时区域里的 chunk 已经被服务器加载，全部被丢弃。
  *
  * <p>查存档不卡主线程：第一次查某个 chunk 时在存档读写线程上异步读，结果进缓存；还没查到的当"不确定"，
- * 这一轮不入队。服务器存盘（ChunkMapSaveMixin）和导入时更新缓存。
+ * 这一轮不入队。服务器存盘（ChunkMapSaveMixin）和导入时更新缓存。缓存只在主线程上读写，
+ * 别的线程来的变化先排进 EVENTS，扫描开始时并进来。
  */
 public final class DemandScanner {
     static final int QUEUE_CAP = Config.getInt("demandQueueCap", 256);
@@ -50,9 +49,21 @@ public final class DemandScanner {
     static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
     private static final int PENDING = Integer.MIN_VALUE;
     private static final int ABSENT = -1;
+    private static final int UNKNOWN = Integer.MIN_VALUE + 1;
+    /** 事件里表示"忘掉这个 chunk，下次重新查" */
+    private static final int FORGET = Integer.MIN_VALUE + 2;
 
-    /** 主世界里查过的 chunk：存档里的状态序号，ABSENT 不存在，PENDING 正在查。 */
-    private static final Map<Long, Integer> DISK = new ConcurrentHashMap<>();
+    /**
+     * 主世界里查过的 chunk：存档里的状态序号，ABSENT 不存在，PENDING 正在查。只在主线程上用（不装箱、不加锁）。
+     * 读盘线程的结果、存盘和导入的变化都先进 EVENTS，扫描开始时在主线程上并进来。
+     */
+    private static final Long2IntOpenHashMap DISK = new Long2IntOpenHashMap();
+    /** {chunk, 状态}；读盘结果只在当时还是 PENDING 时生效（第三个元素为 1）。 */
+    private static final ConcurrentLinkedQueue<long[]> EVENTS = new ConcurrentLinkedQueue<>();
+
+    static {
+        DISK.defaultReturnValue(UNKNOWN);
+    }
 
     private final MinecraftServer server;
     private final TaskQueue tasks;
@@ -62,7 +73,7 @@ public final class DemandScanner {
     long maxNanos;
     long totalCpuNanos;
     private static final java.lang.management.ThreadMXBean THREADS = java.lang.management.ManagementFactory.getThreadMXBean();
-    /** 最近 32 次扫描：[墙钟微秒, 主线程 CPU 微秒, 发起的读存档次数]，排查耗时尖峰用。 */
+    /** 最近 64 次扫描：[墙钟微秒, 主线程 CPU 微秒, 发起的读存档次数]，排查耗时尖峰用。 */
     private final java.util.ArrayDeque<String> recent = new java.util.ArrayDeque<>();
 
     DemandScanner(MinecraftServer server, TaskQueue tasks) {
@@ -72,12 +83,26 @@ public final class DemandScanner {
 
     /** 服务器存盘或导入后，这个 chunk 在存档里的状态变了。 */
     static void diskChanged(long key, int status) {
-        DISK.put(key, status);
+        EVENTS.add(new long[] {key, status, 0});
     }
 
     /** 服务器存盘时只知道变了，不知道变成什么：下次重新查。 */
     public static void diskUnknown(long key) {
-        DISK.remove(key);
+        EVENTS.add(new long[] {key, FORGET, 0});
+    }
+
+    private static void drainEvents() {
+        long[] e;
+        while ((e = EVENTS.poll()) != null) {
+            int v = (int) e[1];
+            if (v == FORGET) {
+                DISK.remove(e[0]);
+            } else if (e[2] == 0) {
+                DISK.put(e[0], v);
+            } else if (DISK.get(e[0]) == PENDING) {
+                DISK.put(e[0], v);
+            }
+        }
     }
 
     /** 在主线程上调用，每秒一次。 */
@@ -90,25 +115,47 @@ public final class DemandScanner {
         int inner = innerRadius(), outer = inner + lookahead;
         int queued = tasks.count(TaskQueue.State.QUEUED);
         readsLeft = READS_PER_SCAN;
+        drainEvents();
         for (ServerPlayer p : level.players()) {
             ChunkPos at = p.chunkPosition();
-            // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再排序
-            List<TilePos> candidates = new ArrayList<>();
-            for (TilePos tile : Demand.tilesAround(at.x, at.z, outer)) {
-                if (Demand.minChunkDistance(tile, at.x, at.z) > inner) {
-                    candidates.add(tile);
+            // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再按离玩家远近排序。
+            // 和 Demand.tilesAround / nearestFirst 同样的范围和顺序，只是不新建 TilePos、不装箱。
+            TilePos a = TilePos.ofChunk(at.x - outer, at.z - outer), b = TilePos.ofChunk(at.x + outer, at.z + outer);
+            int w = b.x() - a.x() + 1, n = w * (b.z() - a.z() + 1);
+            int[] tx = new int[n], tz = new int[n], idx = new int[n];
+            double[] d2 = new double[n];
+            int m = 0;
+            for (int x = a.x(); x <= b.x(); x++) {
+                for (int z = a.z(); z <= b.z(); z++) {
+                    int dx = Math.max(0, Math.max(x * TilePos.SIZE - at.x, at.x - (x * TilePos.SIZE + TilePos.SIZE - 1)));
+                    int dz = Math.max(0, Math.max(z * TilePos.SIZE - at.z, at.z - (z * TilePos.SIZE + TilePos.SIZE - 1)));
+                    if (Math.max(dx, dz) <= inner) {
+                        continue;
+                    }
+                    double cx = x * TilePos.SIZE + (TilePos.SIZE - 1) / 2.0 - at.x, cz = z * TilePos.SIZE + (TilePos.SIZE - 1) / 2.0 - at.z;
+                    tx[m] = x;
+                    tz[m] = z;
+                    d2[m] = cx * cx + cz * cz;
+                    idx[m] = m;
+                    m++;
                 }
             }
-            for (TilePos tile : Demand.nearestFirst(candidates, at.x, at.z)) {
-                if (queued >= QUEUE_CAP) {
-                    break;
+            IntArrays.quickSort(idx, 0, m, (i, j) -> {
+                int c = Double.compare(d2[i], d2[j]);
+                if (c != 0) {
+                    return c;
                 }
-                long tk = ChunkPos.asLong(tile.x(), tile.z());
-                if (serverTiles.contains(tk) || tasks.find(tile.x(), tile.z()) >= 0) {
+                c = Integer.compare(tx[i], tx[j]);
+                return c != 0 ? c : Integer.compare(tz[i], tz[j]);
+            });
+            for (int k = 0; k < m && queued < QUEUE_CAP; k++) {
+                int x = tx[idx[k]], z = tz[idx[k]];
+                long tk = ChunkPos.asLong(x, z);
+                if (serverTiles.contains(tk) || tasks.find(x, z) >= 0) {
                     continue;
                 }
-                RegionRules.Enqueue e = decide(tile, tk, chunkMap, access);
-                if (e.enqueue() && tasks.enqueue(tile.x(), tile.z(), e.world())) {
+                RegionRules.Enqueue e = decide(new TilePos(x, z), tk, chunkMap, access);
+                if (e.enqueue() && tasks.enqueue(x, z, e.world())) {
                     queued++;
                 }
             }
@@ -120,8 +167,8 @@ public final class DemandScanner {
             // ChunkMap.read → IOWorker.loadAsync 只是往读盘线程的队列里提交任务，哪个线程调都安全。
             Util.ioPool().execute(() -> {
                 for (long k : keys) {
-                    chunkMap.read(new ChunkPos(k)).thenAccept(tag -> DISK.replace(k, PENDING,
-                            tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT)));
+                    chunkMap.read(new ChunkPos(k)).thenAccept(tag -> EVENTS.add(new long[] {k,
+                            tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT), 1}));
                 }
             });
         }
@@ -129,7 +176,7 @@ public final class DemandScanner {
         scans++;
         totalNanos += dt;
         maxNanos = Math.max(maxNanos, dt);
-        if (recent.size() == 32) {
+        if (recent.size() == 64) {
             recent.removeFirst();
         }
         long cpu = THREADS.getCurrentThreadCpuTime() - c0;
@@ -152,9 +199,9 @@ public final class DemandScanner {
                 if (access.mcdonate$getUpdatingChunkIfPresent(key) != null || access.mcdonate$pendingUnloads().containsKey(key)) {
                     return RegionRules.Enqueue.no("在内存里");
                 }
-                Integer s = DISK.get(key);
-                if (s == null || s == PENDING) {
-                    if (s == null && readsLeft > 0) {
+                int s = DISK.get(key);
+                if (s == UNKNOWN || s == PENDING) {
+                    if (s == UNKNOWN && readsLeft > 0) {
                         readsLeft--;
                         DISK.put(key, PENDING);
                         toRead.add(key);

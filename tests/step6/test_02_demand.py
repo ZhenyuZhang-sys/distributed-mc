@@ -1,7 +1,8 @@
 """第 6 步（6.3）：自动找需求。
 
 测试服务器默认关着找需求（-Dmcdonate.demand=off），这里用 /donor demand on 临时打开。
-/donor status 里的 scan：扫描次数、平均和最长耗时（微秒）、inner（离玩家这么多圈以内不交给 donor）、outer。
+/donor status 里的 scan：扫描次数、平均和最长耗时（微秒）、inner（离玩家这么多圈以内不交给 donor）、outer，
+recent 是最近 64 次扫描的 [墙钟 µs, 主线程 CPU µs, 发起的读存档次数]。
 """
 
 import json
@@ -10,6 +11,9 @@ import time
 import pytest
 
 from mcd import donor_imports, compose, wait_until, worker_id
+
+# 假玩家出现后多少秒算启动段
+STARTUP_S = 10
 
 # 远离其他测试的地方：方块 (-8000, 8000) = chunk (-500, 500)
 SPOT = (-8000, 8000)
@@ -37,10 +41,18 @@ def filled(server, worker, worker2):
     before = len(imports(server))
     server.rcon("donor demand on")
     server.rcon(f"player demandbot spawn at {SPOT[0]} 200 {SPOT[1]} facing 0 0 in minecraft:overworld in spectator")
+    t0 = time.monotonic()
     try:
+        # 启动段：假玩家出现后的 STARTUP_S 秒（JIT 预热、周围 chunk 状态都要读、生成线程抢核）。
+        # 这是测量的分段点，不是等条件。
+        wait_until(lambda: time.monotonic() - t0 >= STARTUP_S, timeout=STARTUP_S + 5, interval=0.5, what="启动段结束")
+        startup_count = status(server)["scan"]["count"]
         got = wait_until(lambda: (n := [r for r in imports(server)[before:] if r["accepted"]]) and len(n) >= 10 and n,
                          timeout=300, interval=3, what="donor 在假玩家周围导入至少 10 个 tile")
-        yield got, status(server)
+        # 稳定段至少 10 次扫描，p95 才有意义
+        wait_until(lambda: status(server)["scan"]["count"] >= startup_count + 10, timeout=60, interval=1,
+                   what="稳定段扫描 10 次")
+        yield got, status(server), startup_count
     finally:
         server.rcon("donor demand off")
         server.rcon("player demandbot kill")
@@ -48,7 +60,7 @@ def filled(server, worker, worker2):
 
 @pytest.mark.long
 def test_tiles_are_around_player_outside_loaded_area(server, filled):
-    got, s = filled
+    got, s, _ = filled
     cx, cz = SPOT[0] // 16, SPOT[1] // 16
     inner, outer = s["scan"]["inner"], s["scan"]["outer"]
     for r in got:
@@ -60,19 +72,37 @@ def test_tiles_are_around_player_outside_loaded_area(server, filled):
 
 @pytest.mark.long
 def test_imported_tiles_in_save(server, filled):
-    got, _ = filled
+    got, _, _ = filled
     for r in got:
         tx, tz = r["tile"]
         assert server.rcon(f"donor peek {tx * 4 + 1} {tz * 4 + 1}") != "none", r
 
 
 @pytest.mark.long
-def test_scan_is_cheap(filled):
-    _, s = filled
+def test_scan_is_cheap(server, filled):
+    # 调度 11-08 定：扫描每秒一次。启动段的几毫秒是 JIT 预热和生成线程抢核，只出现一次；稳定段代表常态。
+    # - 稳定段（出现 STARTUP_S 秒以后）：单次扫描主线程 CPU 的 p95 < 1 ms
+    # - 启动段：单次 CPU < 5 ms、墙钟 < 10 ms（半个 tick）
+    _, s, startup_count = filled
     scan = s["scan"]
-    print(f"扫描 {scan['count']} 次，平均 {scan['avgMicros']} µs，最长 {scan['maxMicros']} µs")
+    recent = scan["recent"]
+    first = scan["count"] - len(recent) + 1  # recent[0] 是第几次扫描（从 1 数）
+    assert first == 1, f"recent 只留最近 {len(recent)} 次，启动段被挤掉了：{scan}"
+    startup = [r for i, r in enumerate(recent, first) if i <= startup_count]
+    steady = sorted(r[1] for i, r in enumerate(recent, first) if i > startup_count)
+    p95 = steady[min(len(steady) - 1, int(len(steady) * 0.95))]
+    report = {"startup": startup, "steady_cpu_us": steady, "steady_cpu_p95_us": p95,
+              "startup_max_cpu_us": max((r[1] for r in startup), default=0),
+              "startup_max_wall_us": max((r[0] for r in startup), default=0), "scan": scan}
+    print(json.dumps(report))
+    if server.artifact_dir:
+        server.artifact_dir.mkdir(parents=True, exist_ok=True)
+        (server.artifact_dir / "scan-cost.json").write_text(json.dumps(report, indent=2) + "\n")
     assert scan["count"] > 0
-    assert scan["avgMicros"] < 1000, scan
+    assert len(steady) >= 10, report
+    assert p95 < 1000, report
+    assert report["startup_max_cpu_us"] < 5000, report
+    assert report["startup_max_wall_us"] < 10000, report
 
 
 @pytest.mark.long
