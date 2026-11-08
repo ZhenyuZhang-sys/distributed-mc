@@ -73,14 +73,45 @@ def wait_until(check, timeout: float, interval: float = 1.0, what: str = "条件
         time.sleep(interval)
 
 
+CHUNKY_TASKS = TEST_DATA / "config" / "chunky" / "tasks"
+CHUNKY_BUSY = "A task was already started"
+
+
+def quarantine_chunky_tasks(dest: Path) -> list[str]:
+    """把残留的 Chunky 任务文件移到 dest/stale-chunky-tasks，返回移走的相对路径。
+
+    只在测试服务器停着、马上要换全新世界时调用：这时的任务文件一定是上一轮（比如被中断的那轮）留下的。
+    Chunky 按维度把任务存在共享的 config 目录，不随世界删除；不清掉，新世界的 chunky start 会被拒绝。
+    """
+    if not CHUNKY_TASKS.is_dir():
+        return []
+    moved = []
+    for path in sorted(p for p in CHUNKY_TASKS.rglob("*") if p.is_file()):
+        rel = path.relative_to(CHUNKY_TASKS)
+        target = Path(dest) / "stale-chunky-tasks" / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(target))
+        moved.append(str(rel))
+    return moved
+
+
+def start_chunky(server: "Server") -> str:
+    """发 chunky start；有残留任务时 Chunky 不开始、只提示 confirm，这里立刻报错，不白等超时。"""
+    out = server.rcon("chunky start")
+    if CHUNKY_BUSY in out:
+        raise RuntimeError("Chunky 有残留任务，拒绝开始新任务：" + out.strip())
+    return out
+
+
 def chunky(server: "Server", x: int, z: int, radius: int, timeout: float = 900) -> int:
     """用 Chunky 生成以 (x, z) 为中心、半径 radius 格的方形，返回 Chunky 报告的 chunk 数。"""
     pattern = r"Task finished for minecraft:overworld\. Processed: (\d+) chunks"
     # 同一轮里可能已经跑过 Chunky，等新增的那条完成记录
     before = len(re.findall(pattern, server.logs()))
     for cmd in ["chunky world minecraft:overworld", "chunky shape square",
-                f"chunky center {x} {z}", f"chunky radius {radius}", "chunky start"]:
+                f"chunky center {x} {z}", f"chunky radius {radius}"]:
         server.rcon(cmd)
+    start_chunky(server)
     return wait_until(lambda: len(d := re.findall(pattern, server.logs())) > before and int(d[-1]),
                       timeout=timeout, interval=1, what="Chunky 完成")
 
@@ -213,7 +244,7 @@ class Server:
         selection = self.rcon("chunky selection")
         # 连续日志的行游标把此前任务完成行排除。
         cursor = len(self.logs().splitlines())
-        self.rcon("chunky start")
+        start_chunky(self)
 
         def finished():
             lines = self.logs().splitlines()

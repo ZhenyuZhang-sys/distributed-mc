@@ -59,3 +59,28 @@ def test_interruption_archives_and_restores_cpu_environment(monkeypatch,tmp_path
     assert os.environ.get('MC_CPUSET')==previous
     assert closed==[True]
     assert json.loads((tmp_path/'attempt/manifest.json').read_text())['status']=='interrupted'
+
+def test_stale_chunky_tasks_quarantined(monkeypatch,tmp_path):
+    # 中断的那轮会留下 Chunky 任务文件；换新世界前要移走（留作证据），不然新世界的 chunky start 被拒绝。
+    import bench.server as srv
+    tasks=tmp_path/'tasks';(tasks/'minecraft').mkdir(parents=True)
+    (tasks/'minecraft'/'overworld.properties').write_text('cancelled=false\n')
+    monkeypatch.setattr(srv,'CHUNKY_TASKS',tasks)
+    moved=srv.quarantine_chunky_tasks(tmp_path/'run')
+    assert moved==['minecraft/overworld.properties']
+    assert not (tasks/'minecraft'/'overworld.properties').exists()
+    assert (tmp_path/'run'/'stale-chunky-tasks'/'minecraft'/'overworld.properties').read_text()=='cancelled=false\n'
+    assert srv.quarantine_chunky_tasks(tmp_path/'run2')==[]
+    monkeypatch.setattr(srv,'CHUNKY_TASKS',tmp_path/'missing')
+    assert srv.quarantine_chunky_tasks(tmp_path/'run3')==[]
+
+def test_chunky_start_fails_fast_on_stale_task():
+    import bench.server as srv
+    class Fake:
+        def __init__(self,reply):self.reply=reply;self.sent=[]
+        def rcon(self,c):self.sent.append(c);return self.reply
+    busy=Fake("[Chunky] A task was already started for this world. To continue running it, type '/chunky continue'. To start a new task, type '/chunky confirm'.\n")
+    with pytest.raises(RuntimeError,match='残留任务'):srv.start_chunky(busy)
+    assert busy.sent==['chunky start']
+    ok=Fake('[Chunky] Task started for minecraft:overworld.\n')
+    assert 'Task started' in srv.start_chunky(ok)

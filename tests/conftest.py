@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from mcd import REPO_ROOT, SCRIPTS, Server, compose, limits, run, wait_until
+from bench.server import quarantine_chunky_tasks
 from analysis.mca import read_chunk, read_world_metadata
 
 DEFAULT_SEED = 424242
@@ -48,6 +49,8 @@ def prepare_step0():
             level = f"{prefix}{time.time_ns()}"
             started = datetime.now(timezone.utc).isoformat()
             active = Server(level, DEFAULT_SEED, started, artifact_dir=evidence / level)
+            if not compose("ps", "-q", "minecraft").strip():
+                quarantine_chunky_tasks(evidence / level)
             run(str(SCRIPTS / "new_world.sh"), level, str(DEFAULT_SEED), timeout=900)
             wait_until(lambda: "Done (" in active.logs(), timeout=30, what="启动完成")
             return active

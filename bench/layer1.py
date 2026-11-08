@@ -14,7 +14,7 @@ from .environment import configure,preflight,software
 from .events import LogStream
 from .metrics import Cgroup,Sampler,metrics
 from .models import ROOT,atomic_json,canonical,digest,load_areas,matrix,protocol_id
-from .server import compose,run
+from .server import compose,run,start_chunky
 from .session import WorldSession,resource_environment
 
 RUNS=ROOT/'analysis/results/runs'
@@ -123,7 +123,7 @@ def one_run(directory,area,cpus,repeat,p,order_index=0,profile=False,warmup=None
                 time.sleep(.02)
             resources0=cg.resources();mark=stream.mark()
             with Sampler(cg,p['sample_interval']) as samples:
-                c0=cg.sample();server.rcon('chunky start')
+                c0=cg.sample();start_chunky(server)
                 event=stream.wait_task(mark,p['timeout_seconds']);c1=cg.sample()
             if event['count']!=256:raise RuntimeError(f'目标数不符：{event["count"]}')
             # c1 是当前完成事件之后的首个结束采样；保存窗口单列。

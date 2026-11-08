@@ -9,9 +9,15 @@ from bench.session import WorldSession
 
 def test_fresh_world_and_cgroup(server_manager):
     server_manager.enter_benchmark()
+    # 模拟被中断那轮留下的 Chunky 任务：新世界里的 chunky start 仍要成功。
+    from bench.server import CHUNKY_TASKS
+    stale=CHUNKY_TASKS/'minecraft'/'overworld.properties'
+    stale.parent.mkdir(parents=True,exist_ok=True)
+    stale.write_text('world=minecraft:overworld\ncancelled=false\nshape=square\npattern=csv\ncsv=stale-from-interrupted-run\n')
     world=WorldSession(Path(os.environ['MCD_ARTIFACT_DIR'])/'step1-smoke',prefix='smoke')
     try:
         server=world.start();configure(server)
+        assert world.stale_chunky_tasks==['minecraft/overworld.properties'] and not stale.exists()
         cg=Cgroup(compose('ps','-q','minecraft').strip(),run)
         cg.verify(int(limits()['MC_CPUS']),limits()['MC_CPUSET'])
         before=server.snapshot(world.directory/'before')
