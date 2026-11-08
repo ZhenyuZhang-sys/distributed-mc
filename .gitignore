@@ -24,3 +24,6 @@ docker/test-data-worker/
 docker/test-exchange/
 .pytest_cache/
 artifacts/
+
+# 单元测试跑 Minecraft 类时生成的日志
+*/logs/
