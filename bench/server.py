@@ -17,8 +17,11 @@ TEST_DATA = REPO_ROOT / "docker" / "test-data"
 WORKER_DATA = REPO_ROOT / "docker" / "test-data-worker"
 WORKER2_DATA = REPO_ROOT / "docker" / "test-data-worker2"
 EXCHANGE = REPO_ROOT / "docker" / "test-exchange"
-# compose 服务 → 存档目录
-DATA_ROOTS = {"minecraft": TEST_DATA, "worker": WORKER_DATA, "worker2": WORKER2_DATA}
+
+
+def data_root(service: str) -> Path:
+    """compose 服务 → 存档目录。调用时再取模块变量（测试会替换 TEST_DATA）。"""
+    return {"minecraft": TEST_DATA, "worker": WORKER_DATA, "worker2": WORKER2_DATA}[service]
 WHITELIST = REPO_ROOT / "tests/log_whitelist.txt"
 
 # Minecraft 的颜色代码，比如 §a
@@ -135,25 +138,34 @@ CHUNKY_TASKS = TEST_DATA / "config" / "chunky" / "tasks"
 CHUNKY_BUSY = "A task was already started"
 
 
+def _move_tasks(tasks: Path, dest: Path) -> list[str]:
+    if not tasks.is_dir():
+        return []
+    moved = []
+    for path in sorted(p for p in tasks.rglob("*") if p.is_file()):
+        rel = path.relative_to(tasks)
+        target = Path(dest) / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(target))
+        moved.append(str(rel))
+    return moved
+
+
 def quarantine_chunky_tasks(dest: Path) -> list[str]:
     """把残留的 Chunky 任务文件移到 dest/stale-chunky-tasks，返回移走的相对路径。
 
     只在测试服务器停着、马上要换全新世界时调用：这时的任务文件一定是上一轮（比如被中断的那轮）留下的。
     Chunky 按维度把任务存在共享的 config 目录，不随世界删除；不清掉，新世界的 chunky start 会被拒绝。
-    worker 的存档目录（第 3 步起）也有自己的 Chunky 配置，一起清。
     """
+    return _move_tasks(CHUNKY_TASKS, Path(dest) / "stale-chunky-tasks")
+
+
+def quarantine_worker_chunky_tasks(dest: Path) -> list[str]:
+    """worker、worker2 的存档目录（第 3 步起）也有自己的 Chunky 配置，同样清。返回 "worker/..." 形式的路径。"""
     moved = []
-    for service, root in DATA_ROOTS.items():
-        tasks = root / "config" / "chunky" / "tasks"
-        if not tasks.is_dir():
-            continue
-        for path in sorted(p for p in tasks.rglob("*") if p.is_file()):
-            rel = path.relative_to(tasks)
-            sub = Path("stale-chunky-tasks") if service == "minecraft" else Path("stale-chunky-tasks") / service
-            target = Path(dest) / sub / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(path), str(target))
-            moved.append(str(rel) if service == "minecraft" else f"{service}/{rel}")
+    for service in ("worker", "worker2"):
+        tasks = data_root(service) / "config" / "chunky" / "tasks"
+        moved += [f"{service}/{r}" for r in _move_tasks(tasks, Path(dest) / "stale-chunky-tasks" / service)]
     return moved
 
 
@@ -194,7 +206,7 @@ class Server:
 
     @property
     def data_root(self) -> Path:
-        return DATA_ROOTS[self.service]
+        return data_root(self.service)
 
     @property
     def world_dir(self) -> Path:

@@ -41,6 +41,9 @@ public final class DemandScanner {
     /** inner 在"视距 + 原版占内存的圈数"之外再留几圈。 */
     /** 已知含有服务器 chunk 的 tile（键是 tile 坐标打包成 long），只在主线程上用。 */
     private final LongOpenHashSet serverTiles = new LongOpenHashSet();
+    /** 每次扫描最多发起几次读存档：刚开始时玩家周围几千个 chunk 都不知道状态，一次全发会让那一次扫描很慢。 */
+    static final int READS_PER_SCAN = Config.getInt("demandReadsPerScan", 256);
+    private int readsLeft;
     static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
     private static final int PENDING = Integer.MIN_VALUE;
     private static final int ABSENT = -1;
@@ -78,6 +81,7 @@ public final class DemandScanner {
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         int inner = innerRadius(), outer = inner + lookahead;
         int queued = tasks.count(TaskQueue.State.QUEUED);
+        readsLeft = READS_PER_SCAN;
         for (ServerPlayer p : level.players()) {
             ChunkPos at = p.chunkPosition();
             // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再排序
@@ -109,7 +113,8 @@ public final class DemandScanner {
 
     /**
      * 和 {@link Demand#decide} 规则一样（接缝规则 0.3），只是查到服务器的或在内存里的 chunk 就停，不再查剩下的。
-     * 存档里状态还不知道的 chunk 发起异步读、这一轮不入队；同一个区域里其他不知道的也一起发起，下一轮就齐了。
+     * 存档里状态还不知道的 chunk 发起异步读（每次扫描最多 READS_PER_SCAN 次）、这一轮不入队；
+     * 同一个区域里其他不知道的也一起发起，下一轮就齐了。
      * 含有服务器 chunk 的 tile 记进 serverTiles，以后不再查：服务器的 chunk 不会变回空的或 donor 的。
      */
     private RegionRules.Enqueue decide(TilePos tile, long tileKey, ChunkMap chunkMap, ChunkMapAccessor access) {
@@ -123,9 +128,12 @@ public final class DemandScanner {
                 }
                 Integer s = DISK.get(key);
                 if (s == null) {
-                    DISK.put(key, PENDING);
-                    chunkMap.read(new ChunkPos(key)).thenAccept(tag -> DISK.replace(key, PENDING,
-                            tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT)));
+                    if (readsLeft > 0) {
+                        readsLeft--;
+                        DISK.put(key, PENDING);
+                        chunkMap.read(new ChunkPos(key)).thenAccept(tag -> DISK.replace(key, PENDING,
+                                tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT)));
+                    }
                     unknown = true;
                 } else if (s == PENDING) {
                     unknown = true;

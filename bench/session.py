@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import time
-from .server import REPO_ROOT, SCRIPTS, Server, compose, limits, quarantine_chunky_tasks, run, wait_until
+from .server import REPO_ROOT, SCRIPTS, Server, compose, limits, quarantine_chunky_tasks, quarantine_worker_chunky_tasks, run, wait_until
 from .models import atomic_json, digest
 
 
@@ -73,12 +73,13 @@ class WorldSession:
         self.directory=Path(directory);self.directory.mkdir(parents=True,exist_ok=False)
         self.level=f'{prefix}_{time.time_ns()}'
         self.server=Server(self.level,seed,datetime.now(timezone.utc).isoformat(),artifact_dir=self.directory)
-        self.finished=False;self.error=None;self.stale_chunky_tasks=[]
+        self.finished=False;self.error=None;self.stale_chunky_tasks=[];self.stale_worker_chunky_tasks=[]
     def start(self):
         try:
             # 服务器停着时才清：每轮都是全新世界，这时的 Chunky 任务文件一定是残留。
             if not compose('ps','-q','minecraft').strip():
                 self.stale_chunky_tasks=quarantine_chunky_tasks(self.directory)
+                self.stale_worker_chunky_tasks=quarantine_worker_chunky_tasks(self.directory)
             run(str(SCRIPTS/'new_world.sh'),self.level,str(self.server.seed),timeout=900)
             wait_until(lambda:'Done (' in self.server.logs(),timeout=60,what='服务器启动完成')
             if self.server.health()!='healthy': raise RuntimeError('服务器未就绪')
@@ -97,7 +98,7 @@ class WorldSession:
             raise
         finally:
             self.finished=True
-            atomic_json(self.directory/'session.json',dict(level=self.level,finished=True,error=self.error,stale_chunky_tasks=self.stale_chunky_tasks))
+            atomic_json(self.directory/'session.json',dict(level=self.level,finished=True,error=self.error,stale_chunky_tasks=self.stale_chunky_tasks,stale_worker_chunky_tasks=self.stale_worker_chunky_tasks))
     def cleanup(self):
         if not self.finished or self.error:raise RuntimeError('未成功归档的世界不能删除')
         shell_function('assert_test_instance')

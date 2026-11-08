@@ -235,6 +235,7 @@ final class CoordinatorServer {
                 + ",\"demandInnerMargin\":" + DemandScanner.INNER_MARGIN
                 + ",\"demandQueueCap\":" + DemandScanner.QUEUE_CAP
                 + ",\"scanTicks\":" + Coordinator.SCAN_TICKS
+                + ",\"demandReadsPerScan\":" + DemandScanner.READS_PER_SCAN
                 + ",\"leaseMs\":" + LEASE_MS
                 + ",\"heartbeatMs\":" + HEARTBEAT_MS
                 + ",\"deadMs\":" + DEAD_MS

@@ -60,6 +60,7 @@ TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("dirt", "gravel"),        # 海底盘（ocean Y 21～34）、地下泥土/沙砾矿团（mountain Y 3～147）
     ("dirt", "stone"),         # 地下泥土矿团（mountain Y 33～39）
     ("deepslate", "gravel"),   # 地下沙砾矿团（mountain Y −51）
+    ("gravel", "stone"),       # 地下沙砾矿团（fish 本地对照 Y 2～5；矿团碰到洞穴空气时可能不放，看邻居）
     ("deepslate", "water"),    # 地下泉水（ocean Y −19～−17，jungle）
     ("stone", "water"),        # 泉水（jungle）
     ("sand", "water"),         # jungle 2 处，泉水或沙盘
