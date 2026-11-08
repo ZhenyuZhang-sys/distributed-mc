@@ -70,14 +70,18 @@ def compose(*args: str, timeout: float = 120) -> str:
 
 
 def limits() -> dict[str, str]:
-    """测试服务器的资源限制：docker/n100.env，环境变量优先。"""
+    """测试服务器的资源限制：docker/n100.env，再叠 docker/.env.local（本目录用的核），环境变量优先。"""
     out = {}
-    for line in (REPO_ROOT / "docker" / "n100.env").read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            out[k] = os.environ.get(k, v)
-    return out
+    local = Path(os.environ.get("MCD_LOCAL_ENV", REPO_ROOT / "docker" / ".env.local"))
+    for path in (REPO_ROOT / "docker" / "n100.env", local):
+        if not path.is_file():
+            continue
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                out[k] = v
+    return {k: os.environ.get(k, v) for k, v in out.items()}
 
 
 def load_tile_file(path: Path) -> dict:

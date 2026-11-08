@@ -22,9 +22,16 @@ public final class Worker implements ModInitializer {
         // 调试命令，只给 OP 和控制台（RCON）用：
         //   /donor export <tx> <tz>  第 3 步：生成 tile 写进交换目录
         //   /donor sleep <秒>        测试用：让主线程卡住，验证网络线程照常发心跳
+        //   /donor loaded            测试用：内存里的 chunk 数
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("loaded").executes(ctx -> {
+                            // 内存里的 chunk 数：测试 worker 做完任务后有没有把区域放掉
+                            int n = ctx.getSource().getServer().overworld().getChunkSource().getLoadedChunksCount();
+                            ctx.getSource().sendSuccess(() -> Component.literal(Integer.toString(n)), false);
+                            return 1;
+                        }))
                         .then(Commands.literal("sleep")
                                 .requires(source -> source.hasPermission(4))
                                 .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 60))

@@ -28,7 +28,8 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def server():
-    if os.environ.get("MCD_LOCK_HELD") != "1":
+    # 本目录的锁（普通测试）或全局锁（benchmark、--slow）至少拿了一个
+    if os.environ.get("MCD_CHECKOUT_LOCK_HELD") != "1" and os.environ.get("MCD_LOCK_HELD") != "1":
         pytest.fail("服务器测试请通过 scripts/test.sh 运行，保证整轮持锁。")
     profile_path = REPO_ROOT / "tests/fixtures/mca/spawn_profile.json"
     if not profile_path.exists():

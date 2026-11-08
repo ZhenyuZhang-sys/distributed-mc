@@ -18,8 +18,13 @@ WORKER_DATA="$DOCKER_DIR/test-data-worker"
 EXCHANGE="$DOCKER_DIR/test-exchange"
 WORLD_ENV="$TEST_DATA/world.env"
 LIMITS_ENV="$DOCKER_DIR/n100.env"
+# 本目录用哪组核等（不进 git），叠在 n100.env 之后。几个目录同时跑测试时各用各的核
+LOCAL_ENV="${MCD_LOCAL_ENV:-$DOCKER_DIR/.env.local}"
 PLAY_PROJECT="mc-donate"
-HEAVY_LOCK="/tmp/mc-donate-heavy.lock"
+# 全局锁：只有 benchmark 拿，测量期间不会有两个 benchmark 同时跑
+HEAVY_LOCK="${MCD_HEAVY_LOCK:-/tmp/mc-donate-heavy.lock}"
+# 本目录的锁：测试、构建拿。同一个目录里共用 compose 项目和存档目录，不能两个同时跑
+CHECKOUT_LOCK="/tmp/mc-donate-checkout-$(printf '%s' "$REPO_ROOT" | md5sum | cut -c1-12).lock"
 
 info() { echo "==> $*" >&2; }
 die() { echo "错误：$*" >&2; exit 1; }
@@ -61,6 +66,7 @@ tc() {
   local args=(-p "$TEST_PROJECT" --project-directory "$DOCKER_DIR"
     -f "$DOCKER_DIR/compose.yaml" -f "$DOCKER_DIR/compose.test.yaml"
     --env-file "$TEST_ENV" --env-file "$LIMITS_ENV")
+  [[ -f "$LOCAL_ENV" ]] && args+=(--env-file "$LOCAL_ENV")
   # 先建好挂载的目录，否则 docker 会用 root 建空目录
   mkdir -p "$REPO_ROOT/build/mods" "$REPO_ROOT/build/mods-worker" "$TEST_DATA" "$WORKER_DATA" "$EXCHANGE"
   [[ -f "$WORLD_ENV" ]] && args+=(--env-file "$WORLD_ENV")
@@ -158,11 +164,66 @@ take_heavy_lock() {
 
 # 测试服务器实际用的 CPU 列表：环境变量优先，否则读 n100.env。
 test_cpuset() {
+  local v=""
   if [[ -n "${MC_CPUSET:-}" ]]; then
     echo "$MC_CPUSET"
-  else
-    sed -n 's/^MC_CPUSET=//p' "$LIMITS_ENV"
+    return
   fi
+  [[ -f "$LOCAL_ENV" ]] && v="$(sed -n 's/^MC_CPUSET=//p' "$LOCAL_ENV")"
+  [[ -n "$v" ]] || v="$(sed -n 's/^MC_CPUSET=//p' "$LIMITS_ENV")"
+  echo "$v"
+}
+
+# benchmark 用的核：n100.env 的 MC_CPUSET 和它们的超线程兄弟，一行一个
+bench_cpus() {
+  local c
+  for c in $(expand_cpus "$(sed -n 's/^MC_CPUSET=//p' "$LIMITS_ENV")"); do
+    expand_cpus "$(cat "/sys/devices/system/cpu/cpu$c/topology/thread_siblings_list")"
+  done | sort -n | uniq
+}
+
+# 一组核在哪些 NUMA 节点上（一行一个节点号）
+numa_nodes_of() {
+  local c
+  for c in "$@"; do
+    basename "$(ls -d /sys/devices/system/cpu/cpu"$c"/node* 2>/dev/null | head -1)" | sed 's/^node//'
+  done | sort -n | uniq
+}
+
+# benchmark 所在的 NUMA 节点
+bench_nodes() {
+  numa_nodes_of $(bench_cpus)
+}
+
+# 构建能用的核：benchmark 所在 NUMA 节点以外的全部核（逗号分隔），不和测量抢内存带宽
+build_cpus() {
+  local n bad
+  bad="$(bench_nodes)"
+  for n in $(ls -d /sys/devices/system/node/node* | sed 's/.*node//' | sort -n); do
+    grep -qx "$n" <<<"$bad" && continue
+    expand_cpus "$(cat /sys/devices/system/node/node"$n"/cpulist)"
+  done | sort -n | paste -sd,
+}
+
+# worker 用的核：环境变量优先，再看 .env.local，最后是 compose.test.yaml 的默认值
+worker_cpuset() {
+  local v="${WORKER_CPUSET:-}"
+  [[ -z "$v" && -f "$LOCAL_ENV" ]] && v="$(sed -n 's/^WORKER_CPUSET=//p' "$LOCAL_ENV")"
+  [[ -n "$v" ]] || v="$(sed -n 's/.*cpuset: \${WORKER_CPUSET:-\(.*\)}/\1/p' "$DOCKER_DIR/compose.test.yaml")"
+  echo "$v"
+}
+
+# 这一轮测试要用的核（测试服务器，开了 worker profile 再加 worker）有没有落在 benchmark 的 NUMA 节点上。
+# 有就输出 1：要等 benchmark 跑完（拿全局锁）；没有输出 0：可以和 benchmark 同时跑。
+conflicts_with_bench() {
+  local cpus nodes bad
+  cpus="$(expand_cpus "$(test_cpuset)")"
+  if [[ ",${COMPOSE_PROFILES:-}," == *,worker,* ]]; then
+    cpus+=$'\n'"$(expand_cpus "$(worker_cpuset)")"
+  fi
+  nodes="$(numa_nodes_of $cpus)"
+  bad="$(bench_nodes)"
+  if [[ -n "$(comm -12 <(sort <<<"$nodes") <(sort <<<"$bad"))" ]]; then echo 1; else echo 0; fi
 }
 
 # 把 "8-11,20" 这样的列表展开成一行一个编号。
@@ -182,8 +243,25 @@ current_level() {
 }
 
 # 准备好跑重活：锁、平时的服务器已停、配置齐全。
+# 本目录的锁：同一个目录里的测试、构建排队；不同目录之间不排队
+take_checkout_lock() {
+  [[ "${MCD_CHECKOUT_LOCK_HELD:-}" == 1 ]] && return 0
+  exec 8>>"$CHECKOUT_LOCK"
+  if ! flock -n 8; then
+    info "本目录另一个测试或构建正在跑，排队等待……"
+    flock 8
+  fi
+  export MCD_CHECKOUT_LOCK_HELD=1
+}
+
+# 测试服务器要用的准备工作。
+# 同一个目录里排队（本目录的锁）。用的核和 benchmark 不在同一个 NUMA 节点上，就不等 benchmark；
+# 在同一个节点上（比如没配 docker/.env.local，用 n100.env 默认的 12-15）照旧拿全局锁排队。
 prepare_heavy() {
-  take_heavy_lock
+  take_checkout_lock
+  if [[ "$(conflicts_with_bench)" == 1 ]]; then
+    take_heavy_lock
+  fi
   require_play_server_stopped
   ensure_test_env
   assert_test_data_mount

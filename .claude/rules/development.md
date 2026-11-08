@@ -42,7 +42,12 @@
 - **构建不限资源**：Gradle、反编译（`genSources`）用满整台机器。
 - **测试服务器和 benchmark 按 N100 限资源**：配置在 `docker/n100.env`（绑 12-15 这 4 个物理核、容器 6GB、Java 堆 4GB），`scripts/lib.sh` 的 `tc` 自动叠加。换核数用环境变量临时覆盖，比如 `MC_CPUS=2 MC_CPUSET=12-13`。
 - **CPU 频率要固定**：跑测试或 benchmark 前先 `scripts/test_config.sh pin`（关睿频，测试用的核固定在 2.9GHz，要 sudo）；`check` 检查，`status` 查看，`unpin` 恢复。睿频是整机开关，pin 期间整台机器都不睿频，大构建前后可以先 `unpin`。没固定时，`tests/step0/test_04_limits.py` 会失败。
-- **同一时间只跑一个重活**：Gradle 构建、测试服务器、benchmark。脚本都会先拿 `/tmp/mc-donate-heavy.lock`，两个人的任务自动排队。构建虽然不限资源，也不要和 benchmark 同时跑，否则测出来的数被干扰。
+- **benchmark 独占，其余按核分开并行**：
+    - benchmark（`bench.sh`、`test.sh --slow`）拿全局锁 `/tmp/mc-donate-heavy.lock`，同一时间只跑一个，测量期间别人不能在它的 NUMA 节点上跑重活。
+    - 普通测试拿本目录的锁（同一个目录里排队）。用的核（测试服务器，第 3 步起加 worker）和 benchmark 不在同一个 NUMA 节点上，就不等 benchmark；在同一个节点上照旧排队。
+    - 每个目录用哪组核写在 `docker/.env.local`（不进 git）：`MC_CPUSET`、`WORKER_CPUSET`。没有这个文件就用 `n100.env` 的 12-15，会和 benchmark 排队。
+    - 现在的分配：benchmark 12-15（节点 0）；fish 目录测试服务器 32-35、worker 36-39（节点 2）。新开一个目录就挑一个没人用的 NUMA 节点，不用超线程兄弟核。
+    - Gradle 构建不碰 benchmark 所在的 NUMA 节点，其余的核照样用满。
 - **跑测试服务器前，先停平时玩的那台**：`docker compose --project-directory /home/fish/mc/docker stop`。脚本发现它还在跑就会退出，不会自动帮人关。要关它得问人。
 - 测试跑完，`scripts/test.sh` 会自动 `down` 测试服务器。手动开的记得 `scripts/test_server.sh down`。
 

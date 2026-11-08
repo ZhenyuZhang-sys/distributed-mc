@@ -19,6 +19,8 @@ run/
 
 # 测试服务器（scripts/lib.sh 自动生成）
 docker/.env.test
+# 本目录用哪组核（scripts/lib.sh 叠在 n100.env 之后）
+docker/.env.local
 docker/test-data/
 docker/test-data-worker/
 docker/test-exchange/

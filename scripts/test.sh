@@ -27,6 +27,10 @@ for i in $(seq 0 "$n"); do
 done
 [[ ${#dirs[@]} -gt 0 ]] || die "没有找到 tests/step0 到 tests/step$n"
 
+# 性能测试（--slow）和 benchmark 一样要独占：测量期间不能有别的重活
+if [[ -z "$marker" ]]; then
+  take_heavy_lock
+fi
 prepare_heavy
 export MCD_ARTIFACT_DIR="${MCD_ARTIFACT_DIR:-$REPO_ROOT/artifacts/step$n-$(date -u +%Y%m%dT%H%M%S)-$$}"
 mkdir -p "$MCD_ARTIFACT_DIR"
