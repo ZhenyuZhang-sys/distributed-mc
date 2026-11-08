@@ -100,7 +100,8 @@ public final class Bench implements ModInitializer {
                     .append(",\"chunk\":[").append(c.x).append(',').append(c.z).append(']')
                     .append(",\"tracked\":[").append(tracked.x()).append(',').append(tracked.z()).append("]}");
         }
-        return sb.append("],\"mspt\":").append(server.getAverageTickTimeNanos() / 1_000_000.0).append('}').toString();
+        return sb.append("],\"mspt\":").append(server.getAverageTickTimeNanos() / 1_000_000.0)
+                .append(",\"tick\":").append(server.getTickCount()).append('}').toString();
     }
 
     private static int setTracking(CommandSourceStack source, boolean on) {
