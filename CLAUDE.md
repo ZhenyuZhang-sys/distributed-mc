@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 现在有什么
 
-第 0 步已有 `scripts/`、`tests/`、`docker/` 和只读 `analysis/mca/`。原来的两个 skip 已替换为真实存档断言；完整验收记录见 `docs/step0-plan.md`。`common/`、`coordinator/` 等 mod 尚未实现，第 1 步仍是计划。
+第 0 步已有 `scripts/`、`tests/`、`docker/` 和只读 `analysis/mca/`。原来的两个 skip 已替换为真实存档断言；完整验收记录见 `docs/step0-plan.md`。已同步上游第 2 步的仓库骨架和 bench mod；第 1 步的基线实验仍待实施。
 
 ## 测试环境怎么串起来
 
@@ -81,6 +81,6 @@ docker compose exec -T minecraft rcon-cli <命令>  # 控制台命令，不带 /
 - `fish`、`kexu`：各自的开发分支。
 - 当前 checkout 是 `/home/kexu/distributed-mc`，分支 `kexu`，已有 GitHub 远程。同步前检查未提交改动和实际远程状态，不照搬历史 worktree 路径。
 - 分支已发布，用 `git fetch origin`、`git merge origin/main` 同步，不 rebase 已发布提交。
-- 一个功能做完，先同步上游并重跑测试；全过后再合进 `main`。
+- 一个功能做完，先同步上游并重跑测试；全过后在 `main` 上 `git merge --ff-only kexu` 并推送。
 - 尽量分开改：同一步里一人一个模块，避免同时改同一个文件。
 - commit 信息用中文，一句话说清改了什么。

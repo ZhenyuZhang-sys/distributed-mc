@@ -25,7 +25,9 @@ tests/
 ```
 
 - 文件名用 `test_NN_xxx.py`，按编号顺序跑。要放在最后的（比如重启）用大编号。
-- 单元测试（Gradle + JUnit）放在各模块的 `src/test/`，由 `test.sh` 调 Gradle 跑（第 2 步接上）。
+- 单元测试（Gradle + JUnit）放在各模块的 `src/test/`。`test.sh step2` 及以后，会先跑 `scripts/gradle.sh build collectMods`（构建 + JUnit），再起测试服务器。构建失败，整轮直接失败。
+- 服务器内测试（Fabric GameTest）放在 `bench` 的 `mcdonate.bench.gametest` 里，在 `fabric.mod.json` 的 `fabric-gametest` 入口登记，模板用 `EMPTY_STRUCTURE`。`test.sh step2` 及以后，构建完就跑 `scripts/gametest.sh`：一台专门的服务器跑完所有 GameTest 自己退出，报告在 `docker/test-data/gametest/report.xml`，有失败整轮直接失败。单独跑：`scripts/gametest.sh`（先构建）。
+- `tests/step2/` 里的 pytest 只检查构建产物（jar、`build/mods/`、JUnit 结果、GameTest 报告），不自己调 Gradle。
 
 ## 一轮测试怎么进行
 

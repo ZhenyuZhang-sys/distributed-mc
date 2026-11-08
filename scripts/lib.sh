@@ -52,12 +52,15 @@ EOF
   mkdir -p "$TEST_DATA"
 }
 
-# 对测试服务器执行 docker compose。
+# 对测试服务器执行 docker compose：compose.yaml 叠加 compose.test.yaml（挂我们的 mod）。
 # 后面的 env 文件覆盖前面的：.env.test < n100.env（资源限制）< world.env（new_world.sh 写的）。
 # shell 里的环境变量优先级最高，可以临时覆盖，比如 MC_CPUS=2 MC_CPUSET=12-13。
 tc() {
   local args=(-p "$TEST_PROJECT" --project-directory "$DOCKER_DIR"
-    -f "$DOCKER_DIR/compose.yaml" --env-file "$TEST_ENV" --env-file "$LIMITS_ENV")
+    -f "$DOCKER_DIR/compose.yaml" -f "$DOCKER_DIR/compose.test.yaml"
+    --env-file "$TEST_ENV" --env-file "$LIMITS_ENV")
+  # 先建好 mod 目录，否则 docker 会用 root 建一个空的
+  mkdir -p "$REPO_ROOT/build/mods"
   [[ -f "$WORLD_ENV" ]] && args+=(--env-file "$WORLD_ENV")
   # 容器用跑脚本的人的 uid 写存档，否则 new_world.sh 删不掉旧世界
   MC_UID="${MC_UID:-$(id -u)}" MC_GID="${MC_GID:-$(id -g)}" docker compose "${args[@]}" "$@"

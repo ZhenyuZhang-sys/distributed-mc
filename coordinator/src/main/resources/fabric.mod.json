@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "mcdonate-coordinator",
+  "version": "${version}",
+  "name": "mc-donate coordinator",
+  "description": "服务器 mod：需求、调度、写入、验证。",
+  "environment": "*",
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "mcdonate-common": "*"
+  },
+  "entrypoints": {
+    "main": [
+      "mcdonate.coordinator.Coordinator"
+    ]
+  }
+}

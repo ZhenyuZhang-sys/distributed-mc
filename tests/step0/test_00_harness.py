@@ -118,6 +118,7 @@ def test_chunky_uses_exact_coordinates(tmp_path, monkeypatch, cx, cz, size):
     result = server.chunky_square(cx, cz, size)
     assert set(coordinates) == {(x, z) for x in range(cx, cx + size) for z in range(cz, cz + size)}
     assert result["count"] == len(coordinates) == size * size
+    assert commands[-1] == "chunky pattern loop"
     # Chunky 把 CSV 名写入持久化 selection，下一条配置命令和重启仍会读取。
     assert len(list((tmp_path / "config/chunky").glob("*.csv"))) == 1
 
