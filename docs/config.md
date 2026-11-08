@@ -23,6 +23,7 @@
 | `demandInnerMargin` | 1 | inner = 视距 + 原版占内存的圈数（约 11）+ 这个数 | 看 `/donor status` 的 `discarded.late`：来晚了的多，说明 inner 太靠里，调大 |
 | `demandQueueCap` | 256 | 找需求时队列里最多放几个 tile | 玩家多时调大 |
 | `demandReadsPerScan` | 256 | 每次找需求最多发起几次读存档（查 chunk 在存档里的状态） | 刚开始或玩家传送后，周围几千个 chunk 状态未知；调大会让那几次扫描变慢，调小要多扫几次才能派活 |
+| `demandScanBudgetMicros` | 500 | 每次找需求最多占主线程多少微秒，没查完的 tile 下一次再查（近的先查） | 服务器 MSPT 紧时调小；调小后离玩家远的 tile 要多等几秒才入队 |
 | `scanTicks` | 20 | 每隔几个 tick 找一次需求（20 = 1 秒） | `scan` 里扫描耗时大、服务器 MSPT 紧时调大 |
 | `leaseMs` | 30000 | 任务租约，超时收回重派 | 比最慢的 donor 做一个 tile 的时间长几倍 |
 | `heartbeatMs` | 5000 | 心跳间隔（donor 端同名配置也要一致） | 一般不动 |

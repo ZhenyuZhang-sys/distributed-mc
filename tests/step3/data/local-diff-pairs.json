@@ -12,5 +12,6 @@
   {"a": "minecraft:grass_block", "b": "minecraft:water", "count": 2},
   {"a": "minecraft:magma_block", "b": "minecraft:stone", "count": 2},
   {"a": "minecraft:deepslate", "b": "minecraft:wall_torch", "count": 1},
-  {"a": "minecraft:gravel", "b": "minecraft:stone", "count": 9, "note": "第二轮，第 5 步边界一圈"}
+  {"a": "minecraft:gravel", "b": "minecraft:stone", "count": 9, "note": "第二轮，第 5 步边界一圈"},
+  {"a": "minecraft:air", "b": "minecraft:water", "count": 2, "note": "第三轮，第 5 步没导入部分（原版互比），湖"}
  ]}

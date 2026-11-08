@@ -48,7 +48,8 @@ def test_terrain_pairs_counted_separately():
     # 列出的地形互换（泉水）单独计数；没列出的地形组合、空气对地形都是严格差异
     assert classify(STONE, WATER) == "terrain"
     assert classify(STONE, BlockState("minecraft:sand")) == "strict"
-    assert classify(AIR, WATER) == "strict"
+    assert classify(AIR, WATER) == "terrain"  # 湖（受每处 66 方块的上限约束，见下）
+    assert classify(AIR, BlockState("minecraft:sand")) == "strict"
     assert classify(AIR, STONE) == "strict"
     d = compare_chunks(chunk({(0, -10, 0): WATER}), chunk({}))
     assert (d.strict, d.decor, d.terrain) == (0, 0, 1)
@@ -116,3 +117,10 @@ def test_every_vanilla_difference_is_decor():
     tagged = (("_", "x"),)  # 汇总不含属性：加一个假属性，让同名的也走"属性不同"的分支
     bad = [p for p in pairs if not is_decor_diff(BlockState(p["a"], tagged), BlockState(p["b"]))]
     assert not bad, bad[:10]
+
+
+def test_lost_sea_is_strict_by_cluster_size():
+    # 导入丢了一片海：一大片相连的空气对水，超过每处 66 方块的上限
+    sea = [(x, 62, z) for x in range(10) for z in range(10)]
+    bad = relative_check(Diff(blocks=10**6, terrain_positions=sea), Diff(blocks=10**6, terrain_positions=[]))
+    assert bad and bad[0].startswith("严格")

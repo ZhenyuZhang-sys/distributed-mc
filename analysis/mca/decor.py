@@ -68,6 +68,9 @@ TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("lava", "stone"),         # 岩浆泉（mountain 1 处）
     ("dirt", "water"),         # 湖、泉水（fish 本地对照 Y 5～51）
     ("grass_block", "water"),  # 地表小湖（fish 本地对照 Y 79）
+    # 湖：LakeFeature 挖出上空气、下水的坑（fish 本地对照，没导入部分 Y 48～49）。放进地形互换而不是整类放过：
+    # 受"每处 ≤ 66 方块"约束，导入真丢了一片海会是一大片空气对水，照样判严格。
+    ("air", "water"),
 ))
 # 两边分别是这两种时算装饰类：
 #   air/cave_air：古城等结构用 cave_air 填空，本来就都是空气；

@@ -45,6 +45,8 @@ public final class DemandScanner {
     /** 每次扫描最多发起几次读存档：刚开始时玩家周围几千个 chunk 都不知道状态，一次全发会让那一次扫描很慢。 */
     static final int READS_PER_SCAN = Config.getInt("demandReadsPerScan", 256);
     private int readsLeft;
+    /** 每次扫描最多占主线程多久；没查完的 tile 下一秒再查（按离玩家远近，近的先查）。 */
+    static final long BUDGET_NANOS = Config.getLong("demandScanBudgetMicros", 500) * 1000;
     private final LongArrayList toRead = new LongArrayList();
     static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
     private static final int PENDING = Integer.MIN_VALUE;
@@ -79,16 +81,30 @@ public final class DemandScanner {
     DemandScanner(MinecraftServer server, TaskQueue tasks) {
         this.server = server;
         this.tasks = tasks;
+        SERVER = server;
     }
+
+    /** 主线程上的变化直接改 DISK，别的线程的排进 EVENTS（存盘每个 chunk 都会调，不能攒着）。 */
+    private static volatile MinecraftServer SERVER;
 
     /** 服务器存盘或导入后，这个 chunk 在存档里的状态变了。 */
     static void diskChanged(long key, int status) {
-        EVENTS.add(new long[] {key, status, 0});
+        MinecraftServer srv = SERVER;
+        if (srv != null && srv.isSameThread()) {
+            DISK.put(key, status);
+        } else {
+            EVENTS.add(new long[] {key, status, 0});
+        }
     }
 
     /** 服务器存盘时只知道变了，不知道变成什么：下次重新查。 */
     public static void diskUnknown(long key) {
-        EVENTS.add(new long[] {key, FORGET, 0});
+        MinecraftServer srv = SERVER;
+        if (srv != null && srv.isSameThread()) {
+            DISK.remove(key);
+        } else {
+            EVENTS.add(new long[] {key, FORGET, 0});
+        }
     }
 
     private static void drainEvents() {
@@ -149,6 +165,9 @@ public final class DemandScanner {
                 return c != 0 ? c : Integer.compare(tz[i], tz[j]);
             });
             for (int k = 0; k < m && queued < QUEUE_CAP; k++) {
+                if (System.nanoTime() - t0 > BUDGET_NANOS) {
+                    break; // 这次扫描的时间用完了，剩下的（离玩家较远的）下一秒再查
+                }
                 int x = tx[idx[k]], z = tz[idx[k]];
                 long tk = ChunkPos.asLong(x, z);
                 if (serverTiles.contains(tk) || tasks.find(x, z) >= 0) {
