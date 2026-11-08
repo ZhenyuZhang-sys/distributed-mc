@@ -11,6 +11,7 @@ TEST_PROJECT="mc-test"
 TEST_ENV="$DOCKER_DIR/.env.test"
 TEST_DATA="$DOCKER_DIR/test-data"
 WORLD_ENV="$TEST_DATA/world.env"
+LIMITS_ENV="$DOCKER_DIR/n100.env"
 PLAY_PROJECT="mc-donate"
 PLAY_DIR="/home/fish/mc/docker"
 HEAVY_LOCK="/tmp/mc-donate-heavy.lock"
@@ -45,12 +46,15 @@ EOF
   mkdir -p "$TEST_DATA"
 }
 
-# 对测试服务器执行 docker compose。world.env 由 new_world.sh 写，里面的值优先。
+# 对测试服务器执行 docker compose。
+# 后面的 env 文件覆盖前面的：.env.test < n100.env（资源限制）< world.env（new_world.sh 写的）。
+# shell 里的环境变量优先级最高，可以临时覆盖，比如 MC_CPUS=2 MC_CPUSET=8-9。
 tc() {
   local args=(-p "$TEST_PROJECT" --project-directory "$DOCKER_DIR"
-    -f "$DOCKER_DIR/compose.yaml" --env-file "$TEST_ENV")
+    -f "$DOCKER_DIR/compose.yaml" --env-file "$TEST_ENV" --env-file "$LIMITS_ENV")
   [[ -f "$WORLD_ENV" ]] && args+=(--env-file "$WORLD_ENV")
-  docker compose "${args[@]}" "$@"
+  # 容器用跑脚本的人的 uid 写存档，否则 new_world.sh 删不掉旧世界
+  MC_UID="${MC_UID:-$(id -u)}" MC_GID="${MC_GID:-$(id -g)}" docker compose "${args[@]}" "$@"
 }
 
 # 保险：确认 compose 实际挂载的存档目录就是 test-data，否则不往下走。
@@ -68,7 +72,7 @@ require_play_server_stopped() {
   local running
   running="$(docker ps -q --filter "label=com.docker.compose.project=$PLAY_PROJECT" --filter status=running)"
   if [[ -n "$running" ]]; then
-    die "平时玩的服务器还在跑，内存不够两台同时开。先手动停：docker compose --project-directory $PLAY_DIR stop"
+    die "平时玩的服务器还在跑，两台同时开会互相干扰。先手动停：docker compose --project-directory $PLAY_DIR stop"
   fi
 }
 
@@ -82,6 +86,24 @@ take_heavy_lock() {
     flock 9
   fi
   export MCD_LOCK_HELD=1
+}
+
+# 测试服务器实际用的 CPU 列表：环境变量优先，否则读 n100.env。
+test_cpuset() {
+  if [[ -n "${MC_CPUSET:-}" ]]; then
+    echo "$MC_CPUSET"
+  else
+    sed -n 's/^MC_CPUSET=//p' "$LIMITS_ENV"
+  fi
+}
+
+# 把 "8-11,20" 这样的列表展开成一行一个编号。
+expand_cpus() {
+  local part
+  IFS=',' read -ra parts <<<"$1"
+  for part in "${parts[@]}"; do
+    if [[ "$part" == *-* ]]; then seq "${part%-*}" "${part#*-}"; else echo "$part"; fi
+  done
 }
 
 # 当前测试世界的名字。

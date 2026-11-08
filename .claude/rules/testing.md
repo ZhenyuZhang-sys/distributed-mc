@@ -3,6 +3,7 @@
 ## 怎么跑
 
 ```bash
+scripts/test_config.sh pin             # 先固定 CPU 频率（要 sudo），没固定 step0 会失败
 scripts/test.sh step0                  # 跑第 0 步
 scripts/test.sh step2                  # 跑第 0、1、2 步
 scripts/test.sh step2 --slow           # 连性能测试一起跑
