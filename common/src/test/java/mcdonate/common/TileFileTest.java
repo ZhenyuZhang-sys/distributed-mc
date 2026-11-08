@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 class TileFileTest {
     private static final int DATA_VERSION = 3955;
     private static final long SEED = 424242L;
+    private static final String WORLD = "7f9c2a6e-0000-4000-8000-000000000001";
 
     @TempDir
     Path dir;
@@ -41,7 +42,7 @@ class TileFileTest {
                 chunks.add(chunk(x, z, tile.ring(x, z) == 0 ? "minecraft:initialize_light" : "minecraft:carvers"));
             }
         }
-        return new TileFile(DATA_VERSION, SEED, tile, chunks);
+        return new TileFile(DATA_VERSION, SEED, WORLD, tile, chunks);
     }
 
     @Test
@@ -112,6 +113,31 @@ class TileFileTest {
     }
 
     @Test
+    void worldIdRoundTrips() {
+        TileFile back = TileFile.fromTag(fullTile(new TilePos(2, 3)).toTag(), DATA_VERSION, SEED);
+        assertEquals(WORLD, back.worldId());
+    }
+
+    @Test
+    void rejectsFormatOneWithoutWorldId() {
+        // 第 6 步起格式 2：多了 donor 世界编号。格式 1（第 3 步的导出）不再收
+        CompoundTag tag = fullTile(new TilePos(0, 0)).toTag();
+        tag.putInt("format", 1);
+        tag.remove("worldId");
+        assertThrows(TileFile.InvalidTileFile.class, () -> TileFile.fromTag(tag, DATA_VERSION, SEED));
+    }
+
+    @Test
+    void rejectsBlankWorldId() {
+        TilePos t = new TilePos(0, 0);
+        assertThrows(TileFile.InvalidTileFile.class,
+                () -> new TileFile(DATA_VERSION, SEED, " ", t, fullTile(t).chunks()));
+        CompoundTag tag = fullTile(t).toTag();
+        tag.remove("worldId");
+        assertThrows(TileFile.InvalidTileFile.class, () -> TileFile.fromTag(tag, DATA_VERSION, SEED));
+    }
+
+    @Test
     void writeLeavesNoTempFile() throws IOException {
         Path file = dir.resolve("t.nbt");
         fullTile(new TilePos(0, 0)).write(file);
@@ -149,7 +175,7 @@ class TileFileTest {
         TilePos t = new TilePos(0, 0);
         List<ExportedChunk> chunks = new ArrayList<>(fullTile(t).chunks());
         chunks.add(chunk(5, 0, "minecraft:carvers"));
-        assertThrows(TileFile.InvalidTileFile.class, () -> new TileFile(DATA_VERSION, SEED, t, chunks));
+        assertThrows(TileFile.InvalidTileFile.class, () -> new TileFile(DATA_VERSION, SEED, WORLD, t, chunks));
     }
 
     @Test
@@ -157,7 +183,7 @@ class TileFileTest {
         TilePos t = new TilePos(0, 0);
         List<ExportedChunk> chunks = new ArrayList<>(fullTile(t).chunks());
         chunks.add(chunk(0, 0, "minecraft:initialize_light"));
-        assertThrows(TileFile.InvalidTileFile.class, () -> new TileFile(DATA_VERSION, SEED, t, chunks));
+        assertThrows(TileFile.InvalidTileFile.class, () -> new TileFile(DATA_VERSION, SEED, WORLD, t, chunks));
     }
 
     @Test
@@ -165,9 +191,9 @@ class TileFileTest {
         TilePos t = new TilePos(0, 0);
         CompoundTag data = chunk(1, 1, "minecraft:spawn").data();
         assertThrows(TileFile.InvalidTileFile.class,
-                () -> new TileFile(DATA_VERSION, SEED, t, List.of(new ExportedChunk(2, 2, "minecraft:spawn", data))));
+                () -> new TileFile(DATA_VERSION, SEED, WORLD, t, List.of(new ExportedChunk(2, 2, "minecraft:spawn", data))));
         assertThrows(TileFile.InvalidTileFile.class,
-                () -> new TileFile(DATA_VERSION, SEED, t, List.of(new ExportedChunk(1, 1, "minecraft:full", data))));
+                () -> new TileFile(DATA_VERSION, SEED, WORLD, t, List.of(new ExportedChunk(1, 1, "minecraft:full", data))));
     }
 
     @Test

@@ -113,7 +113,7 @@ final class TileExporter {
         }
 
         TileFile file = new TileFile(SharedConstants.getCurrentVersion().getDataVersion().getVersion(),
-                level.getSeed(), tile, chunks);
+                level.getSeed(), WorldId.of(level.getServer()), tile, chunks);
         return new Generated(file, rings);
     }
 }

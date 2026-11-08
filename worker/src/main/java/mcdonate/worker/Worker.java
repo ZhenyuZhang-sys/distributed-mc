@@ -23,9 +23,15 @@ public final class Worker implements ModInitializer {
         //   /donor export <tx> <tz>  第 3 步：生成 tile 写进交换目录
         //   /donor sleep <秒>        测试用：让主线程卡住，验证网络线程照常发心跳
         //   /donor loaded            测试用：内存里的 chunk 数
+        //   /donor worldid           这个 donor 世界的编号（第 6 步）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("worldid").executes(ctx -> {
+                            String id = WorldId.of(ctx.getSource().getServer());
+                            ctx.getSource().sendSuccess(() -> Component.literal(id), false);
+                            return 1;
+                        }))
                         .then(Commands.literal("loaded").executes(ctx -> {
                             // 内存里的 chunk 数：测试 worker 做完任务后有没有把区域放掉
                             int n = ctx.getSource().getServer().overworld().getChunkSource().getLoadedChunksCount();

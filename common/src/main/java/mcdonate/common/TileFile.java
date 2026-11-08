@@ -17,12 +17,15 @@ import net.minecraft.nbt.Tag;
 /**
  * 一个 tile 的导出文件：tile 本身和外面一圈的 chunk，压缩 NBT。
  *
- * <pre>{format: 1, dataVersion, seed, tile: [tx, tz], chunks: [{x, z, status, data}]}</pre>
+ * <pre>{format: 2, dataVersion, seed, worldId, tile: [tx, tz], chunks: [{x, z, status, data}]}</pre>
+ *
+ * worldId 是生成它的 donor 世界的编号（第 6 步）：同一个 donor 世界后导出的是超集，可以覆盖；
+ * 不同世界的不能拼在一起。格式 1（第 3 步，没有 worldId）不再收。
  *
  * data 是原版 ChunkSerializer.write 的结果。构造和读取时都会检查，有任何问题整个文件都不收。
  */
-public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedChunk> chunks) {
-    public static final int FORMAT = 1;
+public record TileFile(int dataVersion, long seed, String worldId, TilePos tile, List<ExportedChunk> chunks) {
+    public static final int FORMAT = 2;
     /** 最多导出到第几圈：tile 放地物时会写进紧挨着的一圈。 */
     public static final int MAX_RING = 1;
     /** 读文件时解压后最多 256 MiB，防止坏文件撑爆内存。 */
@@ -42,6 +45,9 @@ public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedCh
     }
 
     public TileFile {
+        if (worldId == null || worldId.isBlank()) {
+            throw new InvalidTileFile("缺 donor 世界编号 worldId");
+        }
         chunks = List.copyOf(chunks);
         Set<Long> seen = new HashSet<>();
         for (ExportedChunk c : chunks) {
@@ -69,6 +75,7 @@ public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedCh
         root.putInt("format", FORMAT);
         root.putInt("dataVersion", dataVersion);
         root.putLong("seed", seed);
+        root.putString("worldId", worldId);
         root.putIntArray("tile", new int[] {tile.x(), tile.z()});
         ListTag list = new ListTag();
         for (ExportedChunk c : chunks) {
@@ -105,7 +112,7 @@ public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedCh
             CompoundTag c = (CompoundTag) tag;
             chunks.add(new ExportedChunk(c.getInt("x"), c.getInt("z"), c.getString("status"), c.getCompound("data")));
         }
-        return new TileFile(dv, seed, new TilePos(t[0], t[1]), chunks);
+        return new TileFile(dv, seed, root.getString("worldId"), new TilePos(t[0], t[1]), chunks);
     }
 
     /** 先写临时文件再改名，读的一方不会读到半个文件。 */
