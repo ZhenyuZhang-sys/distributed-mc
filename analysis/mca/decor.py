@@ -3,9 +3,11 @@
 原版生成的不确定性几乎全在 features 阶段（相邻 chunk 放地物的先后不同）：树、藤蔓、草、矿团、
 sculk、海带等等。noise 和 surface 阶段是确定的。所以一个位置上两边方块不同时：
 
-- 有一边是 DECOR（地物放的方块）→ 装饰类差异，只做统计（不高于原版互比的上界）；
-- 两边都是 TERRAIN_SWAP（地物会互相替换的地形方块，比如泉水把石头换成水、沙土盘把泥土换成沙砾）→ 也算装饰类；
-- 其他（最典型的是空气对石头）→ 严格差异，必须是 0。导入丢块、错位、写错 chunk 会落在这里。
+- 有一边是 DECOR（地物放的方块）→ 装饰类差异（decor），只做统计；
+- 两边是 TERRAIN_PAIRS 里的一对地形方块（每一对都对得上一种地物：海底沙/沙砾盘、地下泥土/沙砾矿团、
+  泉水、树干底下的泥土……）→ 地形互换（terrain），单独计数，也只做统计；
+- 其他（空气对石头、没列出的地形互换，比如石头对泥土以外的组合）→ 严格差异（strict），必须是 0。
+  导入丢块、错位、截断、写错 chunk 会落在这里。
 
 清单是拿两个原版世界互比（kexu 第 1 步三个区域 + 本地测试区域）补全的：原版自己在严格层上必须是 0。
 方块属性（树叶的 distance、雪的层数……）不同，按名字相同处理的只限 DECOR；其余属性不同也是严格差异。
@@ -44,14 +46,23 @@ deepslate_brick_stairs deepslate_brick_slab deepslate_brick_wall deepslate_tile_
 cobblestone mossy_cobblestone
 """.split())
 
-# 地物会互相替换的地形方块：两边都在这里时算装饰类差异
-TERRAIN_SWAP = frozenset("minecraft:" + n for n in """
-stone deepslate dirt coarse_dirt grass_block podzol gravel sand sandstone red_sand mud
-snow_block powder_snow water lava soul_sand magma_block obsidian
-""".split())
-
-
-# 两边分别是这两种时也算装饰类：
+# 地形方块之间、原版自己会不一样的具体组合（kexu 第 1 步实测，见 tests/step3/data/vanilla-diff-pairs.json）。
+# 位置是 kexu 的逐块明细里看的（ocean、mountain；jungle 明细当时还没写完，只有汇总）。
+TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a, b in (
+    ("dirt", "grass_block"),   # 树干底下把草方块换成泥土（jungle 19180，mountain Y 99～124）
+    ("dirt", "snow_block"),    # 雪坡上的树干底下（mountain Y 110～133）
+    ("gravel", "sand"),        # 海底沙/沙砾盘（ocean Y 52～60）
+    ("dirt", "sand"),          # 海底沙盘（ocean Y 27～50）
+    ("dirt", "gravel"),        # 海底盘（ocean Y 21～34）、地下泥土/沙砾矿团（mountain Y 3～147）
+    ("dirt", "stone"),         # 地下泥土矿团（mountain Y 33～39）
+    ("deepslate", "gravel"),   # 地下沙砾矿团（mountain Y −51）
+    ("deepslate", "water"),    # 地下泉水（ocean Y −19～−17，jungle）
+    ("stone", "water"),        # 泉水（jungle）
+    ("sand", "water"),         # jungle 2 处，泉水或沙盘
+    ("gravel", "water"),       # jungle 1 处
+    ("lava", "stone"),         # 岩浆泉（mountain 1 处）
+))
+# 两边分别是这两种时算装饰类：
 #   air/cave_air：古城等结构用 cave_air 填空，本来就都是空气；
 #   air/dirt：大型丛林树的根把树下的空气换成泥土（kexu 第 1 步 jungle，97 个位置）。
 EXCUSED_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a, b in (
@@ -59,17 +70,31 @@ EXCUSED_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("air", "dirt"),
 ))
 
+# 名字相同、只差属性也算地形互换的方块（草方块上盖了雪就是 snowy=true）
+TERRAIN_PROPS = frozenset({"minecraft:grass_block"})
+
+# 原版互比里地形互换的最小非零比例（ocean：637 处 ÷ 4 对 × 256 chunk × 98304 方块 ≈ 6.3e-6）。
+# 统计层的下限；比原版最少的地方还少，不算问题。
+VANILLA_TERRAIN_FLOOR = 637 / (4 * 256 * 98304)
+
+
+def classify(a, b) -> str:
+    """a、b 是同一位置上两边不同的 BlockState，返回 decor / terrain / strict。"""
+    if a.name in DECOR or b.name in DECOR:
+        return "decor"
+    if a.name == b.name:
+        return "terrain" if a.name in TERRAIN_PROPS else "strict"
+    pair = frozenset((a.name, b.name))
+    if pair in EXCUSED_PAIRS:
+        return "decor"
+    if pair in TERRAIN_PAIRS:
+        return "terrain"
+    return "strict"
+
 
 def is_decor_diff(a, b) -> bool:
-    """a、b 是同一位置上两边不同的 BlockState。"""
-    if a.name in DECOR or b.name in DECOR:
-        return True
-    if a.name == b.name:
-        # 名字相同、属性不同：地形方块的属性也是地物改的（草方块上盖了雪就是 snowy=true）
-        return a.name in TERRAIN_SWAP
-    if frozenset((a.name, b.name)) in EXCUSED_PAIRS:
-        return True
-    return a.name in TERRAIN_SWAP and b.name in TERRAIN_SWAP
+    """不算严格差异（装饰类或列出的地形互换）。"""
+    return classify(a, b) != "strict"
 
 
 @dataclass
@@ -77,12 +102,14 @@ class Diff:
     blocks: int = 0      # 比了多少个方块
     strict: int = 0      # 严格差异（必须是 0）
     decor: int = 0       # 装饰类差异
+    terrain: int = 0     # 列出的地形互换
     examples: list = None  # 几个严格差异的例子，排查用
 
     def add(self, other: "Diff") -> "Diff":
         self.blocks += other.blocks
         self.strict += other.strict
         self.decor += other.decor
+        self.terrain += other.terrain
         self.examples = (self.examples or []) + (other.examples or [])
         self.examples = self.examples[:10]
         return self
@@ -90,6 +117,10 @@ class Diff:
     @property
     def decor_rate(self) -> float:
         return self.decor / self.blocks if self.blocks else 0.0
+
+    @property
+    def terrain_rate(self) -> float:
+        return self.terrain / self.blocks if self.blocks else 0.0
 
 
 def compare_chunks(a, b, max_examples: int = 5) -> Diff:
@@ -109,8 +140,11 @@ def compare_chunks(a, b, max_examples: int = 5) -> Diff:
             y = pb[0 if ib is None else ib[i]]
             if x == y:
                 continue
-            if is_decor_diff(x, y):
+            kind = classify(x, y)
+            if kind == "decor":
                 d.decor += 1
+            elif kind == "terrain":
+                d.terrain += 1
             else:
                 d.strict += 1
                 if len(d.examples) < max_examples:
@@ -127,3 +161,17 @@ VANILLA_DECOR_RATE = {"ocean": 0.00023, "mountain": 0.0022, "jungle": 0.011}
 VANILLA_DECOR_FLOOR = VANILLA_DECOR_RATE["ocean"]
 # 本地测不到原版对照时，用最保守的上界（jungle）。
 VANILLA_DECOR_MAX = VANILLA_DECOR_RATE["jungle"]
+
+
+def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str]:
+    """统计层：导入部分的装饰类、地形互换比例，各自不高于同一轮没导入部分（本地原版互比）的 factor 倍。
+    返回不满足的说明，空列表表示通过。"""
+    bad = []
+    for name, rate_in, rate_out, floor in (
+        ("装饰类", inside.decor_rate, outside.decor_rate, VANILLA_DECOR_FLOOR),
+        ("地形互换", inside.terrain_rate, outside.terrain_rate, VANILLA_TERRAIN_FLOOR),
+    ):
+        limit = max(rate_out * factor, floor)
+        if rate_in > limit:
+            bad.append(f"{name}：导入部分 {rate_in:.5%} > 上限 {limit:.5%}（没导入部分 {rate_out:.5%}）")
+    return bad

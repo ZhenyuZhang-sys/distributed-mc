@@ -5,7 +5,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from analysis.mca.chunk import AIR, BlockState, Chunk
-from analysis.mca.decor import compare_chunks, is_decor_diff
+from analysis.mca.decor import Diff, classify, compare_chunks, is_decor_diff, relative_check
 
 STONE = BlockState("minecraft:stone")
 WATER = BlockState("minecraft:water", (("level", "0"),))
@@ -44,10 +44,23 @@ def test_leaves_vs_air_is_decor():
     assert (d.strict, d.decor) == (0, 1)
 
 
-def test_terrain_swap_is_decor_but_air_vs_terrain_is_not():
-    assert is_decor_diff(STONE, WATER)
-    assert not is_decor_diff(AIR, WATER)
-    assert not is_decor_diff(AIR, STONE)
+def test_terrain_pairs_counted_separately():
+    # 列出的地形互换（泉水）单独计数；没列出的地形组合、空气对地形都是严格差异
+    assert classify(STONE, WATER) == "terrain"
+    assert classify(STONE, BlockState("minecraft:sand")) == "strict"
+    assert classify(AIR, WATER) == "strict"
+    assert classify(AIR, STONE) == "strict"
+    d = compare_chunks(chunk({(0, -10, 0): WATER}), chunk({}))
+    assert (d.strict, d.decor, d.terrain) == (0, 0, 1)
+
+
+def test_relative_check():
+    inside, outside = Diff(blocks=10**6, decor=100, terrain=0), Diff(blocks=10**6, decor=100, terrain=0)
+    assert relative_check(inside, outside) == []
+    inside.terrain = 50  # 没导入部分是 0，导入部分 5e-5 高于下限
+    assert len(relative_check(inside, outside)) == 1
+    inside.terrain, inside.decor = 0, 1000
+    assert len(relative_check(inside, outside)) == 1
 
 
 def test_property_only_difference():

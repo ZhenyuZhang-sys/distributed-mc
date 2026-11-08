@@ -9,7 +9,7 @@ import json
 import pytest
 
 from analysis.mca import read_chunk
-from analysis.mca.decor import VANILLA_DECOR_FLOOR, VANILLA_DECOR_MAX, Diff, compare_chunks
+from analysis.mca.decor import VANILLA_DECOR_MAX, Diff, compare_chunks, relative_check
 from mcd import SCRIPTS, compose, run, wait_until, worker_id
 
 # 跑一遍要几分钟，--quick 时不跑
@@ -85,7 +85,7 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     # 也生成同一块作为原版答案，逐块比，分两层（analysis/mca/decor.py）：
     # - 严格层（装饰类方块以外）：导入的、没导入的都必须是 0。没导入的部分是两个原版世界互比，
     #   它不是 0 说明装饰类清单不全。
-    # - 统计层：导入部分（tile 和边界一圈）的装饰类差异率不高于没导入部分（同一轮原版互比）的 1.5 倍。
+    # - 统计层：导入部分（tile 和边界一圈）的装饰类差异率、地形互换率，各自不高于没导入部分（同一轮原版互比）的 1.5 倍。
     x0, z0 = G0 * 4 - 2, G0 * 4 - 2
     size = 6 * 4 + 4 + 4
     server.chunky_square(x0, z0, size)
@@ -111,10 +111,11 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
             # 每个 tile 中间 2×2：邻居全在 tile 里，地物都在 worker 上做完了，
             # 导入后没有谁再往里写，必须和 worker 逐块一致（装饰类也算）
             if any(tx * 4 + 1 <= x <= tx * 4 + 2 and tz * 4 + 1 <= z <= tz * 4 + 2 for tx, tz in GRID) \
-                    and (d.strict or d.decor):
-                center_diff[f"{x},{z}"] = {"strict": d.strict, "decor": d.decor}
+                    and (d.strict or d.decor or d.terrain):
+                center_diff[f"{x},{z}"] = {"strict": d.strict, "decor": d.decor, "terrain": d.terrain}
     imported = Diff(examples=[]).add(acc["tile"]).add(acc["ring1"])
-    summary = {k: {"strict": v.strict, "decor_rate": v.decor_rate, "examples": v.examples} for k, v in acc.items()}
+    summary = {k: {"strict": v.strict, "decor_rate": v.decor_rate, "terrain_rate": v.terrain_rate,
+                   "examples": v.examples} for k, v in acc.items()}
     print(f"严格差异 / 装饰类差异率：{ {k: (v.strict, f'{v.decor_rate:.4%}') for k, v in acc.items()} }")
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -124,7 +125,8 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     assert not center_diff, f"tile 中间的 chunk 和 worker 不一致，导入丢了东西：{center_diff}"
     assert all(v.strict == 0 for v in acc.values()), summary
     assert all(v.decor_rate <= SANITY for v in acc.values()), summary
-    assert imported.decor_rate <= max(acc["not_imported"].decor_rate * 1.5, VANILLA_DECOR_FLOOR), summary
+    bad = relative_check(imported, acc["not_imported"])
+    assert not bad, (bad, summary)
 
 
 # ---- kill worker ----

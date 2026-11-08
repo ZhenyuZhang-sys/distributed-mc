@@ -215,4 +215,5 @@ def test_forced_cross_donor_seam_measured(server, worker, worker2, tmp_path_fact
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
         (server.artifact_dir / "forced-seam.json").write_text(json.dumps(
             {"seam_diff_rate": rate, "strict": blocks.strict, "decor_rate": blocks.decor_rate,
+             "terrain_rate": blocks.terrain_rate,
              "examples": blocks.examples}) + "\n")
