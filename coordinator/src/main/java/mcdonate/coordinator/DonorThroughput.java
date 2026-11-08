@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -17,10 +18,10 @@ import java.util.Map;
  * 没有记录的 donor 按 {@link #DEFAULT_MS} 估。
  */
 final class DonorThroughput {
-    static final int WINDOW = 10;
+    static final int WINDOW = Config.getInt("throughputWindow", 10);
     /** 还没有记录时按 3 秒估（第 3 步实测 4 核 1.8～3.1 秒）。 */
-    static final long DEFAULT_MS = 3_000;
-    static final int MAX_CONCURRENCY = 4;
+    static final long DEFAULT_MS = Config.getLong("tileDefaultMs", 3_000);
+    static final int MAX_CONCURRENCY = Config.getInt("maxConcurrency", 4);
 
     private final Map<Integer, Deque<Long>> samples = new HashMap<>();
 

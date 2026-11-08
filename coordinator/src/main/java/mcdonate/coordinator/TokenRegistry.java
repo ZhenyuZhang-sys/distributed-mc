@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -25,7 +26,7 @@ import java.util.function.LongSupplier;
  * 已知限制：token 走明文 TCP，抓包的人可以抢先用掉（以后加 TLS）。
  */
 final class TokenRegistry {
-    static final long TTL_MS = 60_000;
+    static final long TTL_MS = Config.getLong("tokenTtlMs", 60_000);
 
     private static final class Entry {
         final UUID player;

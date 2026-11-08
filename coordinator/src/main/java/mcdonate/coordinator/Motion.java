@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import mcdonate.common.TilePos;
@@ -12,9 +13,9 @@ import mcdonate.common.TilePos;
  * 不动、或者永远到不了（背向走）是正无穷，这时按距离排。
  */
 final class Motion {
-    static final long WINDOW_MS = 3_000;
+    static final long WINDOW_MS = Config.getLong("motionWindowMs", 3_000);
     /** 最远预测多少秒。 */
-    static final double HORIZON_S = 120;
+    static final double HORIZON_S = Config.getDouble("motionHorizonS", 120);
     private static final double STEP_S = 0.25;
 
     private record Sample(long t, double x, double z) {}

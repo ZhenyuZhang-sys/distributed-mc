@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -36,7 +37,7 @@ public final class Features {
     }
 
     public static Features fromSystemProperty() {
-        return new Features(System.getProperty("mcdonate.features", ""));
+        return new Features(Config.get("features", ""));
     }
 
     public boolean on(String name) {

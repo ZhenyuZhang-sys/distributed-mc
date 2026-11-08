@@ -1,5 +1,6 @@
 package mcdonate.worker;
 
+import mcdonate.common.Config;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -32,7 +33,7 @@ final class SeedHandshake {
 
     /** coordinator 地址（系统属性 mcdonate.coordinator=host:port），没设返回 null。 */
     static String address() {
-        String a = System.getProperty("mcdonate.coordinator");
+        String a = Config.get("coordinator", null);
         return a == null || a.isBlank() ? null : a.trim();
     }
 

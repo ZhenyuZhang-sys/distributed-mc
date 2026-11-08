@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -32,7 +33,7 @@ public final class TaskQueue {
     public enum State { QUEUED, LEASED, DONE, FAILED, DROPPED }
 
     /** 硬认主的世界多久没有 donor 连着就丢掉任务。 */
-    static final long ORPHAN_MS = 60_000;
+    static final long ORPHAN_MS = Config.getLong("orphanMs", 60_000);
 
     /** 收到结果后要做什么。 */
     public enum Action { IMPORT, REQUEUE, FAIL, DISCARD }

@@ -1,11 +1,11 @@
 package mcdonate.common;
 
 /**
- * tile 坐标：一个 tile 是 4×4 个 chunk。
+ * tile 坐标：一个 tile 是 SIZE×SIZE 个 chunk（默认 4，配置项 tileSize；donor 和服务器必须一样）。
  * tile (tx, tz) 包含 chunk x ∈ [4tx, 4tx+3]、z ∈ [4tz, 4tz+3]；负数向下取整。
  */
 public record TilePos(int x, int z) {
-    public static final int SIZE = 4;
+    public static final int SIZE = Config.getInt("tileSize", 4);
 
     public static TilePos ofChunk(int chunkX, int chunkZ) {
         return new TilePos(Math.floorDiv(chunkX, SIZE), Math.floorDiv(chunkZ, SIZE));

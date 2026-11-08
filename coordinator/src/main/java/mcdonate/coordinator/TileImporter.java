@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import mcdonate.common.TileFile;
+import mcdonate.common.TilePos;
 import mcdonate.common.TileFile.ExportedChunk;
 import mcdonate.coordinator.mixin.ChunkMapAccessor;
 import net.minecraft.SharedConstants;
@@ -119,12 +120,26 @@ final class TileImporter {
      * 第 6 步的严格导入（docs/step6-plan.md 0.3）：先查整个区域，碰到别的 donor 世界、服务器的、
      * 内存里的 chunk 就整个丢弃；否则空的写入，同一个世界的按状态覆盖或跳过。在主线程上调用。
      */
+    /** tile 大小是配置项，donor 和服务器配得不一样时拒收，不写进存档。 */
+    static void checkTileSize(TileFile file) {
+        TilePos t = file.tile();
+        int side = TilePos.SIZE + 2 * TileFile.MAX_RING;
+        boolean inside = file.chunks().stream().allMatch(c ->
+                c.x() >= t.minChunkX() - TileFile.MAX_RING && c.x() <= t.maxChunkX() + TileFile.MAX_RING
+                        && c.z() >= t.minChunkZ() - TileFile.MAX_RING && c.z() <= t.maxChunkZ() + TileFile.MAX_RING);
+        if (!inside || file.chunks().size() != side * side) {
+            throw new Refused("refused: tile 大小对不上（服务器 tileSize=" + TilePos.SIZE + "，收到 "
+                    + file.chunks().size() + " 个 chunk），检查两边的 tileSize 配置");
+        }
+    }
+
     static StrictResult importStrict(ServerLevel level, TileFile file) {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         Map<Long, RegionRules.ChunkInfo> current = new HashMap<>();
         Map<Long, Integer> incoming = new HashMap<>();
         Map<Long, ExportedChunk> byPos = new HashMap<>();
+        checkTileSize(file);
         for (ExportedChunk c : file.chunks()) {
             long key = ChunkPos.asLong(c.x(), c.z());
             current.put(key, chunkInfo(chunkMap, access, key));

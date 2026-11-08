@@ -1,5 +1,7 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
+import mcdonate.common.TilePos;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -41,10 +43,10 @@ import org.slf4j.LoggerFactory;
  */
 final class CoordinatorServer {
     private static final Logger LOG = LoggerFactory.getLogger("mcdonate-coordinator");
-    static final long LEASE_MS = 30_000;
-    static final long HEARTBEAT_MS = 5_000;
-    static final long DEAD_MS = 15_000;
-    static final int MAX_ATTEMPTS = 3;
+    static final long LEASE_MS = Config.getLong("leaseMs", 30_000);
+    static final long HEARTBEAT_MS = Config.getLong("heartbeatMs", 5_000);
+    static final long DEAD_MS = Config.getLong("deadMs", 15_000);
+    static final int MAX_ATTEMPTS = Config.getInt("maxAttempts", 3);
 
     private final MinecraftServer server;
     private final int port;
@@ -56,7 +58,7 @@ final class CoordinatorServer {
     private volatile boolean running;
     final DemandScanner demand;
     /** 找需求的开关：正式运行默认开；测试服务器用 -Dmcdonate.demand=off 默认关，测试里按需打开。 */
-    volatile boolean demandOn = !"off".equals(System.getProperty("mcdonate.demand"));
+    volatile boolean demandOn = !"off".equals(Config.get("demand", "on"));
     /** 严格导入（第 6 步的区域规则）；关掉就用第 3 步的旧规则（只给测试故意制造接缝用）。 */
     volatile boolean strict = true;
     final AtomicInteger discardedConflict = new AtomicInteger();
@@ -226,6 +228,29 @@ final class CoordinatorServer {
         }
     }
 
+    /** 当前生效的配置项（docs/config.md），放进 /donor status。 */
+    static String configJson() {
+        return "{\"tileSize\":" + TilePos.SIZE
+                + ",\"demandLookahead\":" + Config.getInt("demandLookahead", 8)
+                + ",\"demandInnerMargin\":" + DemandScanner.INNER_MARGIN
+                + ",\"demandQueueCap\":" + DemandScanner.QUEUE_CAP
+                + ",\"scanTicks\":" + Coordinator.SCAN_TICKS
+                + ",\"leaseMs\":" + LEASE_MS
+                + ",\"heartbeatMs\":" + HEARTBEAT_MS
+                + ",\"deadMs\":" + DEAD_MS
+                + ",\"maxAttempts\":" + MAX_ATTEMPTS
+                + ",\"orphanMs\":" + TaskQueue.ORPHAN_MS
+                + ",\"maxConcurrency\":" + DonorThroughput.MAX_CONCURRENCY
+                + ",\"tileDefaultMs\":" + DonorThroughput.DEFAULT_MS
+                + ",\"throughputWindow\":" + DonorThroughput.WINDOW
+                + ",\"motionWindowMs\":" + Motion.WINDOW_MS
+                + ",\"motionHorizonS\":" + Motion.HORIZON_S
+                + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
+                + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
+                + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))
+                + "}";
+    }
+
     /** /donor status 的 JSON。 */
     String statusJson() {
         StringBuilder sb = new StringBuilder("{\"workers\":[");
@@ -241,7 +266,7 @@ final class CoordinatorServer {
                     .append(",\"idleMs\":").append(now - c.lastSeen)
                     .append('}');
         }
-        return sb.append("],\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
+        return sb.append("],\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
                 .append(",\"discarded_conflict\":").append(discardedConflict.get())
                 .append(",\"discard_ratio\":").append(discardRatio())
                 .append(",\"discarded\":{\"late\":").append(discardedBy.get(RegionRules.Discard.LOADED).get())

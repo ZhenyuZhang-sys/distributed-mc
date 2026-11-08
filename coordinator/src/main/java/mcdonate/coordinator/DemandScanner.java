@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import mcdonate.common.TilePos;
@@ -30,7 +31,9 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
  * 这一轮不入队。服务器存盘（ChunkMapSaveMixin）和导入时更新缓存。
  */
 public final class DemandScanner {
-    static final int QUEUE_CAP = 256;
+    static final int QUEUE_CAP = Config.getInt("demandQueueCap", 256);
+    /** inner 在"视距 + 原版占内存的圈数"之外再留几圈。 */
+    static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
     private static final int PENDING = Integer.MIN_VALUE;
     private static final int ABSENT = -1;
 
@@ -39,7 +42,7 @@ public final class DemandScanner {
 
     private final MinecraftServer server;
     private final TaskQueue tasks;
-    private final int lookahead = Integer.getInteger("mcdonate.demandLookahead", 8);
+    private final int lookahead = Config.getInt("demandLookahead", 8);
     long scans;
     long totalNanos;
     long maxNanos;
@@ -114,7 +117,7 @@ public final class DemandScanner {
 
     /** 离玩家这么多圈以内的 tile 不交给 donor（见类注释）。 */
     int innerRadius() {
-        return server.getPlayerList().getViewDistance() + ChunkLevel.RADIUS_AROUND_FULL_CHUNK + 1;
+        return server.getPlayerList().getViewDistance() + ChunkLevel.RADIUS_AROUND_FULL_CHUNK + INNER_MARGIN;
     }
 
     String json() {

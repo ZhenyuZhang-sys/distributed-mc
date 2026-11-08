@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import mcdonate.common.Config;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import mcdonate.common.ModIds;
@@ -16,6 +17,9 @@ import org.slf4j.LoggerFactory;
 
 /** 服务器 mod：需求、调度、写入、验证。 */
 public final class Coordinator implements ModInitializer {
+    /** 每隔几个 tick 找一次需求（20 tick = 1 秒）。 */
+    static final int SCAN_TICKS = Math.max(1, Config.getInt("scanTicks", 20));
+
     public static final String MOD_ID = ModIds.of("coordinator");
     private static final Logger LOG = LoggerFactory.getLogger(MOD_ID);
 
@@ -91,7 +95,7 @@ public final class Coordinator implements ModInitializer {
                                                     return 1;
                                                 }))))));
         // 网络：服务器起来后监听，关服时停。端口 0 表示不开（系统属性 mcdonate.port，默认 25580）
-        int port = Integer.getInteger("mcdonate.port", 25580);
+        int port = Config.getInt("port", 25580);
         if (port > 0) {
             ServerLifecycleEvents.SERVER_STARTED.register(server -> {
                 network = new CoordinatorServer(server, port);
@@ -105,7 +109,7 @@ public final class Coordinator implements ModInitializer {
             // 找需求：每秒（20 tick）在主线程上扫一次；没有 donor 连着就不扫
             ServerTickEvents.END_SERVER_TICK.register(server -> {
                 CoordinatorServer n = network;
-                if (n != null && server.getTickCount() % 20 == 0 && n.shouldScan()) {
+                if (n != null && server.getTickCount() % SCAN_TICKS == 0 && n.shouldScan()) {
                     n.demand.scan();
                 }
             });

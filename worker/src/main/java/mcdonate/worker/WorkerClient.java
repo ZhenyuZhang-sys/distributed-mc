@@ -1,5 +1,6 @@
 package mcdonate.worker;
 
+import mcdonate.common.Config;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -32,8 +33,8 @@ import org.slf4j.LoggerFactory;
  */
 final class WorkerClient {
     private static final Logger LOG = LoggerFactory.getLogger("mcdonate-worker");
-    private static final long HEARTBEAT_MS = 5_000;
-    private static final int READ_TIMEOUT_MS = 15_000;
+    private static final long HEARTBEAT_MS = Config.getLong("heartbeatMs", 5_000);
+    private static final int READ_TIMEOUT_MS = Config.getInt("readTimeoutMs", 15_000);
 
     private final MinecraftServer server;
     private final String host;
