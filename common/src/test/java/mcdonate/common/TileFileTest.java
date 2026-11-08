@@ -81,6 +81,37 @@ class TileFileTest {
     }
 
     @Test
+    void tagRoundTripWithoutFile() {
+        // 第 5 步的 result 消息直接带这个 tag，不经过文件
+        TileFile tf = fullTile(new TilePos(7, -9));
+        CompoundTag tag = tf.toTag();
+        TileFile back = TileFile.fromTag(tag, DATA_VERSION, SEED);
+        assertEquals(tf, back);
+    }
+
+    @Test
+    void fromTagChecksLikeRead() {
+        CompoundTag tag = fullTile(new TilePos(0, 0)).toTag();
+        assertThrows(TileFile.InvalidTileFile.class, () -> TileFile.fromTag(tag, DATA_VERSION + 1, SEED));
+        assertThrows(TileFile.InvalidTileFile.class, () -> TileFile.fromTag(tag, DATA_VERSION, SEED + 1));
+        CompoundTag bad = tag.copy();
+        bad.putInt("format", 99);
+        assertThrows(TileFile.InvalidTileFile.class, () -> TileFile.fromTag(bad, DATA_VERSION, SEED));
+        CompoundTag noTile = tag.copy();
+        noTile.remove("tile");
+        assertThrows(TileFile.InvalidTileFile.class, () -> TileFile.fromTag(noTile, DATA_VERSION, SEED));
+    }
+
+    @Test
+    void fileIsCompressedTag() throws IOException {
+        // write 写进文件的就是 toTag 的结果
+        TileFile tf = fullTile(new TilePos(1, 1));
+        Path file = dir.resolve("t.nbt");
+        tf.write(file);
+        assertEquals(tf.toTag(), NbtIo.readCompressed(file, net.minecraft.nbt.NbtAccounter.unlimitedHeap()));
+    }
+
+    @Test
     void writeLeavesNoTempFile() throws IOException {
         Path file = dir.resolve("t.nbt");
         fullTile(new TilePos(0, 0)).write(file);

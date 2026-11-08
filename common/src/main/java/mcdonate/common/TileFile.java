@@ -63,8 +63,8 @@ public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedCh
         }
     }
 
-    /** 先写临时文件再改名，读的一方不会读到半个文件。 */
-    public void write(Path file) throws IOException {
+    /** 整个 tile 的 NBT 根：写进文件的就是它，第 5 步的 result 消息也直接带它。 */
+    public CompoundTag toTag() {
         CompoundTag root = new CompoundTag();
         root.putInt("format", FORMAT);
         root.putInt("dataVersion", dataVersion);
@@ -80,22 +80,11 @@ public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedCh
             list.add(t);
         }
         root.put("chunks", list);
-        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-        NbtIo.writeCompressed(root, tmp);
-        Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        return root;
     }
 
-    /** 读文件并检查。dataVersion 和 seed 要和本服务器一致。 */
-    public static TileFile read(Path file, int expectedDataVersion, long expectedSeed) throws IOException {
-        CompoundTag root;
-        try {
-            root = NbtIo.readCompressed(file, NbtAccounter.create(READ_QUOTA));
-        } catch (IOException | RuntimeException e) {
-            if (e instanceof java.nio.file.NoSuchFileException) {
-                throw (IOException) e;
-            }
-            throw new InvalidTileFile("读不出 NBT：" + e.getMessage(), e);
-        }
+    /** 从 NBT 根还原并检查。dataVersion 和 seed 要和本服务器一致，有任何问题抛 InvalidTileFile。 */
+    public static TileFile fromTag(CompoundTag root, int expectedDataVersion, long expectedSeed) {
         if (root.getInt("format") != FORMAT) {
             throw new InvalidTileFile("格式版本是 " + root.getInt("format") + "，只认 " + FORMAT);
         }
@@ -117,5 +106,26 @@ public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedCh
             chunks.add(new ExportedChunk(c.getInt("x"), c.getInt("z"), c.getString("status"), c.getCompound("data")));
         }
         return new TileFile(dv, seed, new TilePos(t[0], t[1]), chunks);
+    }
+
+    /** 先写临时文件再改名，读的一方不会读到半个文件。 */
+    public void write(Path file) throws IOException {
+        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+        NbtIo.writeCompressed(toTag(), tmp);
+        Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** 读文件并检查。dataVersion 和 seed 要和本服务器一致。 */
+    public static TileFile read(Path file, int expectedDataVersion, long expectedSeed) throws IOException {
+        CompoundTag root;
+        try {
+            root = NbtIo.readCompressed(file, NbtAccounter.create(READ_QUOTA));
+        } catch (IOException | RuntimeException e) {
+            if (e instanceof java.nio.file.NoSuchFileException) {
+                throw (IOException) e;
+            }
+            throw new InvalidTileFile("读不出 NBT：" + e.getMessage(), e);
+        }
+        return fromTag(root, expectedDataVersion, expectedSeed);
     }
 }
