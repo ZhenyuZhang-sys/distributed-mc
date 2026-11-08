@@ -1,12 +1,14 @@
-"""不同目录的测试和构建不再排队；benchmark 照旧独占。不需要服务器。
+"""重活锁（不需要服务器）。
 
-- 全局锁（/tmp/mc-donate-heavy.lock）：只有 benchmark（take_heavy_lock）拿。
-- 本目录的锁：测试、构建拿，同一个目录里不会两个同时跑（共用 compose 项目和存档目录）。
-- 本目录用哪组核：docker/.env.local（不进 git），叠在 n100.env 之后。
-- Gradle 构建不碰 benchmark 所在的 NUMA 节点。
-- 普通测试用的核和 benchmark 不在同一个 NUMA 节点上才不等它；否则照旧排队。--slow 和 benchmark 一样独占。
+- benchmark（bench.sh、test.sh --slow）拿全局锁的独占模式：它跑的时候，别的重活全部排队。
+- 普通测试服务器和 Gradle 拿同一把锁的共享模式：几个目录的测试之间可以同时跑，
+  但只要 benchmark 拿着独占锁就都要等；benchmark 也要等手上的共享持有者都结束。
+- 不再按 NUMA 节点放行：分核只隔开 CPU，隔不开共用的磁盘和 Docker 守护进程
+  （第 1 步测量时实测被测试的容器创建、删除和世界读写拖慢，详见 .claude/rules/development.md）。
+- 本目录的锁：同一个目录里的测试、构建排队（共用 compose 项目和存档目录）。
 """
 
+import os
 import subprocess
 import time
 
@@ -14,113 +16,85 @@ from mcd import SCRIPTS
 
 
 def sh(script, env=None, timeout=20):
-    import os
     e = {**os.environ, **(env or {})}
     e.pop("MCD_LOCK_HELD", None)
+    e.pop("MCD_CHECKOUT_LOCK_HELD", None)
     return subprocess.run(["bash", "-c", f'source "{SCRIPTS}/lib.sh"; {script}'], capture_output=True,
                           text=True, env=e, timeout=timeout)
 
 
-def hold(lock_file):
-    """另起一个进程拿住锁文件。"""
-    return subprocess.Popen(["flock", lock_file, "sleep", "30"])
+def hold(lock_file, shared=False):
+    """另起一个进程拿住锁（独占或共享）30 秒。"""
+    return subprocess.Popen(["flock", "-s" if shared else "-x", lock_file, "sleep", "30"])
 
 
-def test_checkout_lock_ignores_global_lock(tmp_path):
+def _try(fn, lock):
+    # 3 秒内拿到锁就输出 got
+    e = {**os.environ, "MCD_HEAVY_LOCK": lock}
+    e.pop("MCD_LOCK_HELD", None)
+    e.pop("MCD_CHECKOUT_LOCK_HELD", None)
+    return subprocess.run(["timeout", "3", "bash", "-c", f'source "{SCRIPTS}/lib.sh"; {fn}; echo got'],
+                          capture_output=True, text=True, env=e, timeout=20)
+
+
+def test_benchmark_blocks_tests(tmp_path):
+    # benchmark 拿着独占锁：普通测试（共享）拿不到，不管它用哪组核
     g = tmp_path / "global.lock"
     g.touch()
     p = hold(str(g))
     try:
         time.sleep(0.5)
-        t0 = time.monotonic()
-        r = sh("take_checkout_lock; echo ok", env={"MCD_HEAVY_LOCK": str(g)})
-        assert r.stdout.strip() == "ok", r.stderr
-        assert time.monotonic() - t0 < 5
+        assert "got" not in _try("take_shared_lock", str(g)).stdout
     finally:
         p.kill()
 
 
-def test_benchmark_lock_still_exclusive(tmp_path):
+def test_tests_run_side_by_side(tmp_path):
+    # 另一个目录的测试拿着共享锁：普通测试照样拿得到
     g = tmp_path / "global.lock"
     g.touch()
-    p = hold(str(g))
+    p = hold(str(g), shared=True)
     try:
         time.sleep(0.5)
-        r = subprocess.run(["bash", "-c", f'source "{SCRIPTS}/lib.sh"; HEAVY_LOCK="{g}"; '
-                                          'timeout 3 bash -c "source \\"$0\\"; HEAVY_LOCK=\\"$1\\"; take_heavy_lock; echo got" '
-                                          f'"{SCRIPTS}/lib.sh" "{g}"'],
-                           capture_output=True, text=True, timeout=20)
-        assert "got" not in r.stdout, "benchmark 锁被占着时不该拿到"
+        assert "got" in _try("take_shared_lock", str(g)).stdout
     finally:
         p.kill()
+
+
+def test_benchmark_waits_for_tests(tmp_path):
+    # 有测试拿着共享锁：benchmark 要等它们结束
+    g = tmp_path / "global.lock"
+    g.touch()
+    p = hold(str(g), shared=True)
+    try:
+        time.sleep(0.5)
+        assert "got" not in _try("take_heavy_lock", str(g)).stdout
+    finally:
+        p.kill()
+
+
+def test_prepare_heavy_and_gradle_take_shared_lock():
+    lib = (SCRIPTS / "lib.sh").read_text()
+    prepare = lib[lib.index("prepare_heavy() {"):]
+    prepare = prepare[:prepare.index("\n}")]
+    assert "take_shared_lock" in prepare and "conflicts_with_bench" not in prepare, prepare
+    assert "take_shared_lock" in (SCRIPTS / "gradle.sh").read_text()
+
+
+def test_slow_tests_take_benchmark_lock():
+    text = (SCRIPTS / "test.sh").read_text()
+    assert 'if [[ -z "$marker" ]]; then\n  take_heavy_lock' in text
 
 
 def test_local_env_overrides_cpuset(tmp_path):
     local = tmp_path / ".env.local"
-    local.write_text("MC_CPUSET=16-19\nWORKER_CPUSET=20-23\n")
+    local.write_text("MC_CPUSET=32-35\nWORKER_CPUSET=36-39\n")
     r = sh("test_cpuset", env={"MCD_LOCAL_ENV": str(local)})
-    assert r.stdout.strip() == "16-19", r.stderr
+    assert r.stdout.strip() == "32-35", r.stderr
 
 
 def test_gradle_avoids_benchmark_numa_node():
-    # 构建不碰 benchmark 所在的 NUMA 节点（不抢内存带宽）
-    r = sh("bench_nodes | paste -sd,; build_cpus; numa_nodes_of $(expand_cpus \"$(build_cpus)\") | paste -sd,")
-    bench_nodes, build, build_nodes = r.stdout.strip().splitlines()
-    assert build, r.stderr
+    # 构建仍然不碰 benchmark 所在的 NUMA 节点（锁之外多一层保险）
+    r = sh('bench_nodes | paste -sd,; numa_nodes_of $(expand_cpus "$(build_cpus)") | paste -sd,')
+    bench_nodes, build_nodes = r.stdout.strip().splitlines()
     assert not set(bench_nodes.split(",")) & set(build_nodes.split(",")), (bench_nodes, build_nodes)
-
-
-def _prepare_like(env, lock):
-    # prepare_heavy 里决定要不要等 benchmark 的那一段（不碰 docker）
-    script = ('[[ "$(conflicts_with_bench)" == 1 ]] && take_heavy_lock; echo ran')
-    return sh(f"timeout 3 bash -c 'source \"{SCRIPTS}/lib.sh\"; {script}'",
-              env={**env, "MCD_HEAVY_LOCK": lock}, timeout=20)
-
-
-def test_benchmark_running_default_cores_wait(tmp_path):
-    # 没配 .env.local：测试服务器用 n100.env 的 12-15，和 benchmark 同一个 NUMA 节点 → 等它
-    g = tmp_path / "global.lock"
-    g.touch()
-    p = hold(str(g))
-    try:
-        time.sleep(0.5)
-        r = _prepare_like({"MCD_LOCAL_ENV": str(tmp_path / "none")}, str(g))
-        assert "ran" not in r.stdout
-    finally:
-        p.kill()
-
-
-def test_benchmark_running_other_node_proceeds(tmp_path):
-    # 配到别的 NUMA 节点（测试服务器和两个 worker 都在节点 2）→ 不等 benchmark
-    local = tmp_path / ".env.local"
-    local.write_text("MC_CPUSET=32-35\nWORKER_CPUSET=36-39\nWORKER2_CPUSET=40-43\n")
-    g = tmp_path / "global.lock"
-    g.touch()
-    p = hold(str(g))
-    try:
-        time.sleep(0.5)
-        r = _prepare_like({"MCD_LOCAL_ENV": str(local), "COMPOSE_PROFILES": "worker,worker2"}, str(g))
-        assert r.stdout.strip() == "ran", r.stderr
-    finally:
-        p.kill()
-
-
-def test_worker_on_benchmark_node_waits(tmp_path):
-    # 测试服务器不冲突，但 worker 落在 benchmark 的节点上 → 照样等
-    local = tmp_path / ".env.local"
-    local.write_text("MC_CPUSET=32-35\nWORKER_CPUSET=8-11\n")
-    g = tmp_path / "global.lock"
-    g.touch()
-    p = hold(str(g))
-    try:
-        time.sleep(0.5)
-        r = _prepare_like({"MCD_LOCAL_ENV": str(local), "COMPOSE_PROFILES": "worker"}, str(g))
-        assert "ran" not in r.stdout
-    finally:
-        p.kill()
-
-
-def test_slow_tests_take_benchmark_lock():
-    # --slow 的性能测试和 benchmark 一样独占
-    text = (SCRIPTS / "test.sh").read_text()
-    assert 'if [[ -z "$marker" ]]; then\n  take_heavy_lock' in text

@@ -22,7 +22,8 @@ LIMITS_ENV="$DOCKER_DIR/n100.env"
 # 本目录用哪组核等（不进 git），叠在 n100.env 之后。几个目录同时跑测试时各用各的核
 LOCAL_ENV="${MCD_LOCAL_ENV:-$DOCKER_DIR/.env.local}"
 PLAY_PROJECT="mc-donate"
-# 全局锁：只有 benchmark 拿，测量期间不会有两个 benchmark 同时跑
+# 全局锁：benchmark 拿独占模式（take_heavy_lock），测试服务器和 Gradle 拿共享模式（take_shared_lock）。
+# benchmark 跑的时候别的重活都等它；benchmark 也要等手上的测试和构建结束。几个目录的测试之间不用互相等。
 HEAVY_LOCK="${MCD_HEAVY_LOCK:-/tmp/mc-donate-heavy.lock}"
 # 本目录的锁：测试、构建拿。同一个目录里共用 compose 项目和存档目录，不能两个同时跑
 CHECKOUT_LOCK="/tmp/mc-donate-checkout-$(printf '%s' "$REPO_ROOT" | md5sum | cut -c1-12).lock"
@@ -209,32 +210,6 @@ build_cpus() {
   done | sort -n | paste -sd,
 }
 
-# worker 用的核：环境变量优先，再看 .env.local，最后是 compose.test.yaml 的默认值。
-# 用法：worker_cpuset [WORKER_CPUSET|WORKER2_CPUSET]
-worker_cpuset() {
-  local var="${1:-WORKER_CPUSET}" v
-  v="${!var:-}"
-  [[ -z "$v" && -f "$LOCAL_ENV" ]] && v="$(sed -n "s/^$var=//p" "$LOCAL_ENV")"
-  [[ -n "$v" ]] || v="$(sed -n "s/.*cpuset: \\\${$var:-\\(.*\\)}/\\1/p" "$DOCKER_DIR/compose.test.yaml")"
-  echo "$v"
-}
-
-# 这一轮测试要用的核（测试服务器，开了 worker profile 再加 worker）有没有落在 benchmark 的 NUMA 节点上。
-# 有就输出 1：要等 benchmark 跑完（拿全局锁）；没有输出 0：可以和 benchmark 同时跑。
-conflicts_with_bench() {
-  local cpus nodes bad
-  cpus="$(expand_cpus "$(test_cpuset)")"
-  if [[ ",${COMPOSE_PROFILES:-}," == *,worker,* ]]; then
-    cpus+=$'\n'"$(expand_cpus "$(worker_cpuset WORKER_CPUSET)")"
-  fi
-  if [[ ",${COMPOSE_PROFILES:-}," == *,worker2,* ]]; then
-    cpus+=$'\n'"$(expand_cpus "$(worker_cpuset WORKER2_CPUSET)")"
-  fi
-  nodes="$(numa_nodes_of $cpus)"
-  bad="$(bench_nodes)"
-  if [[ -n "$(comm -12 <(sort <<<"$nodes") <(sort <<<"$bad"))" ]]; then echo 1; else echo 0; fi
-}
-
 # 把 "8-11,20" 这样的列表展开成一行一个编号。
 expand_cpus() {
   local part
@@ -252,6 +227,22 @@ current_level() {
 }
 
 # 准备好跑重活：锁、平时的服务器已停、配置齐全。
+# 共享模式拿全局锁：和别的测试、构建可以同时持有；benchmark 拿着独占锁时等它。
+# 不按 NUMA 节点放行：分核只隔开 CPU，隔不开共用的磁盘和 Docker 守护进程。
+take_shared_lock() {
+  [[ -n "${MCD_LOCK_HELD:-}" ]] && return 0
+  if [[ ! -e "$HEAVY_LOCK" ]]; then
+    (umask 000; set -o noclobber; : >"$HEAVY_LOCK") 2>/dev/null || true
+  fi
+  [[ -f "$HEAVY_LOCK" && ! -L "$HEAVY_LOCK" ]] || die "锁文件必须是普通文件：$HEAVY_LOCK"
+  exec 9<"$HEAVY_LOCK"
+  if ! flock -s -n 9; then
+    info "benchmark 正在跑，排队等它结束……"
+    flock -s 9
+  fi
+  export MCD_LOCK_HELD=shared
+}
+
 # 本目录的锁：同一个目录里的测试、构建排队；不同目录之间不排队
 take_checkout_lock() {
   [[ "${MCD_CHECKOUT_LOCK_HELD:-}" == 1 ]] && return 0
@@ -263,14 +254,10 @@ take_checkout_lock() {
   export MCD_CHECKOUT_LOCK_HELD=1
 }
 
-# 测试服务器要用的准备工作。
-# 同一个目录里排队（本目录的锁）。用的核和 benchmark 不在同一个 NUMA 节点上，就不等 benchmark；
-# 在同一个节点上（比如没配 docker/.env.local，用 n100.env 默认的 12-15）照旧拿全局锁排队。
+# 测试服务器要用的准备工作：本目录的锁 + 全局锁的共享模式（benchmark 跑的时候等它）。
 prepare_heavy() {
   take_checkout_lock
-  if [[ "$(conflicts_with_bench)" == 1 ]]; then
-    take_heavy_lock
-  fi
+  take_shared_lock
   require_play_server_stopped
   ensure_test_env
   assert_test_data_mount
