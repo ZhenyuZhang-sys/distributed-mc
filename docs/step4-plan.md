@@ -2,7 +2,7 @@
 
 依据：[开发总计划](../DEV_PLAN.md) 第 4 步、[README](../README.md) 第 2 层定义、[第 1 步计划](step1-plan.md) 已有的测量框架。
 
-状态：**计划待审**。负责人 kexu。
+状态：**计划已通过（调度 11-08 有条件通过，两条补充已写入 3.3、4.3、4.6）**，等第 1 步合进 main 后开工；4.4、4.6 可以先做。负责人 kexu。
 
 ## 1. 目标和产物
 
@@ -118,6 +118,19 @@ public final class Provenance {
 
 bench 注册监听写文件；coordinator 写入成功时报 `DONOR`，验证打回时报 `REJECTED`（第 6、8 步 fish 加调用，第 4 步不动 coordinator）。没有 bench 时调用为空操作，不影响正式服务器。
 
+**common 的打包方式和静态状态**：
+
+- bench 和 coordinator 都用 Loom 的 `include project(':common')`，把 common 作为**嵌套 Fabric mod**（jar-in-jar，`META-INF/jars/mcdonate-common-<版本>.jar`，mod id `mcdonate-common`）带进去。不用 shadow，不重定位包名。
+- Fabric Loader 按 mod id 去重嵌套 mod：两个 jar 里各带一份时只加载一份（版本不同取最高）。所有 mod 都由同一个 Knot 类加载器加载，所以 `mcdonate.common.Provenance` 只有一个 `Class`，静态监听器列表也只有一份。
+- 约束写进计划：任何模块都**不许** shadow / relocate common；common 的版本号由根项目统一。改打包方式必须先过下面的检查。
+- 检查（4.3 的 GameTest，装上 bench 和 coordinator 两个 mod 跑）：
+  1. `FabricLoader.getAllMods()` 里 `mcdonate-common` 恰好一个。
+  2. 用 coordinator 入口类的类加载器 `Class.forName("mcdonate.coordinator.Coordinator").getClassLoader().loadClass("mcdonate.common.Provenance")` 拿到的类，和 bench 里引用的 `Provenance.class` 是同一个对象。
+  3. 通过上面拿到的（coordinator 一侧的）类反射调用 `report(cx, cz, DONOR, 7)`，bench 的监听器收到这条事件，并写进 `provenance.jsonl`。
+  4. `/bench mark` 也走 `Provenance.report`，不绕过 common 直接写文件。
+
+  这样第 4 步不改 coordinator，也能证明第 6 步 coordinator 一调 `report`，bench 就收得到。
+
 ## 4. 拆成小步和验收
 
 先写测试，看它失败，再写功能。
@@ -126,10 +139,10 @@ bench 注册监听写文件；coordinator 写入成功时报 `DONOR`，验证打
 | --- | --- | --- | --- |
 | 4.1 | `Flight`、`ViewTracker` 纯逻辑 | JUnit：位置随时间；进入 / 就绪 / 删失；进出再进算两次；初始视野不计入；视野集合和 `ChunkTrackingView` 一致 | JUnit 通过 |
 | 4.2 | `FlightRecorder`、命令、文件输出 | GameTest：在测试结构里放一个 ServerPlayer，`fly start` 后位置按速度变化，`seconds.jsonl` 行数和时长对得上 | GameTest 通过 |
-| 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated` | 通过 |
+| 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated`；跨 mod 检查（3.3 的 1～4 条） | 通过 |
 | 4.4 | Python 离线合成和统计 | pytest：已知事件算出的虚空率、分位数（含删失）、CSV 列；时间对齐 | 通过 |
 | 4.5 | 单轮端到端 | pytest 冒烟（非 slow）：新世界里走路速度飞 15 秒，CSV 有 15 行左右，每行视野数等于 4.1 实测的视野大小，日志无 ERROR | 通过 |
-| 4.6 | 地图 | pytest：服务器返回事件顺序和文件一致；`since` 增量正确；回放接口按时间排序；三类上色映射正确。网页本身手动看一次并截图存档 | 通过 |
+| 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过 |
 | 4.7 | 指标自检（slow） | 见 5.3 | 两条都满足 |
 | 4.8 | 正式矩阵（slow） | 15 轮全部通过；每配置 5 个有效结果；输出 p50/p95/p99 和 5 次波动 | `scripts/test.sh step4 --slow` 退出码 0 |
 | 4.9 | 收尾 | 报告、README 第 2 层数字、DEV_PLAN 勾选 | 文档对上数据 |
@@ -141,7 +154,8 @@ bench/src/test/java/mcdonate/bench/FlightTest.java、ViewTrackerTest.java
 bench/src/main/java/mcdonate/bench/gametest/FlightGameTest.java
 common/src/test/java/mcdonate/common/ProvenanceTest.java
 tests/step4/test_01_layer2_math.py    纯逻辑
-tests/step4/test_02_map.py            地图服务器
+tests/step4/test_02_map.py            地图服务器（合成数据）
+tests/step4/test_11_map_replay.py     回放 4.5 的真实 run，自动判定
 tests/step4/test_10_smoke.py          短飞行端到端
 tests/step4/test_90_baseline.py       slow：自检 + 15 轮
 ```
