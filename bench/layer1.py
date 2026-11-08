@@ -28,6 +28,13 @@ def write_csv(path,rows):
         writer=csv.DictWriter(out,fieldnames=fields);writer.writeheader();writer.writerows(rows)
     tmp.replace(path)
 
+def warmup_for(p,cpus):
+    """预热量。protocol 有 warmup_by_cpu（11-08 调度批准的按核数预热）就按核数取，否则用统一的 warmup_chunks。"""
+    by=p.get('warmup_by_cpu')
+    n=by[str(cpus)] if by else p['warmup_chunks']
+    if type(n) is not int or n<=0 or n%256:raise ValueError('预热量必须是 256 的正整数倍')
+    return n
+
 def protocol(areas_path,environment,warmup=256):
     return dict(schema_version=1,seed=424242,dimension='minecraft:overworld',areas_digest=digest(areas_path),
                 software=json.loads(Path(areas_path).read_text())['software'],
@@ -95,7 +102,7 @@ def one_run(directory,area,cpus,repeat,p,order_index=0,profile=False,warmup=None
             cid=compose('ps','-q','minecraft').strip();cg=Cgroup(cid,run);cg.verify(cpus,cpuset)
             manifest.update(container_id=cg.cid,cgroup_path=str(cg.path),world_name=world.level,cpuset=cpuset)
             atomic_json(directory/'manifest.json',manifest)
-            n_warm=warmup or p['warmup_chunks']
+            n_warm=warmup or warmup_for(p,cpus)
             side=16
             if n_warm%256:raise ValueError('预热量必须是 256 的倍数')
             for offset in range(n_warm//256):server.chunky_square(area.warm_cx+offset*32,area.warm_cz,side)
