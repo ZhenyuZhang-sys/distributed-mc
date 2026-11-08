@@ -74,8 +74,10 @@ def test_property_only_difference():
 
 
 def test_every_vanilla_difference_is_decor():
-    # kexu 第 1 步：两个原版世界互比出现过的所有方块对，在严格层上必须都被放过（原版自己是 0）
-    data = json.loads((Path(__file__).parent / "data" / "vanilla-diff-pairs.json").read_text())
+    # kexu 第 1 步和 fish 本地对照：两个原版世界互比出现过的所有方块对，在严格层上必须都被放过（原版自己是 0）
+    pairs = []
+    for name in ("vanilla-diff-pairs.json", "local-diff-pairs.json"):
+        pairs += json.loads((Path(__file__).parent / "data" / name).read_text())["pairs"]
     tagged = (("_", "x"),)  # 汇总不含属性：加一个假属性，让同名的也走"属性不同"的分支
-    bad = [p for p in data["pairs"] if not is_decor_diff(BlockState(p["a"], tagged), BlockState(p["b"]))]
+    bad = [p for p in pairs if not is_decor_diff(BlockState(p["a"], tagged), BlockState(p["b"]))]
     assert not bad, bad[:10]

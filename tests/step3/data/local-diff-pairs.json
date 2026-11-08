@@ -1,0 +1,15 @@
+{"source": "fish 11-08 完整 step6 那轮（第 5 步 e2e、第 3 步关卡）本地原版互比里的严格差异，补清单前；钻石块那对是第 0 步重启测试放在出生点的标记，不是生成的，不列",
+ "pairs": [
+  {"a": "minecraft:cave_air", "b": "minecraft:deepslate", "count": 205},
+  {"a": "minecraft:cave_air", "b": "minecraft:rail", "count": 57},
+  {"a": "minecraft:cave_air", "b": "minecraft:oak_planks", "count": 55},
+  {"a": "minecraft:cave_air", "b": "minecraft:oak_fence", "count": 14},
+  {"a": "minecraft:deepslate", "b": "minecraft:oak_planks", "count": 10},
+  {"a": "minecraft:dirt", "b": "minecraft:water", "count": 6},
+  {"a": "minecraft:cave_air", "b": "minecraft:stone", "count": 5},
+  {"a": "minecraft:cave_air", "b": "minecraft:wall_torch", "count": 4},
+  {"a": "minecraft:deepslate", "b": "minecraft:magma_block", "count": 4},
+  {"a": "minecraft:grass_block", "b": "minecraft:water", "count": 2},
+  {"a": "minecraft:magma_block", "b": "minecraft:stone", "count": 2},
+  {"a": "minecraft:deepslate", "b": "minecraft:wall_torch", "count": 1}
+ ]}
