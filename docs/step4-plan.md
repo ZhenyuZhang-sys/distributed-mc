@@ -218,6 +218,17 @@ fish 加的占位 `tests/step4/test_00_pending.py` 在 4.5 时删掉。
 | `tests/mcd.py`、`analysis/mca/` | 不改 | 按调度要求，避免和 fish 冲突 |
 | 第 6 步对照 | fish 用 | `layer2-protocol.json` 和 `bench/layer2.py` 就是第 6 步测 donor 效果时的入口，加一个"接 donor"的开关即可 |
 
+### 6.1 给 fish 第 7 步预留的接口（调度 11-08 转达）
+
+第 7 步消融实验直接用第 4 步的飞行场景。字段名以 fish 的 `docs/step7-plan.md` 0.3 节的表为准，有不同意见写进 log.md。4.2 以后的实现预留：
+
+| 预留项 | 怎么做 |
+| --- | --- |
+| coordinator 配置 | 场景入口（`bench/layer2.py`、`layer2-protocol.json`）可传：功能开关列表（`/donor feature <名字> on\|off` 和系统属性 `mcdonate.features=a,b,c`）、找需求范围 `mcdonate.demandMargin`、tile 大小、donor 个数、每个 donor 的核数和资源限制。原版基线时这些都为空，协议照样记录"未启用" |
+| 结果里带配置和 coordinator 指标 | `seconds.jsonl` 和每轮 summary 带上上面的配置字段；每轮结束读 `/donor status`，记下 `discard_ratio`、对冲浪费量、外圈重复计算比例。没有 coordinator 时这些字段写 null 和原因，不填 0 |
+| 多个鞘翅假玩家 | `/bench fly` 支持一次起多架，平行航线，间距由协议给（默认相隔 2×视距+2 个 chunk，视野不重叠）。每架单独一套 `ViewTracker` 和输出，summary 另给合计，给第 7 步测"可持续探索容量" |
+| 有效性规则 | 见 5.1a：测量期间其他容器有 docker 事件就判无效重跑，事件记录归档 |
+
 ## 7. 什么时候开工、在哪做
 
 - bench 的 Java 和 Python 改动会改变第 1 步的代码摘要。所以第 4 步不在第 1 步的目录里做，等第 1 步 45 轮跑完、合进 main 后再开。
