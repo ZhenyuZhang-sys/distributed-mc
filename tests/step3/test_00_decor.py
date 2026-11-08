@@ -54,13 +54,48 @@ def test_terrain_pairs_counted_separately():
     assert (d.strict, d.decor, d.terrain) == (0, 0, 1)
 
 
-def test_relative_check():
-    inside, outside = Diff(blocks=10**6, decor=100, terrain=0), Diff(blocks=10**6, decor=100, terrain=0)
+def blob(x0, n):
+    """一处 n 个方块的地形互换（沿 x 排成一条，彼此相连）。"""
+    return [(x0 + i, 10, 0) for i in range(n)]
+
+
+def test_relative_check_decor():
+    inside, outside = Diff(blocks=10**6, decor=100), Diff(blocks=10**6, decor=100)
     assert relative_check(inside, outside) == []
-    inside.terrain = 50  # 没导入部分是 0，导入部分 5e-5 高于下限
+    inside.decor = 1000
     assert len(relative_check(inside, outside)) == 1
-    inside.terrain, inside.decor = 0, 1000
-    assert len(relative_check(inside, outside)) == 1
+
+
+def test_terrain_counted_by_cluster():
+    outside = Diff(blocks=10**6, terrain_positions=[])
+    # 导入部分一处 56 个方块（11-08 关卡那处矿团叠加）：允许 1 处
+    assert relative_check(Diff(blocks=10**6, terrain_positions=blob(0, 56)), outside) == []
+    # 两处（不相连）就多了
+    two = blob(0, 10) + blob(100, 10)
+    assert len(relative_check(Diff(blocks=10**6, terrain_positions=two), outside)) == 1
+    # 没导入部分有 2 处，同样面积：导入部分最多 3 处
+    outside = Diff(blocks=10**6, terrain_positions=blob(1000, 5) + blob(2000, 5))
+    three = blob(0, 5) + blob(100, 5) + blob(200, 5)
+    assert relative_check(Diff(blocks=10**6, terrain_positions=three), outside) == []
+
+
+def test_terrain_cluster_too_big_is_strict():
+    bad = relative_check(Diff(blocks=10**6, terrain_positions=blob(0, 67)), Diff(blocks=10**6, terrain_positions=[]))
+    assert len(bad) == 1 and bad[0].startswith("严格")
+    assert relative_check(Diff(blocks=10**6, terrain_positions=blob(0, 66)), Diff(blocks=10**6, terrain_positions=[])) == []
+
+
+def test_straddling_cluster_counts_as_inside():
+    # 横跨两边的一处算导入部分的（偏严）
+    c = blob(0, 20)
+    inside = Diff(blocks=10**6, terrain_positions=c[:10])
+    outside = Diff(blocks=10**6, terrain_positions=c[10:] + blob(500, 3))
+    assert relative_check(inside, outside) == []  # 导入 1 处，没导入 1 处
+
+
+def test_compare_records_terrain_positions():
+    d = compare_chunks(chunk({(2, -10, 3): WATER}), chunk({}))
+    assert d.terrain_positions == [(2, -10, 3)]
 
 
 def test_property_only_difference():

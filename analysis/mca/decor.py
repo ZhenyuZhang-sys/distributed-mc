@@ -116,6 +116,7 @@ class Diff:
     strict: int = 0      # 严格差异（必须是 0）
     decor: int = 0       # 装饰类差异
     terrain: int = 0     # 列出的地形互换
+    terrain_positions: list = None  # 地形互换的方块坐标（世界坐标 x, y, z），按"处"统计用
     examples: list = None  # 几个严格差异的例子，排查用
 
     def add(self, other: "Diff") -> "Diff":
@@ -123,6 +124,7 @@ class Diff:
         self.strict += other.strict
         self.decor += other.decor
         self.terrain += other.terrain
+        self.terrain_positions = (self.terrain_positions or []) + (other.terrain_positions or [])
         self.examples = (self.examples or []) + (other.examples or [])
         self.examples = self.examples[:10]
         return self
@@ -140,7 +142,7 @@ def compare_chunks(a, b, max_examples: int = 5) -> Diff:
     """逐块比较两个 chunk（同一位置，都是 full 或都允许半成品）。"""
     from .chunk import AIR
 
-    d = Diff(examples=[])
+    d = Diff(examples=[], terrain_positions=[])
     for sy in range(a.y_min // 16, a.y_max_exclusive // 16):
         sa, sb = a.sections.get(sy), b.sections.get(sy)
         d.blocks += 4096
@@ -158,6 +160,7 @@ def compare_chunks(a, b, max_examples: int = 5) -> Diff:
                 d.decor += 1
             elif kind == "terrain":
                 d.terrain += 1
+                d.terrain_positions.append((a.cx * 16 + i % 16, sy * 16 + i // 256, a.cz * 16 + (i // 16) % 16))
             else:
                 d.strict += 1
                 if len(d.examples) < max_examples:
@@ -176,15 +179,52 @@ VANILLA_DECOR_FLOOR = VANILLA_DECOR_RATE["ocean"]
 VANILLA_DECOR_MAX = VANILLA_DECOR_RATE["jungle"]
 
 
+# 地形互换一处最多多少个方块：原版单个矿团大小的 2 倍。
+# 出处：1.21.1 net.minecraft.data.worldgen.features.OreFeatures，ore_dirt、ore_gravel 都是
+# new OreConfiguration(..., 33)（size = 33）。调度 11-08 定：超过就算严格差异，
+# 免得"处数下限 1"让导入写错的一整块混过去。
+ORE_BLOB_SIZE = 33
+TERRAIN_CLUSTER_MAX = 2 * ORE_BLOB_SIZE
+
+
+def terrain_clusters(positions) -> list[list[tuple[int, int, int]]]:
+    """把地形互换的方块按 6 邻接连成"处"。"""
+    left = set(positions)
+    out = []
+    while left:
+        start = left.pop()
+        group, todo = [start], [start]
+        while todo:
+            x, y, z = todo.pop()
+            for n in ((x + 1, y, z), (x - 1, y, z), (x, y + 1, z), (x, y - 1, z), (x, y, z + 1), (x, y, z - 1)):
+                if n in left:
+                    left.remove(n)
+                    group.append(n)
+                    todo.append(n)
+        out.append(group)
+    return out
+
+
 def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str]:
-    """统计层：导入部分的装饰类、地形互换比例，各自不高于同一轮没导入部分（本地原版互比）的 factor 倍。
-    返回不满足的说明，空列表表示通过。"""
+    """统计层。返回不满足的说明，空列表表示通过。
+
+    - 装饰类：导入部分的方块差异率不高于同一轮没导入部分（本地原版互比）的 factor 倍（下限 VANILLA_DECOR_FLOOR）。
+    - 地形互换：很少、成团出现（一个矿团几十个方块），按方块比例比全看一个矿团落在哪，所以按"处"数：
+      导入部分的处数 ≤ max(没导入部分的处数按方块数折算 × factor, 1)。横跨两边的一处算导入部分的。
+      每一处不能超过 TERRAIN_CLUSTER_MAX 个方块，超过算严格差异。
+    """
     bad = []
-    for name, rate_in, rate_out, floor in (
-        ("装饰类", inside.decor_rate, outside.decor_rate, VANILLA_DECOR_FLOOR),
-        ("地形互换", inside.terrain_rate, outside.terrain_rate, VANILLA_TERRAIN_FLOOR),
-    ):
-        limit = max(rate_out * factor, floor)
-        if rate_in > limit:
-            bad.append(f"{name}：导入部分 {rate_in:.5%} > 上限 {limit:.5%}（没导入部分 {rate_out:.5%}）")
+    limit = max(outside.decor_rate * factor, VANILLA_DECOR_FLOOR)
+    if inside.decor_rate > limit:
+        bad.append(f"装饰类：导入部分 {inside.decor_rate:.5%} > 上限 {limit:.5%}（没导入部分 {outside.decor_rate:.5%}）")
+    inside_pos = set(inside.terrain_positions or [])
+    clusters = terrain_clusters(inside_pos | set(outside.terrain_positions or []))
+    big = [len(c) for c in clusters if len(c) > TERRAIN_CLUSTER_MAX]
+    if big:
+        bad.append(f"严格：地形互换有 {len(big)} 处超过 {TERRAIN_CLUSTER_MAX} 个方块（{big}），比原版单个矿团的 2 倍还大")
+    n_in = sum(1 for c in clusters if any(p in inside_pos for p in c))
+    n_out = len(clusters) - n_in
+    expected = n_out * (inside.blocks / outside.blocks) * factor if outside.blocks else 0
+    if n_in > max(expected, 1):
+        bad.append(f"地形互换：导入部分 {n_in} 处 > 上限 {max(expected, 1):.1f}（没导入部分 {n_out} 处）")
     return bad
