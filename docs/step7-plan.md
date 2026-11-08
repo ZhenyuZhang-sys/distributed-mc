@@ -128,6 +128,19 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 
 - `Features` 类：开关集合，系统属性设初值，`/donor feature` 切换，`/donor status` 列出。单元测试：默认全关，切换生效。
 
+### 7.0b 导入边界的树差异（正确性，最先做）
+
+第 6 步调查：第 5 步那块区域 5 组里 4 组边界一圈的树类差异是第 2 圈的 2 倍以上（3.8、4.7、15.8、5.0），但只有一个位置。同一位置每次都偏高，可能是固定会发生的边界效应，要换位置才能推广（调度 11-08）。
+
+- **位置**：12 个，都在树多的生物群系（forest、birch_forest、dark_forest、flower_forest、jungle、sparse_jungle、taiga、old_growth_spruce_taiga、old_growth_pine_taiga、windswept_forest 等），用 `locate biome` 从半径 2 万格的一圈出发点找，坐标写死进 `tests/step7/data/seam-sites.json`，彼此相隔几千格、远离其他测试。
+- **每个位置两组对照**，参照都是 worker 的世界（原版答案）：
+    - 导入组：服务器导入 worker 导出的 tile，服务器和 worker 都用 Chunky 把 tile 外 3 圈（10×10 chunk）做成成品，服务器 vs worker。
+    - 原版组：worker2（同 seed 另一个世界，不导入）也生成同一块，worker2 vs worker。
+- **统计**：按圈（tile 内部、边界一圈、第 2 圈、第 3 圈；区域最外一行不算）数树类方块（原木、树叶、藤蔓、可可、树干底下那格）的差异个数。每个位置算边界一圈的 导入组 − 原版组。
+- **判定（事先定死）**：配对符号检验，边界一圈导入组 > 原版组的位置数，单侧 p < 0.01 算真问题（12 个位置要 11 个以上；平局不算）。另外报告跨位置合计的比值（导入组 ÷ 原版组）和 bootstrap 95% 区间。
+- **真问题时**：看是哪种差异——导入那边少了树（参照是树、导入是空气，树被截断）、多了树、还是位置偏了（两边都有树但对不上）；据此在"待你决定"里提修法（外圈也让同一个 donor 做完、边界一圈交给服务器、导入外圈时不覆盖服务器后来放的树……），调度定。
+- 测试：`tests/step7/test_00_seam_trees.py`（`long`，共享锁），结论不过就是失败；明细写进证据目录 `seam-trees.json`。
+
 ### 7.1 按领地派任务（`territory`）
 
 第 6 步实测两个 donor 同时跑一片区域时约 40% 的结果被整个丢弃。
