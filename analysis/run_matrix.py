@@ -1,18 +1,26 @@
 """第 10 步：按配置文件跑实验矩阵（docs/step10-plan.md 第 2 节）。
 
 一个单元 = 一种实验 + 一组参数值 + 第几次。单元编号由规范 JSON 的哈希算，和键的顺序无关。
-这里先有配置、展开、打乱顺序和估时（10.1）；断点续跑（10.2）和真驱动（10.6）在后面。
+这里有配置、展开、打乱顺序和估时（10.1），断点续跑（10.2）；真驱动（10.6）在后面。
+
+每个单元一个目录 matrix-<名字>/<单元编号>/attempt-NNN/：先写 running 的 manifest，跑完用第 1 步的
+bench/archive.py 封存成 passed / failed / invalid / interrupted。重跑时已 passed 且校验通过的单元跳过。
 
 用法：python -m analysis.run_matrix --config analysis/matrix/smoke.json --plan
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import itertools
 import json
 import random
+from datetime import datetime, timezone
 from pathlib import Path
+
+from bench.archive import seal, verify
+from bench.models import atomic_json
 
 SPEEDS = ('walk', 'horse', 'elytra')
 CHEATS = ('none', 'ore', 'flatten', 'random', 'flat', 'collude')
@@ -147,6 +155,90 @@ def plan(config: dict) -> dict:
     total = sum(e['minutes'] for e in by.values())
     return dict(name=config['name'], cells=len(cells), hours=round(total / 60, 2),
                 by_experiment={k: dict(cells=v['cells'], hours=round(v['minutes'] / 60, 2)) for k, v in sorted(by.items())})
+
+
+MAX_ATTEMPTS = 3
+
+
+def _passed(cdir: Path, cid: str) -> bool:
+    """这个单元有没有一次封存完好的 passed。"""
+    for a in sorted(cdir.glob('attempt-*')):
+        try:
+            verify(a, cid)
+            return True
+        except (ValueError, FileNotFoundError, KeyError, json.JSONDecodeError):
+            continue
+    return False
+
+
+def _failures(cdir: Path) -> int:
+    n = 0
+    for m in cdir.glob('attempt-*/manifest.json'):
+        try:
+            n += json.loads(m.read_text())['status'] in ('failed', 'invalid')
+        except (json.JSONDecodeError, KeyError):
+            n += 1
+    return n
+
+
+def _record_config(campaign: Path, config: dict):
+    path = campaign / 'config.json'
+    saved = json.loads(path.read_text()) if path.exists() else dict(configs=[])
+    if not saved['configs'] or saved['configs'][-1] != config:
+        saved['configs'].append(config)
+        atomic_json(path, saved)
+
+
+def _attempt(cell, cid, cdir, driver, lock, rerun_on_interference) -> str:
+    cdir.mkdir(parents=True, exist_ok=True)
+    adir = cdir / f'attempt-{len(list(cdir.glob("attempt-*"))) + 1:03}'
+    adir.mkdir()
+    manifest = dict(status='running', protocol_id=cid, experiment=cell['experiment'], params=cell['params'],
+                    repeat=cell['repeat'], started_utc=datetime.now(timezone.utc).isoformat())
+    atomic_json(adir / 'manifest.json', manifest)
+    try:
+        with lock():
+            output = driver(cell, adir)
+    except KeyboardInterrupt as exc:
+        atomic_json(adir / 'manifest.json', dict(manifest, status='interrupted', error=str(exc)))
+        raise
+    except Exception as exc:  # 驱动失败：记下来，按次数重试
+        atomic_json(adir / 'manifest.json', dict(manifest, status='failed', error=f'{type(exc).__name__}: {exc}'))
+        return 'failed'
+    interference = list(output.get('interference') or [])
+    atomic_json(adir / 'result.json', dict(cell_id=cid, experiment=cell['experiment'], params=cell['params'],
+                                           repeat=cell['repeat'], output=output))
+    status = 'invalid' if interference and rerun_on_interference else 'passed'
+    seal(adir, dict(manifest, status=status, concurrent=bool(interference), interference=interference,
+                    finished_utc=datetime.now(timezone.utc).isoformat(),
+                    **({'error': '测量期间有其他容器事件'} if status == 'invalid' else {})))
+    return status
+
+
+def run(config: dict, drivers: dict, root, lock=contextlib.nullcontext, max_attempts: int = MAX_ATTEMPTS) -> dict:
+    """按配置跑矩阵，能断点续跑。drivers：实验名 → driver(cell, 输出目录) -> dict（可带 interference 列表）。
+    lock：每个真正执行的单元拿一次（单元之间放锁）。"""
+    cells = order(expand(config), config['seed'])
+    missing = {c['experiment'] for c in cells} - set(drivers)
+    if missing:
+        raise ValueError(f'没有驱动：{sorted(missing)}')
+    campaign = Path(root) / f'matrix-{config["name"]}'
+    campaign.mkdir(parents=True, exist_ok=True)
+    _record_config(campaign, config)
+    passed, failed, concurrent = 0, [], []
+    for cell in cells:
+        cid = cell_id(cell)
+        cdir = campaign / cid
+        while not _passed(cdir, cid) and _failures(cdir) < max_attempts:
+            _attempt(cell, cid, cdir, drivers[cell['experiment']], lock, config.get('rerun_on_interference', False))
+        if _passed(cdir, cid):
+            passed += 1
+            if any(json.loads(m.read_text()).get('concurrent') and json.loads(m.read_text())['status'] == 'passed'
+                   for m in cdir.glob('attempt-*/manifest.json')):
+                concurrent.append(cid)
+        else:
+            failed.append(cid)
+    return dict(campaign=str(campaign), cells=len(cells), passed=passed, failed=failed, concurrent=concurrent)
 
 
 def main(argv=None):
