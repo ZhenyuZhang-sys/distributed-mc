@@ -70,3 +70,12 @@ tasks.register('collectMods', Sync) {
     from project(':bench').tasks.named('remapJar')
     into layout.buildDirectory.dir('mods')
 }
+
+// worker（donor）服务器要装的 mod：worker 和 bench（bench 用来数 worker 生成了多少）。
+tasks.register('collectWorkerMods', Sync) {
+    group = 'mc-donate'
+    description = '把 worker 服务器要装的 mod 复制到 build/mods-worker/'
+    from project(':worker').tasks.named('remapJar')
+    from project(':bench').tasks.named('remapJar')
+    into layout.buildDirectory.dir('mods-worker')
+}

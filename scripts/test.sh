@@ -43,7 +43,7 @@ cd "$REPO_ROOT"
 # 第 2 步起有 mod 要构建。先构建（含 JUnit），再起服务器：构建用满整机，会干扰测试。
 if (( n >= 2 )); then
   info "构建 mod 并跑单元测试"
-  "$REPO_ROOT/scripts/gradle.sh" build collectMods
+  "$REPO_ROOT/scripts/gradle.sh" build collectMods collectWorkerMods
   # 服务器内测试（GameTest）：一台专门的服务器，跑完自己退出
   "$REPO_ROOT/scripts/gametest.sh"
 fi

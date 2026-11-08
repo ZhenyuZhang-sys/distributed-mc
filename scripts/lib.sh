@@ -10,6 +10,8 @@ DOCKER_DIR="$REPO_ROOT/docker"
 TEST_PROJECT="mc-test"
 TEST_ENV="$DOCKER_DIR/.env.test"
 TEST_DATA="$DOCKER_DIR/test-data"
+WORKER_DATA="$DOCKER_DIR/test-data-worker"
+EXCHANGE="$DOCKER_DIR/test-exchange"
 WORLD_ENV="$TEST_DATA/world.env"
 LIMITS_ENV="$DOCKER_DIR/n100.env"
 PLAY_PROJECT="mc-donate"
@@ -53,21 +55,22 @@ tc() {
   local args=(-p "$TEST_PROJECT" --project-directory "$DOCKER_DIR"
     -f "$DOCKER_DIR/compose.yaml" -f "$DOCKER_DIR/compose.test.yaml"
     --env-file "$TEST_ENV" --env-file "$LIMITS_ENV")
-  # 先建好 mod 目录，否则 docker 会用 root 建一个空的
-  mkdir -p "$REPO_ROOT/build/mods"
+  # 先建好挂载的目录，否则 docker 会用 root 建空目录
+  mkdir -p "$REPO_ROOT/build/mods" "$REPO_ROOT/build/mods-worker" "$TEST_DATA" "$WORKER_DATA" "$EXCHANGE"
   [[ -f "$WORLD_ENV" ]] && args+=(--env-file "$WORLD_ENV")
   # 容器用跑脚本的人的 uid 写存档，否则 new_world.sh 删不掉旧世界
   MC_UID="${MC_UID:-$(id -u)}" MC_GID="${MC_GID:-$(id -g)}" docker compose "${args[@]}" "$@"
 }
 
-# 保险：确认 compose 实际挂载的存档目录就是 test-data，否则不往下走。
+# 保险：确认 compose 实际挂载的存档目录就是 test-data 和 test-data-worker，否则不往下走。
 assert_test_data_mount() {
-  local src
-  src="$(tc config --format json | python3 -c '
+  local got
+  got="$(tc config --format json | python3 -c '
 import json, sys
-vols = json.load(sys.stdin)["services"]["minecraft"]["volumes"]
-print(next(v["source"] for v in vols if v["target"] == "/data"))')"
-  [[ "$src" == "$TEST_DATA" ]] || die "存档目录是 $src，不是 $TEST_DATA，停止。"
+svcs = json.load(sys.stdin)["services"]
+for name in ("minecraft", "worker"):
+    print(next(v["source"] for v in svcs[name]["volumes"] if v["target"] == "/data"))')"
+  [[ "$got" == "$TEST_DATA"$'\n'"$WORKER_DATA" ]] || die "存档目录是 $got，不是 $TEST_DATA 和 $WORKER_DATA，停止。"
 }
 
 # 平时玩的服务器在跑就退出。不自动帮人关。

@@ -12,6 +12,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
 TEST_DATA = REPO_ROOT / "docker" / "test-data"
+WORKER_DATA = REPO_ROOT / "docker" / "test-data-worker"
+EXCHANGE = REPO_ROOT / "docker" / "test-exchange"
 WHITELIST = Path(__file__).resolve().parent / "log_whitelist.txt"
 
 # Minecraft 的颜色代码，比如 §a
@@ -74,25 +76,28 @@ class Server:
     level: str
     seed: int
     started_at: str  # RFC3339，用来只看这次测试以来的日志
+    service: str = "minecraft"  # 或 "worker"
 
     @property
     def world_dir(self) -> Path:
-        return TEST_DATA / self.level
+        return (WORKER_DATA if self.service == "worker" else TEST_DATA) / self.level
 
     def rcon(self, command: str) -> str:
-        out = run(str(SCRIPTS / "rcon.sh"), *command.split())
+        flag = ["--worker"] if self.service == "worker" else []
+        out = run(str(SCRIPTS / "rcon.sh"), *flag, *command.split())
         return _COLOR.sub("", out).strip()
 
     def logs(self) -> str:
-        return compose("logs", "--no-log-prefix", f"--since={self.started_at}", "minecraft")
+        return compose("logs", "--no-log-prefix", f"--since={self.started_at}", self.service)
 
     def health(self) -> str:
-        cid = compose("ps", "-q", "minecraft").strip()
+        cid = compose("ps", "-q", self.service).strip()
         if not cid:
             return "not running"
         return run("docker", "inspect", "-f", "{{.State.Health.Status}}", cid).strip()
 
     def restart(self) -> None:
+        """两台一起重启。"""
         compose("stop", timeout=180)
         compose("up", "-d", "--wait", "--wait-timeout", "600", timeout=660)
 

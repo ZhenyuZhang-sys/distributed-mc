@@ -1,8 +1,26 @@
-# 只给测试服务器用，叠加在 compose.yaml 上（scripts/lib.sh 的 tc 会带上）。
-# 平时玩的服务器不用这个文件，不装我们的 mod。
+# 只给测试用，叠加在 compose.yaml 上（scripts/lib.sh 的 tc 会带上）。
+# 平时玩的服务器不用这个文件，不装我们的 mod，也没有 worker。
 services:
   minecraft:
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。
       - ../build/mods:/mods:ro
+      # 交换目录：worker 导出的文件放这里，服务器从这里导入
+      - ./test-exchange:/exchange
+
+  # donor worker：同一个镜像、同一个 seed（MC_SEED），自己的存档目录。
+  # 模拟玩家的电脑：端口不对外，绑另一组核，不抢服务器的。
+  worker:
+    extends:
+      file: compose.yaml
+      service: minecraft
+    ports: !reset []
+    cpuset: ${WORKER_CPUSET:-12-15}
+    cpus: ${WORKER_CPUS:-4}
+    environment:
+      MOTD: "mc-donate worker"
+    volumes: !override
+      - ./test-data-worker:/data
+      - ../build/mods-worker:/mods:ro
+      - ./test-exchange:/exchange

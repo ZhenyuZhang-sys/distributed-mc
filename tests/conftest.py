@@ -33,6 +33,16 @@ def server():
         pytest.fail("服务器日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
 
 
+@pytest.fixture(scope="session")
+def worker(server):
+    """worker 服务器：和 server 一起起来（同一个 seed、同名的全新世界，存档目录分开）。"""
+    w = Server(level=server.level, seed=server.seed, started_at=server.started_at, service="worker")
+    yield w
+    bad = w.error_lines()
+    if bad:
+        pytest.fail("worker 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+
+
 _skipped: list[str] = []
 
 
