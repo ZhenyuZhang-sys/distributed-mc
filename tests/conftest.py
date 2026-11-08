@@ -88,6 +88,9 @@ def worker(server):
     """worker 服务器：和 server 一起起来（同一个 seed、同名的全新世界，存档目录分开）。"""
     w = Server(level=server.level, seed=server.seed, started_at=server.started_at, service="worker")
     yield w
+    # worker 先于测试服务器收尾，这时容器还在：日志存进证据目录（查导出耗时等）
+    if server.artifact_dir:
+        w.archive_logs(server.artifact_dir / "worker-logs")
     bad = w.error_lines()
     if bad:
         pytest.fail("worker 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)

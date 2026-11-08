@@ -60,6 +60,11 @@ trap cleanup EXIT
 cd "$REPO_ROOT"
 
 # 第 2 步起有 mod 要构建。先构建（含 JUnit），再起服务器：构建用满整机，会干扰测试。
+# 第 3 步起要 worker 服务器（按需启动的 compose profile）
+if (( n >= 3 )); then
+  export COMPOSE_PROFILES=worker
+fi
+
 if (( n >= 2 )); then
   info "构建 mod 并跑单元测试"
   "$REPO_ROOT/scripts/gradle.sh" build collectMods collectWorkerMods

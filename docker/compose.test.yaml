@@ -11,7 +11,10 @@ services:
 
   # donor worker：同一个镜像、同一个 seed（MC_SEED），自己的存档目录。
   # 模拟玩家的电脑：端口不对外，绑另一组核，不抢服务器的。
+  # 按需启动：只有打开 profile "worker" 才起（test.sh step3 及以后自动打开）。
+  # 第 0～2 步和第 1 步的测量不会多起一台服务器。手动：COMPOSE_PROFILES=worker scripts/...
   worker:
+    profiles: ["worker"]
     extends:
       file: compose.yaml
       service: minecraft

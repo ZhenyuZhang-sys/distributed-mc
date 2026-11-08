@@ -64,6 +64,10 @@ tc() {
   # 先建好挂载的目录，否则 docker 会用 root 建空目录
   mkdir -p "$REPO_ROOT/build/mods" "$REPO_ROOT/build/mods-worker" "$TEST_DATA" "$WORKER_DATA" "$EXCHANGE"
   [[ -f "$WORLD_ENV" ]] && args+=(--env-file "$WORLD_ENV")
+  # 停服、关服时总带上 worker（它是按需启动的），免得漏关
+  case "${1:-}" in
+    stop|down) args+=(--profile worker) ;;
+  esac
   # 容器用跑脚本的人的 uid 写存档，否则 new_world.sh 删不掉旧世界
   MC_UID="${MC_UID:-$(id -u)}" MC_GID="${MC_GID:-$(id -g)}" docker compose "${args[@]}" "$@"
 }
