@@ -1,0 +1,53 @@
+name: mc-donate
+
+services:
+  minecraft:
+    image: ${MC_IMAGE:-itzg/minecraft-server:java21}
+    restart: unless-stopped
+    stop_grace_period: 2m
+    cpus: ${MC_CPUS:-2}
+    mem_limit: ${MC_CONTAINER_MEMORY:-2304m}
+    ports:
+      - "${MC_BIND_ADDRESS:-0.0.0.0}:${MC_PORT:-25565}:25565/tcp"
+    environment:
+      EULA: ${EULA:-FALSE}
+      TYPE: FABRIC
+      VERSION: "1.21.1"
+      FABRIC_LOADER_VERSION: "0.16.14"
+      FABRIC_LAUNCHER_VERSION: "1.1.2"
+      MODRINTH_PROJECTS: |
+        fabric-api:0.116.6+1.21.1
+        carpet:1.4.147
+        chunky:1.4.23
+        spark:1.10.109-fabric
+      MODRINTH_DOWNLOAD_DEPENDENCIES: "none"
+      INIT_MEMORY: ${MC_INIT_MEMORY:-512M}
+      MAX_MEMORY: ${MC_MAX_MEMORY:-1536M}
+      UID: ${MC_UID:-1000}
+      GID: ${MC_GID:-1000}
+      TZ: America/New_York
+      MOTD: "mc-donate | Fabric 1.21.1"
+      LEVEL: ${MC_LEVEL:-world}
+      SEED: ${MC_SEED:-424242}
+      VIEW_DISTANCE: "10"
+      SIMULATION_DISTANCE: "6"
+      MAX_PLAYERS: "8"
+      MODE: survival
+      DIFFICULTY: normal
+      ONLINE_MODE: "TRUE"
+      ENABLE_RCON: "TRUE"
+      RCON_PASSWORD: ${RCON_PASSWORD:?Set RCON_PASSWORD in docker/.env}
+      ENABLE_QUERY: "FALSE"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      start_period: 3m
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
