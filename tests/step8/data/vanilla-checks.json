@@ -1,5 +1,22 @@
 {
  "campaign": "baseline-20261108T154535",
+ "chunk_max": {
+  "count.chest": 2,
+  "count.diamond": 54,
+  "count.emerald": 19,
+  "count.gold": 48,
+  "count.lapis": 41,
+  "count.redstone": 64,
+  "count.spawner": 2,
+  "extra.diamond": 10,
+  "extra.emerald": 2,
+  "extra.gold": 22,
+  "extra.lapis": 4,
+  "extra.redstone": 4,
+  "extra_valued": 22,
+  "height_diff_columns": 5
+ },
+ "chunk_max_worlds": 12,
  "direction": {
   "all": {
    "a_more": 93,

@@ -1,4 +1,4 @@
-package mcdonate.worker.cheat;
+package mcdonate.common.chunk;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,12 +14,13 @@ import net.minecraft.nbt.Tag;
  * 一个 section 的 block_states（1.21.1 存档格式）：palette + 打包的 long 数组，下标 = y*256 + z*16 + x。
  * 每个 long 放 64/bits 个值，不跨 long；bits = max(4, ⌈log2(palette 大小)⌉)；palette 只有一项时没有 data。
  */
-final class SectionBlocks {
+public final class SectionBlocks {
     private final List<CompoundTag> palette = new ArrayList<>();
     private final Map<String, Integer> index = new HashMap<>();
+    private final List<String> keys = new ArrayList<>();
     private final int[] cells = new int[4096];
 
-    static SectionBlocks decode(CompoundTag blockStates) {
+    public static SectionBlocks decode(CompoundTag blockStates) {
         SectionBlocks s = new SectionBlocks();
         ListTag list = blockStates.getList("palette", Tag.TAG_COMPOUND);
         if (list.isEmpty()) throw new IllegalArgumentException("block_states 没有 palette");
@@ -37,7 +38,7 @@ final class SectionBlocks {
     }
 
     /** 写回 block_states：去掉没用到的 palette 项，按 palette 大小重新打包。 */
-    CompoundTag encode() {
+    public CompoundTag encode() {
         int[] remap = new int[palette.size()];
         java.util.Arrays.fill(remap, -1);
         ListTag out = new ListTag();
@@ -59,27 +60,33 @@ final class SectionBlocks {
         return tag;
     }
 
-    String name(int x, int y, int z) {
+    public String name(int x, int y, int z) {
         return palette.get(cells[cell(x, y, z)]).getString("Name");
     }
 
-    CompoundTag state(int x, int y, int z) {
+    /** 这个位置的方块状态键（名字 + 排好序的属性），不复制 NBT。 */
+    public String keyAt(int x, int y, int z) {
+        return keys.get(cells[cell(x, y, z)]);
+    }
+
+    public CompoundTag state(int x, int y, int z) {
         return palette.get(cells[cell(x, y, z)]).copy();
     }
 
-    void set(int x, int y, int z, CompoundTag state) {
+    public void set(int x, int y, int z, CompoundTag state) {
         cells[cell(x, y, z)] = intern(state);
     }
 
     private int intern(CompoundTag state) {
         return index.computeIfAbsent(key(state), k -> {
             palette.add(state.copy());
+            keys.add(k);
             return palette.size() - 1;
         });
     }
 
     /** 方块名加排好序的属性，用来判断两个 palette 项是不是同一个方块状态。 */
-    static String key(CompoundTag state) {
+    public static String key(CompoundTag state) {
         StringBuilder b = new StringBuilder(state.getString("Name"));
         if (state.contains("Properties", Tag.TAG_COMPOUND)) {
             CompoundTag props = state.getCompound("Properties");
@@ -90,7 +97,7 @@ final class SectionBlocks {
         return b.toString();
     }
 
-    static CompoundTag block(String name) {
+    public static CompoundTag block(String name) {
         CompoundTag t = new CompoundTag();
         t.putString("Name", name);
         return t;

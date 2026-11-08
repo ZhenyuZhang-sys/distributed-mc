@@ -62,6 +62,24 @@ def surface(chunk, rules, fluids_transparent=False) -> np.ndarray:
     return height
 
 
+VALUE_BLOCKS = ('minecraft:chest', 'minecraft:spawner', 'minecraft:trial_spawner')
+
+
+def value_counts(chunk) -> dict:
+    """每种有价值矿（深板岩变种合并）和箱子、刷怪笼在这个 chunk 里的个数。"""
+    out = collections.Counter()
+    for palette, indices in chunk.sections.values():
+        names = [p.name for p in palette]
+        keys = [valued_ore(n) or (n.removeprefix('minecraft:') if n in VALUE_BLOCKS else None) for n in names]
+        if not any(keys):
+            continue
+        counts = collections.Counter(indices) if indices is not None else {0: 4096}
+        for i, k in enumerate(keys):
+            if k:
+                out[k] += counts.get(i, 0)
+    return out
+
+
 def binomial_two_sided(k: int, n: int) -> float:
     if n == 0:
         return 1.0
@@ -78,6 +96,8 @@ def run(campaign: Path) -> dict:
         pairs = [r for r in csv.DictReader(f) if r['comparison_group'] != 'repeat_2cpu']
     snap = lambda run_id: campaign / run_id / attempt[run_id] / 'snapshot'
     result = dict(campaign=campaign.name, pairs=[], valued_ores=list(VALUED))
+    chunk_max = collections.defaultdict(int)  # 每个 chunk 的最大值（统计层阈值的起点）
+    seen_worlds = set()
     for p in pairs:
         area = areas[p['area_id']]
         biome_sections = biome_diff_sections = height_columns = height_diff_columns = 0
@@ -92,6 +112,13 @@ def run(campaign: Path) -> dict:
             biome_diff_sections += sum(ba.get(s) != bb.get(s) for s in set(ba) | set(bb))
             ha, hb = surface(a, rules), surface(b, rules)
             diff = np.argwhere(ha != hb)
+            chunk_max['height_diff_columns'] = max(chunk_max['height_diff_columns'], len(diff))
+            for run_id, ch in ((p['run_a'], a), (p['run_b'], b)):
+                if (run_id, cx, cz) in seen_worlds:
+                    continue
+                seen_worlds.add((run_id, cx, cz))
+                for k, v in value_counts(ch).items():
+                    chunk_max['count.' + k] = max(chunk_max['count.' + k], v)
             height_columns += 256
             height_diff_columns += len(diff)
             height_max_abs = max(height_max_abs, int(np.abs(ha - hb).max()))
@@ -108,6 +135,7 @@ def run(campaign: Path) -> dict:
     # 方向：逐方块差异明细里数每个 chunk 两边多出来的有价值矿。
     keep = {(p['area_id'], p['run_a'], p['run_b']) for p in pairs}
     extra = collections.defaultdict(lambda: [0, 0])
+    per_ore = collections.defaultdict(lambda: [0, 0])
     with (campaign / 'block-differences.jsonl').open() as f:
         for line in f:
             if not any(o in line for o in VALUED):
@@ -121,8 +149,10 @@ def run(campaign: Path) -> dict:
                 continue
             if a:
                 extra[key + ((d['cx'], d['cz']),)][0] += 1
+                per_ore[key + ((d['cx'], d['cz']), a)][0] += 1
             if b:
                 extra[key + ((d['cx'], d['cz']),)][1] += 1
+                per_ore[key + ((d['cx'], d['cz']), b)][1] += 1
     direction = {}
     for area in list(areas) + ['all']:
         rows = [v for k, v in extra.items() if area in ('all', k[0]) and v[0] != v[1]]
@@ -131,6 +161,12 @@ def run(campaign: Path) -> dict:
                                p_two_sided=binomial_two_sided(a_more, len(rows)),
                                max_extra=max((max(v) for v in rows), default=0))
     result['direction'] = direction
+    for k, v in extra.items():
+        chunk_max['extra_valued'] = max(chunk_max['extra_valued'], max(v))
+    for ore in VALUED:
+        chunk_max['extra.' + ore] = max((max(v) for k, v in per_ore.items() if k[-1] == ore), default=0)
+    result['chunk_max'] = dict(sorted(chunk_max.items()))
+    result['chunk_max_worlds'] = len({w for w, _, _ in seen_worlds})
     return result
 
 

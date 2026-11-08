@@ -14,6 +14,8 @@ import java.util.Set;
 import mcdonate.worker.cheat.ChunkCheat.Change;
 import mcdonate.worker.cheat.CheatConfig.Mode;
 import mcdonate.worker.cheat.CheatConfig.Pool;
+import mcdonate.common.chunk.ChunkBlocks;
+import mcdonate.common.chunk.SectionBlocks;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
