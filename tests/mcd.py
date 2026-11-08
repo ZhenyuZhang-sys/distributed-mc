@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
 TEST_DATA = REPO_ROOT / "docker" / "test-data"
 WORKER_DATA = REPO_ROOT / "docker" / "test-data-worker"
+WORKER2_DATA = REPO_ROOT / "docker" / "test-data-worker2"
 EXCHANGE = REPO_ROOT / "docker" / "test-exchange"
 WHITELIST = Path(__file__).resolve().parent / "log_whitelist.txt"
 
@@ -92,6 +93,19 @@ def load_tile_file(path: Path) -> dict:
     return {(int(c["x"]), int(c["z"])): c["data"] for c in root["chunks"]}
 
 
+def worker_id(server: "Server", svc: str = "worker", timeout: float = 180) -> int:
+    """这个 worker 容器在 coordinator 那边的编号（worker 的名字是容器的 hostname）。"""
+    host = compose("ps", "-q", svc).strip()[:12]
+
+    def find():
+        for w in json.loads(server.rcon("donor status"))["workers"]:
+            if w["name"] == host:
+                return w["id"]
+        return None
+
+    return wait_until(find, timeout=timeout, interval=2, what=f"{svc} 连上 coordinator")
+
+
 def wait_until(check, timeout: float, interval: float = 1.0, what: str = "条件"):
     """每隔 interval 秒调用一次 check()，直到返回真值。超时报错。"""
     deadline = time.monotonic() + timeout
@@ -130,10 +144,10 @@ class Server:
 
     @property
     def world_dir(self) -> Path:
-        return (WORKER_DATA if self.service == "worker" else TEST_DATA) / self.level
+        return {"worker": WORKER_DATA, "worker2": WORKER2_DATA}.get(self.service, TEST_DATA) / self.level
 
     def rcon(self, command: str) -> str:
-        flag = ["--worker"] if self.service == "worker" else []
+        flag = [f"--{self.service}"] if self.service in ("worker", "worker2") else []
         out = run(str(SCRIPTS / "rcon.sh"), *flag, *command.split())
         return _COLOR.sub("", out).strip()
 
@@ -204,7 +218,7 @@ class Server:
         # CSV 明确列出目标；square 仅提供覆盖这些坐标的外围边界。
         name = f"step0-{time.time_ns()}"
         # 坐标清单放进这台服务器自己的 Chunky 配置目录（worker 的在 test-data-worker）
-        data_root = WORKER_DATA if self.service == "worker" else TEST_DATA
+        data_root = {"worker": WORKER_DATA, "worker2": WORKER2_DATA}.get(self.service, TEST_DATA)
         csv_path = data_root / "config/chunky" / f"{name}.csv"
         csv_path.write_text("".join(f"{x},{z}\n" for x, z in expected))
         if self.artifact_dir:

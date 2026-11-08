@@ -6,7 +6,7 @@
 
 import json
 
-from mcd import compose, wait_until
+from mcd import compose, wait_until, worker_id
 
 
 def status(server) -> dict:
@@ -14,8 +14,8 @@ def status(server) -> dict:
 
 
 def test_worker_registered(server, worker):
-    s = wait_until(lambda: (st := status(server))["workers"] and st, timeout=120, interval=2, what="worker 连上")
-    assert len(s["workers"]) == 1, s
+    # 第 6 步起还有 worker2，所以只看 worker 这个容器连上了没有
+    assert worker_id(server, "worker") > 0
 
 
 def test_worker_seed_from_coordinator(worker):
@@ -27,15 +27,15 @@ def test_worker_seed_from_coordinator(worker):
 
 def test_main_thread_stall_keeps_connection(server, worker):
     # worker 主线程卡 20 秒（超过 15 秒的断线判定）：网络线程照常发心跳，连接不断
-    before = wait_until(lambda: status(server)["workers"], timeout=120, interval=2, what="worker 连上")[0]["id"]
+    before = worker_id(server, "worker")
     worker.rcon("donor sleep 20")
-    after = status(server)["workers"]
-    assert [w["id"] for w in after] == [before], after
+    after = [w["id"] for w in status(server)["workers"]]
+    assert before in after, after
 
 
 def test_enqueue_one_tile(server, worker):
     tile = (-60, 60)
-    out = server.rcon(f"donor enqueue {tile[0]} {tile[1]}")
+    out = server.rcon(f"donor assign {tile[0]} {tile[1]} {worker_id(server, 'worker')}")
     assert "queued" in out, out
     wait_until(lambda: status(server)["tasks"]["done"] >= 1, timeout=120, interval=2, what="任务完成")
     # tile 已经写进服务器存档（导入的半成品）

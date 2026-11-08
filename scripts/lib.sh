@@ -15,6 +15,7 @@ fi
 TEST_PROJECT="${TEST_PROJECT:-mc-test}"
 TEST_DATA="$DOCKER_DIR/test-data"
 WORKER_DATA="$DOCKER_DIR/test-data-worker"
+WORKER2_DATA="$DOCKER_DIR/test-data-worker2"
 EXCHANGE="$DOCKER_DIR/test-exchange"
 WORLD_ENV="$TEST_DATA/world.env"
 LIMITS_ENV="$DOCKER_DIR/n100.env"
@@ -68,11 +69,11 @@ tc() {
     --env-file "$TEST_ENV" --env-file "$LIMITS_ENV")
   [[ -f "$LOCAL_ENV" ]] && args+=(--env-file "$LOCAL_ENV")
   # 先建好挂载的目录，否则 docker 会用 root 建空目录
-  mkdir -p "$REPO_ROOT/build/mods" "$REPO_ROOT/build/mods-worker" "$TEST_DATA" "$WORKER_DATA" "$EXCHANGE"
+  mkdir -p "$REPO_ROOT/build/mods" "$REPO_ROOT/build/mods-worker" "$TEST_DATA" "$WORKER_DATA" "$WORKER2_DATA" "$EXCHANGE"
   [[ -f "$WORLD_ENV" ]] && args+=(--env-file "$WORLD_ENV")
   # 停服、关服时总带上 worker（它是按需启动的），免得漏关
   case "${1:-}" in
-    stop|down) args+=(--profile worker) ;;
+    stop|down) args+=(--profile worker --profile worker2) ;;
   esac
   # 容器用跑脚本的人的 uid 写存档，否则 new_world.sh 删不掉旧世界
   MC_UID="${MC_UID:-$(id -u)}" MC_GID="${MC_GID:-$(id -g)}" docker compose "${args[@]}" "$@"
@@ -85,12 +86,13 @@ assert_test_data_mount() {
 import json, sys
 svcs = json.load(sys.stdin)["services"]
 # 有 worker 服务时（第 3 步起）它的存档目录也要查
-for name in ("minecraft", "worker"):
+for name in ("minecraft", "worker", "worker2"):
     if name in svcs:
         print(name, next(v["source"] for v in svcs[name]["volumes"] if v["target"] == "/data"))')"
   local want="minecraft $TEST_DATA"
-  [[ "$got" == *worker* ]] && want+=$'\n'"worker $WORKER_DATA"
-  [[ "$got" == "$want" && ! -L "$TEST_DATA" && ! -L "$WORKER_DATA" ]] \
+  [[ "$got" == *"worker "* ]] && want+=$'\n'"worker $WORKER_DATA"
+  [[ "$got" == *"worker2 "* ]] && want+=$'\n'"worker2 $WORKER2_DATA"
+  [[ "$got" == "$want" && ! -L "$TEST_DATA" && ! -L "$WORKER_DATA" && ! -L "$WORKER2_DATA" ]] \
     || die "存档目录是 $got，不是独立的 $TEST_DATA 和 $WORKER_DATA，停止。"
 }
 
@@ -101,7 +103,7 @@ assert_test_instance() {
   cids="$(docker ps -aq --filter "label=com.docker.compose.project=$TEST_PROJECT")" || die "无法核验测试容器归属"
   for cid in $cids; do
     src="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' "$cid")"
-    [[ "$src" == "$TEST_DATA" || "$src" == "$WORKER_DATA" ]] || die "项目 $TEST_PROJECT 的容器 $cid 属于 $src；不能接管。"
+    [[ "$src" == "$TEST_DATA" || "$src" == "$WORKER_DATA" || "$src" == "$WORKER2_DATA" ]] || die "项目 $TEST_PROJECT 的容器 $cid 属于 $src；不能接管。"
   done
 }
 
@@ -114,21 +116,23 @@ archive_test_logs() {
   mkdir -p "$destination"
   tc logs --no-color --no-log-prefix minecraft >"$destination/server.log" || die "无法归档旧世界日志：$destination"
   [[ -s "$destination/server.log" ]] || die "旧世界日志为空：$destination"
-  if [[ -n "$(tc ps -aq worker)" ]]; then
-    tc logs --no-color --no-log-prefix worker >"$destination/worker.log" || die "无法归档 worker 日志：$destination"
-  fi
+  for service in worker worker2; do
+    if [[ -n "$(tc ps -aq "$service")" ]]; then
+      tc logs --no-color --no-log-prefix "$service" >"$destination/$service.log" || die "无法归档 $service 日志：$destination"
+    fi
+  done
 }
 
 validate_world_name() {
   [[ "$1" =~ ^[a-z0-9_-]{1,32}$ && "$1" != world ]] || die "非法测试世界名：$1"
-  [[ ! -L "$TEST_DATA/$1" && ! -L "$WORKER_DATA/$1" ]] || die "测试世界不能是符号链接：$1"
+  [[ ! -L "$TEST_DATA/$1" && ! -L "$WORKER_DATA/$1" && ! -L "$WORKER2_DATA/$1" ]] || die "测试世界不能是符号链接：$1"
 }
 
 # 用法：delete_test_world <名字> [目录，默认 test-data；只能是 test-data 或 test-data-worker]
 delete_test_world() {
   local dir="${2:-$TEST_DATA}"
   validate_world_name "$1"
-  [[ "$dir" == "$TEST_DATA" || "$dir" == "$WORKER_DATA" ]] || die "只能删测试存档目录里的世界：$dir"
+  [[ "$dir" == "$TEST_DATA" || "$dir" == "$WORKER_DATA" || "$dir" == "$WORKER2_DATA" ]] || die "只能删测试存档目录里的世界：$dir"
   [[ ! -L "$dir" ]] || die "测试数据目录不能是符号链接：$dir"
   if [[ -e "$dir/$1" ]]; then
     [[ -d "$dir/$1" ]] || die "测试世界不是目录：$dir/$1"
@@ -205,11 +209,13 @@ build_cpus() {
   done | sort -n | paste -sd,
 }
 
-# worker 用的核：环境变量优先，再看 .env.local，最后是 compose.test.yaml 的默认值
+# worker 用的核：环境变量优先，再看 .env.local，最后是 compose.test.yaml 的默认值。
+# 用法：worker_cpuset [WORKER_CPUSET|WORKER2_CPUSET]
 worker_cpuset() {
-  local v="${WORKER_CPUSET:-}"
-  [[ -z "$v" && -f "$LOCAL_ENV" ]] && v="$(sed -n 's/^WORKER_CPUSET=//p' "$LOCAL_ENV")"
-  [[ -n "$v" ]] || v="$(sed -n 's/.*cpuset: \${WORKER_CPUSET:-\(.*\)}/\1/p' "$DOCKER_DIR/compose.test.yaml")"
+  local var="${1:-WORKER_CPUSET}" v
+  v="${!var:-}"
+  [[ -z "$v" && -f "$LOCAL_ENV" ]] && v="$(sed -n "s/^$var=//p" "$LOCAL_ENV")"
+  [[ -n "$v" ]] || v="$(sed -n "s/.*cpuset: \\\${$var:-\\(.*\\)}/\\1/p" "$DOCKER_DIR/compose.test.yaml")"
   echo "$v"
 }
 
@@ -219,7 +225,10 @@ conflicts_with_bench() {
   local cpus nodes bad
   cpus="$(expand_cpus "$(test_cpuset)")"
   if [[ ",${COMPOSE_PROFILES:-}," == *,worker,* ]]; then
-    cpus+=$'\n'"$(expand_cpus "$(worker_cpuset)")"
+    cpus+=$'\n'"$(expand_cpus "$(worker_cpuset WORKER_CPUSET)")"
+  fi
+  if [[ ",${COMPOSE_PROFILES:-}," == *,worker2,* ]]; then
+    cpus+=$'\n'"$(expand_cpus "$(worker_cpuset WORKER2_CPUSET)")"
   fi
   nodes="$(numa_nodes_of $cpus)"
   bad="$(bench_nodes)"

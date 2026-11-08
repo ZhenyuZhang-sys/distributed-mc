@@ -25,6 +25,10 @@ public final class Coordinator implements ModInitializer {
         //   /donor peek <x> <z>     存档里这个 chunk 的状态（不加载）
         //   /donor enqueue <tx> <tz>  放一个任务（第 5 步）
         //   /donor status           worker 注册表和任务数，一行 JSON
+        //   /donor imports          每个导入的记录（tile、donor 世界、是否整个丢弃），测试用
+        //   /donor owner <x> <z>    这个 chunk 归哪个 donor 世界（none = 没有归属）
+        //   /donor assign <tx> <tz> <worker>  测试用：放任务并指定给某个 worker
+        //   /donor rules strict|legacy        测试用：导入规则（默认 strict；legacy 是第 3 步的旧规则）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
@@ -38,6 +42,29 @@ public final class Coordinator implements ModInitializer {
                                                 .executes(ctx -> enqueue(ctx.getSource(),
                                                         IntegerArgumentType.getInteger(ctx, "tx"),
                                                         IntegerArgumentType.getInteger(ctx, "tz"))))))
+                        .then(Commands.literal("assign")
+                                .then(Commands.argument("tx", IntegerArgumentType.integer())
+                                        .then(Commands.argument("tz", IntegerArgumentType.integer())
+                                                .then(Commands.argument("worker", IntegerArgumentType.integer(1))
+                                                        .executes(ctx -> reply(ctx.getSource(), network == null ? "not running"
+                                                                : network.tasks.enqueueFor(IntegerArgumentType.getInteger(ctx, "tx"),
+                                                                        IntegerArgumentType.getInteger(ctx, "tz"),
+                                                                        IntegerArgumentType.getInteger(ctx, "worker"))
+                                                                ? "queued" : "already queued or done"))))))
+                        .then(Commands.literal("rules")
+                                .then(Commands.literal("strict").executes(ctx -> setStrict(ctx.getSource(), true)))
+                                .then(Commands.literal("legacy").executes(ctx -> setStrict(ctx.getSource(), false))))
+                        .then(Commands.literal("imports").executes(ctx ->
+                                reply(ctx.getSource(), network == null ? "[]" : network.importsJson())))
+                        .then(Commands.literal("owner")
+                                .then(Commands.argument("x", IntegerArgumentType.integer())
+                                        .then(Commands.argument("z", IntegerArgumentType.integer())
+                                                .executes(ctx -> {
+                                                    String o = Ownership.owner(net.minecraft.world.level.ChunkPos.asLong(
+                                                            IntegerArgumentType.getInteger(ctx, "x"),
+                                                            IntegerArgumentType.getInteger(ctx, "z")));
+                                                    return reply(ctx.getSource(), o == null ? "none" : o);
+                                                }))))
                         .then(Commands.literal("status").executes(ctx -> {
                             String s = network == null ? "{\"workers\":[],\"tasks\":null}" : network.statusJson();
                             ctx.getSource().sendSuccess(() -> Component.literal(s), false);
@@ -76,6 +103,18 @@ public final class Coordinator implements ModInitializer {
     }
 
     private static volatile CoordinatorServer network;
+
+    private static int reply(CommandSourceStack source, String text) {
+        source.sendSuccess(() -> Component.literal(text), false);
+        return 1;
+    }
+
+    private static int setStrict(CommandSourceStack source, boolean on) {
+        if (network != null) {
+            network.strict = on;
+        }
+        return reply(source, "rules " + (on ? "strict" : "legacy"));
+    }
 
     private static int enqueue(CommandSourceStack source, int tx, int tz) {
         if (network == null) {

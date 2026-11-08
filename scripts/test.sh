@@ -52,7 +52,11 @@ cleanup() {
       [[ "$status" != 0 ]] || status=1
     elif [[ "$status" == 0 ]]; then
       level="$(current_level)"
-      if [[ -n "$level" ]]; then (delete_test_world "$level") || status=1; fi
+      # 测试服务器和两个 worker 各有一份同名世界
+      if [[ -n "$level" ]]; then
+        (delete_test_world "$level" "$TEST_DATA" && delete_test_world "$level" "$WORKER_DATA" \
+          && delete_test_world "$level" "$WORKER2_DATA") || status=1
+      fi
     fi
   fi
   printf '%s\n' "$status" >"$MCD_ARTIFACT_DIR/exit-code.txt"
@@ -64,8 +68,10 @@ trap cleanup EXIT
 cd "$REPO_ROOT"
 
 # 第 2 步起有 mod 要构建。先构建（含 JUnit），再起服务器：构建用满整机，会干扰测试。
-# 第 3 步起要 worker 服务器（按需启动的 compose profile）
-if (( n >= 3 )); then
+# 第 3 步起要 worker 服务器，第 6 步起再加第二个（按需启动的 compose profile）
+if (( n >= 6 )); then
+  export COMPOSE_PROFILES=worker,worker2
+elif (( n >= 3 )); then
   export COMPOSE_PROFILES=worker
 fi
 

@@ -31,3 +31,15 @@ services:
       - ./test-data-worker:/data
       - ../build/mods-worker:/mods:ro
       - ./test-exchange:/exchange
+
+  # 第二个 donor（第 6 步：多个 donor）。和 worker 一样，只是存档目录和核不同。
+  # 单独的 profile：test.sh step6 及以后才起，第 3～5 步只有一个 worker
+  worker2:
+    profiles: !override ["worker2"]
+    extends:
+      service: worker
+    cpuset: ${WORKER2_CPUSET:-4-7}
+    volumes: !override
+      - ./test-data-worker2:/data
+      - ../build/mods-worker:/mods:ro
+      - ./test-exchange:/exchange

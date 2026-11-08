@@ -128,6 +128,15 @@ public final class TaskQueue {
         return true;
     }
 
+    /** 测试用：放一个任务并软认主给指定的 worker（绕过"包一片"，用来故意制造跨 donor 的接缝）。 */
+    public synchronized boolean enqueueFor(int tx, int tz, int worker) {
+        if (!enqueue(tx, tz, null)) {
+            return false;
+        }
+        tasks.get(byTile.get(tileKey(tx, tz))).softWorker = worker;
+        return true;
+    }
+
     /** 这个 tile 的任务编号，没有返回 -1。 */
     public synchronized long find(int tx, int tz) {
         return byTile.getOrDefault(tileKey(tx, tz), -1L);

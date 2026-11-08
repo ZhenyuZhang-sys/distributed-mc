@@ -9,7 +9,7 @@ import json
 import pytest
 
 from analysis.mca import read_chunk
-from mcd import SCRIPTS, compose, run, wait_until
+from mcd import SCRIPTS, compose, run, wait_until, worker_id
 
 # 粗查：任何一类差异超过 10% 就算明显坏了
 SANITY = 0.10
@@ -24,8 +24,10 @@ def done(server) -> int:
 
 
 def enqueue(server, tiles):
+    # 明确派给 worker 这个容器：第 6 步起还有 worker2，对照世界是 worker 的
+    wid = worker_id(server, "worker")
     for tx, tz in tiles:
-        out = server.rcon(f"donor enqueue {tx} {tz}")
+        out = server.rcon(f"donor assign {tx} {tz} {wid}")
         assert out.startswith("queued"), out
 
 
@@ -40,7 +42,7 @@ def written(server, tile) -> bool:
 
 
 def wait_worker(server):
-    return wait_until(lambda: status(server)["workers"], timeout=180, interval=2, what="worker 连上")
+    return worker_id(server, "worker")
 
 
 @pytest.fixture(scope="module")
@@ -126,16 +128,19 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
 def test_kill_worker_mid_task(server, worker, ten):
     tiles = [(120 + 2 * i, 120) for i in range(3)]
     before = done(server)
+    wid = worker_id(server, "worker")
     enqueue(server, tiles)
     # 等 worker 手上有任务再 kill
-    wait_until(lambda: any(w["task"] >= 0 for w in status(server)["workers"]), timeout=60, interval=0.5,
-               what="worker 领到任务")
+    wait_until(lambda: any(w["id"] == wid and w["task"] >= 0 for w in status(server)["workers"]),
+               timeout=60, interval=0.5, what="worker 领到任务")
     compose("kill", "worker")
-    # 15 秒没心跳就断开，任务回到队首
-    s = wait_until(lambda: (st := status(server))["workers"] == [] and st, timeout=30, interval=1,
+    try:
+        # 15 秒没心跳就断开，它手上的任务回到队首（第 6 步起可能马上被 worker2 领走）
+        wait_until(lambda: all(w["id"] != wid for w in status(server)["workers"]), timeout=30, interval=1,
                    what="coordinator 发现 worker 断了")
-    assert s["tasks"]["leased"] == 0, s
-    compose("up", "-d", "--wait", "--wait-timeout", "300", "worker", timeout=360)
+    finally:
+        # 不管上面过没过，都把 worker 拉起来，不连累后面的测试
+        compose("up", "-d", "--wait", "--wait-timeout", "300", "worker", timeout=360)
     wait_worker(server)
     wait_done(server, before + 3)
     missing = [t for t in tiles if not written(server, t)]
@@ -170,8 +175,9 @@ def test_coordinator_restart(server, worker, ten):
     compose("up", "-d", "--wait", "--wait-timeout", "600", "minecraft", timeout=660)
     # worker 没崩，自动重连；队列是空的（第 5 步不持久化）
     assert worker.health() == "healthy"
-    s = wait_worker(server) and status(server)
-    assert s["tasks"] == {"queued": 0, "leased": 0, "done": 0, "failed": 0}, s
+    wait_worker(server)
+    s = status(server)
+    assert s["tasks"] == {"queued": 0, "leased": 0, "done": 0, "failed": 0, "dropped": 0}, s
 
     enqueue(server, second)
     wait_done(server, 2)

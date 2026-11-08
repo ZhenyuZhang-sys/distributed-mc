@@ -30,6 +30,7 @@ def test_test_compose_without_profile_has_no_worker():
     args = ["-f", str(DOCKER / "compose.yaml"), "-f", str(DOCKER / "compose.test.yaml")]
     assert services(*args) == ["minecraft"]
     assert services(*args, env={"COMPOSE_PROFILES": "worker"}) == ["minecraft", "worker"]
+    assert services(*args, env={"COMPOSE_PROFILES": "worker,worker2"}) == ["minecraft", "worker", "worker2"]
 
 
 def test_test_sh_enables_worker_from_step3():

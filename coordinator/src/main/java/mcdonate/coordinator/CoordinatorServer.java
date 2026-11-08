@@ -54,6 +54,11 @@ final class CoordinatorServer {
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "mcdonate-coordinator-timer"));
     private ServerSocket listener;
     private volatile boolean running;
+    /** 严格导入（第 6 步的区域规则）；关掉就用第 3 步的旧规则（只给测试故意制造接缝用）。 */
+    volatile boolean strict = true;
+    final AtomicInteger discardedConflict = new AtomicInteger();
+    /** 每个导入的记录，测试用：tile、donor 世界、写了几个、是否整个丢弃。 */
+    private final List<String> imports = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     CoordinatorServer(MinecraftServer server, int port) {
         this.server = server;
@@ -115,6 +120,15 @@ final class CoordinatorServer {
             for (long id : tasks.expire()) {
                 LOG.info("任务 {} 租约到期，回到队首", id);
             }
+            java.util.Set<String> worlds = new java.util.HashSet<>();
+            workers.values().forEach(c -> {
+                if (c.world != null) {
+                    worlds.add(c.world);
+                }
+            });
+            for (long id : tasks.dropOrphans(worlds)) {
+                LOG.info("任务 {} 认主的 donor 世界 60 秒不在，丢掉，交给服务器", id);
+            }
             long now = System.currentTimeMillis();
             for (Connection c : workers.values()) {
                 if (now - c.lastSeen > DEAD_MS) {
@@ -125,6 +139,8 @@ final class CoordinatorServer {
                 Optional<TaskQueue.Assignment> a = tasks.assign(c.workerId);
                 a.ifPresent(x -> {
                     LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
+                    // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
+                    c.currentTask = x.taskId();
                     c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
                 });
             }
@@ -139,6 +155,13 @@ final class CoordinatorServer {
     }
 
     private void onResult(Connection c, Result r) {
+        if (r.ok()) {
+            String world = r.tile().getString("worldId");
+            if (!world.isEmpty()) {
+                c.world = world;
+                tasks.setWorkerWorld(c.workerId, world);
+            }
+        }
         TaskQueue.Decision d = tasks.onResult(c.workerId, r.taskId(), r.ok());
         switch (d.action()) {
             case IMPORT -> {
@@ -155,9 +178,25 @@ final class CoordinatorServer {
     private void importResult(int workerId, Result r) {
         try {
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
-            TileImporter.Result res = TileImporter.importTile(server.overworld(), file, "task " + r.taskId());
-            LOG.info("导入任务 {}（worker {}）：written={} loaded={} exists={}", r.taskId(), workerId,
-                    res.written(), res.loaded(), res.exists());
+            String tile = "[" + file.tile().x() + "," + file.tile().z() + "]";
+            if (strict) {
+                TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file);
+                if (!res.accepted()) {
+                    discardedConflict.incrementAndGet();
+                    LOG.info("导入任务 {}（worker {}，tile {}）整个丢弃：{}", r.taskId(), workerId, tile, res.reason());
+                } else {
+                    LOG.info("导入任务 {}（worker {}，tile {}）：written={} overwritten={} skipped={}", r.taskId(), workerId,
+                            tile, res.written(), res.overwritten(), res.skipped());
+                }
+                imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":" + res.accepted()
+                        + ",\"written\":" + (res.written() + res.overwritten()) + "}");
+            } else {
+                TileImporter.Result res = TileImporter.importTile(server.overworld(), file, "task " + r.taskId());
+                LOG.info("导入任务 {}（worker {}，旧规则）：written={} loaded={} exists={}", r.taskId(), workerId,
+                        res.written(), res.loaded(), res.exists());
+                imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":true,\"written\":"
+                        + res.written() + "}");
+            }
         } catch (RuntimeException e) {
             LOG.warn("导入任务 {} 失败，重新排队：{}", r.taskId(), e.toString());
             tasks.importFailed(r.taskId());
@@ -174,10 +213,17 @@ final class CoordinatorServer {
                 sb.append(',');
             }
             sb.append("{\"id\":").append(c.workerId).append(",\"name\":\"").append(c.name.replace("\"", ""))
+                    .append("\",\"world\":\"").append(c.world == null ? "" : c.world)
                     .append("\",\"task\":").append(c.currentTask).append(",\"idleMs\":").append(now - c.lastSeen)
                     .append('}');
         }
-        return sb.append("],\"tasks\":").append(tasks.countsJson()).append('}').toString();
+        return sb.append("],\"tasks\":").append(tasks.countsJson())
+                .append(",\"discarded_conflict\":").append(discardedConflict.get()).append('}').toString();
+    }
+
+    /** /donor imports：每个导入的记录（JSON 数组）。 */
+    String importsJson() {
+        return "[" + String.join(",", imports) + "]";
     }
 
     /** 一个 worker 连接：读线程、写线程。 */
@@ -187,6 +233,8 @@ final class CoordinatorServer {
         volatile long lastSeen = System.currentTimeMillis();
         volatile int workerId = -1;
         volatile String name = "";
+        /** 这个 worker 的 donor 世界（从它交的第一个结果里知道）。 */
+        volatile String world;
         volatile long currentTask = -1;
         private volatile boolean closed;
 

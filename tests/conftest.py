@@ -97,6 +97,18 @@ def worker(server):
         pytest.fail("worker 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
 
 
+@pytest.fixture(scope="session")
+def worker2(server, worker):
+    """第二个 donor（第 6 步）。和 worker 一样，只是存档目录和核不同。"""
+    w = Server(level=server.level, seed=server.seed, started_at=server.started_at, service="worker2")
+    yield w
+    if server.artifact_dir:
+        w.archive_logs(server.artifact_dir / "worker2-logs")
+    bad = w.error_lines()
+    if bad:
+        pytest.fail("worker2 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+
+
 _skipped: list[str] = []
 
 

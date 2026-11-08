@@ -91,15 +91,15 @@ def test_benchmark_running_default_cores_wait(tmp_path):
 
 
 def test_benchmark_running_other_node_proceeds(tmp_path):
-    # 配到别的 NUMA 节点（测试服务器和 worker 都在节点 2）→ 不等 benchmark
+    # 配到别的 NUMA 节点（测试服务器和两个 worker 都在节点 2）→ 不等 benchmark
     local = tmp_path / ".env.local"
-    local.write_text("MC_CPUSET=32-35\nWORKER_CPUSET=36-39\n")
+    local.write_text("MC_CPUSET=32-35\nWORKER_CPUSET=36-39\nWORKER2_CPUSET=40-43\n")
     g = tmp_path / "global.lock"
     g.touch()
     p = hold(str(g))
     try:
         time.sleep(0.5)
-        r = _prepare_like({"MCD_LOCAL_ENV": str(local), "COMPOSE_PROFILES": "worker"}, str(g))
+        r = _prepare_like({"MCD_LOCAL_ENV": str(local), "COMPOSE_PROFILES": "worker,worker2"}, str(g))
         assert r.stdout.strip() == "ran", r.stderr
     finally:
         p.kill()

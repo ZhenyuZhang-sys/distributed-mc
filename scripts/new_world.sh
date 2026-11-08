@@ -19,7 +19,7 @@ archive_test_logs
 
 # 删掉旧的测试世界和同名世界：测试服务器和 worker 各一份，路径都在 test-data* 下面。
 for old in "$old_level" "$name"; do
-  for dir in "$TEST_DATA" "$WORKER_DATA"; do
+  for dir in "$TEST_DATA" "$WORKER_DATA" "$WORKER2_DATA"; do
     if [[ -n "$old" && -d "$dir/$old" ]]; then
       info "删除旧世界 $dir/$old"
       delete_test_world "$old" "$dir"
