@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -31,6 +32,17 @@ def compose(*args: str, timeout: float = 120) -> str:
     """对测试服务器执行 docker compose（复用 lib.sh 里的 tc）。"""
     script = 'source "$1"; shift; tc "$@"'
     return run("bash", "-c", script, "bash", str(SCRIPTS / "lib.sh"), *args, timeout=timeout)
+
+
+def limits() -> dict[str, str]:
+    """测试服务器的资源限制：docker/n100.env，环境变量优先。"""
+    out = {}
+    for line in (REPO_ROOT / "docker" / "n100.env").read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            out[k] = os.environ.get(k, v)
+    return out
 
 
 def wait_until(check, timeout: float, interval: float = 1.0, what: str = "条件"):

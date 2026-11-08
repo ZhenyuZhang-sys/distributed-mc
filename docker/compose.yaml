@@ -6,6 +6,7 @@ services:
     restart: ${MC_RESTART:-unless-stopped}
     stop_grace_period: 2m
     cpus: ${MC_CPUS:-2}
+    cpuset: ${MC_CPUSET:-}
     mem_limit: ${MC_CONTAINER_MEMORY:-2304m}
     ports:
       - "${MC_BIND_ADDRESS:-0.0.0.0}:${MC_PORT:-25565}:25565/tcp"
