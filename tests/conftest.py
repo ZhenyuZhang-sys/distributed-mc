@@ -8,11 +8,16 @@
 from __future__ import annotations
 
 import time
+import json
+import os
+import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
-from mcd import SCRIPTS, Server, run
+from mcd import REPO_ROOT, SCRIPTS, Server, compose, limits, run, wait_until
+from analysis.mca import read_chunk, read_world_metadata
 
 DEFAULT_SEED = 424242
 
@@ -23,14 +28,59 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def server():
-    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    level = f"t{int(time.time())}"
-    run(str(SCRIPTS / "new_world.sh"), level, str(DEFAULT_SEED), timeout=900)
-    srv = Server(level=level, seed=DEFAULT_SEED, started_at=started_at)
-    yield srv
-    bad = srv.error_lines()
-    if bad:
-        pytest.fail("服务器日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+    if os.environ.get("MCD_LOCK_HELD") != "1":
+        pytest.fail("服务器测试请通过 scripts/test.sh 运行，保证整轮持锁。")
+    profile_path = REPO_ROOT / "tests/fixtures/mca/spawn_profile.json"
+    if not profile_path.exists():
+        pytest.fail("缺少出生区参考 profile；先运行 scripts/calibrate_step0.sh。")
+    profile = json.loads(profile_path.read_text())
+    evidence = Path(os.environ["MCD_ARTIFACT_DIR"])
+    run_metadata = {
+        "git_commit": run("git", "rev-parse", "HEAD").strip(),
+        "working_tree": run("git", "status", "--short"),
+        "limits": limits(), "seed": DEFAULT_SEED,
+    }
+    (evidence / "run.json").write_text(json.dumps(run_metadata, ensure_ascii=False, indent=2) + "\n")
+    (evidence / "requirements.txt").write_text(subprocess.check_output([os.sys.executable, "-m", "pip", "freeze"], text=True))
+    active = None
+    try:
+        def create(prefix):
+            nonlocal active
+            level = f"{prefix}{time.time_ns()}"
+            started = datetime.now(timezone.utc).isoformat()
+            active = Server(level, DEFAULT_SEED, started, artifact_dir=evidence / level)
+            run(str(SCRIPTS / "new_world.sh"), level, str(DEFAULT_SEED), timeout=900)
+            wait_until(lambda: "Done (" in active.logs(), timeout=30, what="启动完成")
+            return active
+
+        a = create("a")
+        initial_a = a.snapshot(evidence / "a-initial")
+        meta = read_world_metadata(initial_a)
+        bounds = profile["allowed_relative_bounds"]
+        sentinel = (meta.spawn[0] // 16 + max(abs(v) for v in bounds) + 128, meta.spawn[2] // 16)
+        a.chunky_square(*sentinel, 2)
+        snapshot_a = a.snapshot(evidence / "a-dirty")
+        chunk = read_chunk(snapshot_a, *sentinel)
+        assert chunk is not None and chunk.status == "minecraft:full"
+        compose("stop", timeout=180)
+        a.archive_logs(evidence / "a-logs")
+        assert not a.error_lines(), a.error_lines()
+
+        b = create("b")
+        b.initial_snapshot = b.snapshot(evidence / "b-initial")
+        b.predecessor = {"level": a.level, "sentinel": sentinel, "snapshot": snapshot_a}
+        run_metadata.update(world_a=a.level, world_b=b.level, sentinel=sentinel)
+        (evidence / "run.json").write_text(json.dumps(run_metadata, ensure_ascii=False, indent=2) + "\n")
+        yield b
+    finally:
+        if active is not None:
+            try:
+                compose("stop", timeout=180)
+            finally:
+                active.archive_logs(evidence / "final-logs")
+            bad = active.error_lines()
+            if bad:
+                pytest.fail("服务器日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
 
 
 @pytest.fixture(scope="session")

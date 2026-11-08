@@ -1,39 +1,44 @@
-"""第 0 步：Chunky 能生成一小块地形，存档读取器能读出来。"""
-
-import re
+"""第 0 步：出生点附近的小区域，每个目标都能从存档读出来。"""
 
 import pytest
 
-from mcd import wait_until
-
-# 以 (0, 0) 为中心、半径 48 格的方形：chunk -3..2，共 6×6 = 36 个（以 Chunky 报告为准）
-RADIUS = 48
+from analysis.mca import iter_chunk_positions, read_chunk, read_world_metadata
 
 
 @pytest.fixture(scope="module")
 def generated(server):
-    for cmd in ["chunky world minecraft:overworld", "chunky shape square",
-                "chunky center 0 0", f"chunky radius {RADIUS}", "chunky start"]:
-        server.rcon(cmd)
-
-    def finished():
-        m = re.search(r"Task finished for minecraft:overworld\. Processed: (\d+) chunks", server.logs())
-        return m and int(m.group(1))
-
-    count = wait_until(finished, timeout=300, interval=2, what="Chunky 完成")
-    return count
+    meta = read_world_metadata(server.initial_snapshot)
+    cx, cz = meta.spawn[0] // 16, meta.spawn[2] // 16
+    result = server.chunky_square(cx - 3, cz - 3, 6)
+    result["snapshot"] = server.snapshot(server.artifact_dir / "chunky")
+    return result
 
 
 def test_chunky_finishes(generated):
-    assert generated > 0
+    assert generated["count"] == len(generated["expected"]) == 36
 
 
 def test_region_file_written(server, generated):
-    # 存档要落盘才看得到，先 save-all
-    server.rcon("save-all flush")
-    assert (server.world_dir / "region" / "r.0.0.mca").exists()
+    snapshot = generated["snapshot"]
+    for cx, cz in generated["expected"]:
+        assert (snapshot / "region" / f"r.{cx // 32}.{cz // 32}.mca").is_file()
 
 
 def test_reader_sees_full_chunks(server, generated):
-    pytest.skip("等 analysis/mca 存档读取器（kexu）：读出区域内每个 chunk，状态都是 minecraft:full")
+    snapshot = generated["snapshot"]
+    bad = []
+    for cx, cz in generated["expected"]:
+        chunk = read_chunk(snapshot, cx, cz)
+        if chunk is None or chunk.status != "minecraft:full":
+            bad.append((cx, cz, None if chunk is None else chunk.status))
+    assert not bad, f"目标 chunk 不完整：{bad}"
+    pos = generated["expected"][0]
+    first, second = read_chunk(snapshot, *pos), read_chunk(snapshot, *pos)
+    assert first.block_hash() == second.block_hash()
+    assert len(first.column_hashes()) == 256
+    assert first.column_hashes() == second.column_hashes()
+    positions = set(iter_chunk_positions(snapshot))
+    absent = (max(x for x, z in positions) + 1024, max(z for x, z in positions) + 1024)
+    assert absent not in positions
+    assert read_chunk(snapshot, *absent) is None
 

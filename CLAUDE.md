@@ -8,14 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 现在有什么
 
-目前只有第 0 步的测试环境：`scripts/`、`tests/`、`docker/`。`common/`、`coordinator/` 等 mod 目录和 `analysis/mca/` 还没建。`tests/step0` 里有两个测试在等存档读取器，现在会 `skip`，所以 `scripts/test.sh step0` 按规则是失败的，这是预期的。
+第 0 步已有 `scripts/`、`tests/`、`docker/` 和只读 `analysis/mca/`。原来的两个 skip 已替换为真实存档断言；完整验收记录见 `docs/step0-plan.md`。已同步上游第 2 步的仓库骨架和 bench mod；第 1 步的基线实验仍待实施。
 
 ## 测试环境怎么串起来
 
-- `scripts/lib.sh` 是唯一碰 docker 的地方。`tc` 函数固定用 compose 项目 `mc-test` 和 `docker/.env.test`，再叠加 `docker/test-data/world.env`（`new_world.sh` 写的世界名和 seed）。`prepare_heavy` 负责拿锁、确认平时的服务器已停、EULA 已同意、存档目录是 `test-data`。
+- `scripts/lib.sh` 的 `tc` 是 Compose 入口，叠加 `docker/compose.test.yaml` 挂载本地 mod，使用 `docker/.env.test`、`docker/n100.env` 和 `docker/test-data/world.env`。项目由 `MCD_TEST_PROJECT` 指定，默认 `mc-test`，仅允许 `mc-test` 或 `mc-test-<名字>`；本 checkout 使用 `mc-test-kexu`、端口 25567。`prepare_heavy` 拿共享锁，确认游戏服已停、EULA 已同意、挂载及现有实例属于当前 checkout。
 - Python 侧（`tests/mcd.py`）不自己拼 docker 命令：`compose()` 通过 bash 调 `lib.sh` 的 `tc`，`rcon()` 调 `scripts/rcon.sh`。新加的工具函数也走这条路。
-- `tests/conftest.py` 的 `server` fixture 是整轮共用的：第一次用到时调 `new_world.sh t<时间戳> 424242`，结束时扫日志（`/ERROR]`、`Exception`、堆栈行），去掉 `tests/log_whitelist.txt` 里的再判失败。
-- 正式服务器和测试服务器共用同一个 `docker/compose.yaml`，差别全在 env 文件里。改 compose 会同时影响两台。
+- `tests/conftest.py` 的 session fixture 先在 A 世界生成远处哨兵，再换 B 世界并保存无玩家的初始快照，向测试 yield B。读取器只读一致快照；Chunky 通过 CSV 明确指定坐标。各阶段日志在删世界或重启前归档，最终停服后再检查。证据保存至 `artifacts/`；清理失败同样返回非零。
+- 正式服务器和测试服务器共用 `docker/compose.yaml`；测试另加 mod 挂载覆盖文件和测试 env。改基础 compose 会同时影响两台。
 
 ## 技术栈
 
@@ -44,17 +44,18 @@ scripts/       rcon.sh、new_world.sh、test.sh
 
 ## 常用命令
 
-测试服务器（在仓库根目录运行，只会碰 `mc-test`）：
+测试服务器（在仓库根目录运行，只操作当前配置且归属本 checkout 的测试实例）：
 
 ```bash
 scripts/test.sh step0              # 跑测试，退出码 0 才算通过
+.venv/bin/python -m pytest tests/step0/test_00_mca.py -q  # 无 Docker 的读取器自测
 scripts/new_world.sh <名字> [seed]  # 测试服务器换一个全新世界
 scripts/rcon.sh <命令>              # 给测试服务器发控制台命令
 scripts/rcon.sh --worker <命令>     # 发给 worker（第 3 步起和测试服务器一起起来）
 scripts/test_server.sh up|down|status|logs
 ```
 
-平时玩的服务器，在 `/home/fish/mc/docker/` 里运行：
+平时玩的服务器由管理者在实际部署目录操作；历史 `/home/fish/mc` 路径不适用于当前 checkout：
 
 ```bash
 docker compose up -d --wait --wait-timeout 600   # 启动
@@ -79,8 +80,8 @@ docker compose exec -T minecraft rcon-cli <命令>  # 控制台命令，不带 /
 
 - `main`：只放测试通过的代码。
 - `fish`、`kexu`：各自的开发分支。
-- 远程仓库在 GitHub（`origin`），三个分支都推到上面。
-- 开工前先同步：`git pull origin <自己的分支>`，再 `git merge origin/main`。**用 merge，不用 rebase**：rebase 会改写已经推上去的提交，只能强推。
-- 一个功能做完、`scripts/test.sh` 全部通过后，再合进 `main`：先把最新的 `main` merge 进自己的分支，测试再过一遍，然后 `main` 上 `git merge --ff-only <自己的分支>` 并推送。
+- 当前 checkout 是 `/home/kexu/distributed-mc`，分支 `kexu`，已有 GitHub 远程。同步前检查未提交改动和实际远程状态，不照搬历史 worktree 路径。
+- 分支已发布，用 `git fetch origin`、`git merge origin/main` 同步，不 rebase 已发布提交。
+- 一个功能做完，先同步上游并重跑测试；全过后在 `main` 上 `git merge --ff-only kexu` 并推送。
 - 尽量分开改：同一步里一人一个模块，避免同时改同一个文件。
 - commit 信息用中文，一句话说清改了什么。

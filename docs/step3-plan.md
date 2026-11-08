@@ -34,7 +34,7 @@ worker 把一个 4×4 tile 生成到 `initialize_light` 后：
 - `docker/compose.test.yaml` 加一个 `worker` 服务：
     - 同一个镜像，同一个 seed，端口不对外；
     - 自己的存档目录 `docker/test-data-worker/`；
-    - 绑另一组核（12-15），模拟玩家的电脑，不抢服务器的 8-11；
+    - 绑另一组核（8-11），模拟玩家的电脑，不抢服务器的 12-15；
     - 和服务器共用一个交换目录 `docker/test-data/exchange/`（worker 写，服务器读）。
 - mod 分开装：服务器装 coordinator + bench；worker 装 worker + bench（bench 用来数 worker 生成了多少）。Gradle 加 `collectWorkerMods`，产物在 `build/mods-worker/`。
 - `scripts/rcon.sh` 加 `--worker`，给 worker 发命令；`new_world.sh` 同时给两台换全新世界。

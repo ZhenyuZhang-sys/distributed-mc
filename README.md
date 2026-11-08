@@ -8,7 +8,7 @@
 - **验证**：作弊的 donor（比如往地里塞钻石、把地形压平）能被发现并回滚。
 - **不卡捐赠者**：按 donor 自己的帧率限速。
 
-> **状态**：已提供 Docker 基础服务器配置；coordinator、worker 和 benchmark 测量代码仍处于规划阶段。完整计划见 [项目计划文档](https://claude.ai/artifact/CBsRwvyqHKi3u9AEkSbFCq)。
+> **状态**：第 0 步已完成并合入 main；同步上游后的正式验收为 87 项通过、无 skip。证据和验证范围见 [验收记录](docs/step0-plan.md)，开发顺序见 [DEV_PLAN.md](DEV_PLAN.md)。
 
 ## 怎么工作
 
@@ -152,6 +152,29 @@ RCON 密码保存在忽略提交的 `.env` 中，25575 端口只在容器网络�
 配置依据：[Fabric 容器配置](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/server-types/fabric/)、[Modrinth 版本固定](https://docker-minecraft-server.readthedocs.io/en/latest/mods-and-plugins/modrinth/)。
 
 ## 路线图
+
+第 0 步的自动验收与本节“阶段 0”的完整基线实验不同。当前可运行：
+
+```bash
+# 仓库根目录；仅首次安装依赖
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-test.txt
+
+# 首次会生成 docker/.env.test；本人同意 EULA 后再设置 EULA=TRUE
+scripts/test.sh step0             # 未同意 EULA 时会明确失败，按提示修改后重跑
+# 如同机有其他 checkout，在 .env.test 中设置独立的
+# MCD_TEST_PROJECT=mc-test-<名字> 和未占用的 MC_PORT
+
+scripts/test_config.sh pin       # 需要 sudo；CPU 12–15 及 SMT 兄弟固频
+scripts/test_config.sh check
+scripts/test.sh step0
+```
+
+当前 checkout 使用 `mc-test-kexu`、`127.0.0.1:25567`，资源限制来自 `docker/n100.env`：4 核、CPU 12–15、容器 6g、Java 堆 4G。其他 checkout 默认 `mc-test`、25566，不能共用已有的他人实例。Docker 组变更后需重新登录或刷新组身份。
+
+测试会先创建 A 世界及远处哨兵，再切换为同 seed 的 B 世界，验证出生区隔离、36 个 Chunky 目标、只读存档解码和重启持久化。成功后关闭容器并删除活动测试世界；失败时保留世界用于排查。JUnit、快照、各阶段日志、环境摘要和最终退出码保存于 `artifacts/step0-*`，不会提交。`--allow-skip`、筛选测试和 `MCD_KEEP_SERVER=1` 仅用于排查。
+
+读取器 API 和限制见 [analysis/mca/README.md](analysis/mca/README.md)。离线开发可运行 `.venv/bin/python -m pytest tests/step0/test_00_mca.py tests/step0/test_00_harness.py -q`。
 
 按 12 周估算，时间不同就按比例压缩。
 

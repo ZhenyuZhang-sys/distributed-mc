@@ -6,21 +6,23 @@ source "$(dirname "$0")/lib.sh"
 
 name="${1:-}"
 seed="${2:-424242}"
-[[ "$name" =~ ^[a-z0-9_-]{1,32}$ ]] || die "用法：scripts/new_world.sh <名字> [seed]；名字只能用小写字母、数字、_ 和 -"
-[[ "$name" != "world" ]] || die "不能叫 world，那是平时玩的存档。"
+validate_world_name "$name"
 [[ "$seed" =~ ^-?[0-9]+$ ]] || die "seed 必须是整数：$seed"
 
 prepare_heavy
+old_level="$(current_level)"
+[[ -z "$old_level" ]] || validate_world_name "$old_level"
 
 info "停止测试服务器"
-tc stop >/dev/null 2>&1 || true
+tc stop
+archive_test_logs
 
 # 删掉旧的测试世界和同名世界：测试服务器和 worker 各一份，路径都在 test-data* 下面。
-for old in "$(current_level)" "$name"; do
+for old in "$old_level" "$name"; do
   for dir in "$TEST_DATA" "$WORKER_DATA"; do
     if [[ -n "$old" && -d "$dir/$old" ]]; then
       info "删除旧世界 $dir/$old"
-      rm -rf -- "${dir:?}/$old"
+      delete_test_world "$old" "$dir"
     fi
   done
 done

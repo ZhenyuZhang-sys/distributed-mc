@@ -11,6 +11,8 @@
 
 ## 目录和分支
 
+下表是历史部署路径；当前 checkout 及分支归属以 `git worktree list` 为准，不照抄其他主机路径。本 checkout 为 `/home/kexu/distributed-mc`。
+
 | 目录 | 分支 | 用途 |
 | --- | --- | --- |
 | `/home/fish/mc` | `main` | 平时玩的服务器；合并在这里做 |
@@ -38,7 +40,7 @@
 开发机是 128 核、251GB（AMD EPYC 7542）。最终部署在 N100 小主机上（4 核 4 线程、8GB）。
 
 - **构建不限资源**：Gradle、反编译（`genSources`）用满整台机器。
-- **测试服务器和 benchmark 按 N100 限资源**：配置在 `docker/n100.env`（绑 8-11 这 4 个物理核、容器 6GB、Java 堆 4GB），`scripts/lib.sh` 的 `tc` 自动叠加。换核数用环境变量临时覆盖，比如 `MC_CPUS=2 MC_CPUSET=8-9`。
+- **测试服务器和 benchmark 按 N100 限资源**：配置在 `docker/n100.env`（绑 12-15 这 4 个物理核、容器 6GB、Java 堆 4GB），`scripts/lib.sh` 的 `tc` 自动叠加。换核数用环境变量临时覆盖，比如 `MC_CPUS=2 MC_CPUSET=12-13`。
 - **CPU 频率要固定**：跑测试或 benchmark 前先 `scripts/test_config.sh pin`（关睿频，测试用的核固定在 2.9GHz，要 sudo）；`check` 检查，`status` 查看，`unpin` 恢复。睿频是整机开关，pin 期间整台机器都不睿频，大构建前后可以先 `unpin`。没固定时，`tests/step0/test_04_limits.py` 会失败。
 - **同一时间只跑一个重活**：Gradle 构建、测试服务器、benchmark。脚本都会先拿 `/tmp/mc-donate-heavy.lock`，两个人的任务自动排队。构建虽然不限资源，也不要和 benchmark 同时跑，否则测出来的数被干扰。
 - **跑测试服务器前，先停平时玩的那台**：`docker compose --project-directory /home/fish/mc/docker stop`。脚本发现它还在跑就会退出，不会自动帮人关。要关它得问人。

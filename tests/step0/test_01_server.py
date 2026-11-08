@@ -1,10 +1,12 @@
 """第 0 步：服务器起得来，各组件都在。"""
 
 import re
+import json
 
 import pytest
 
-from mcd import wait_until
+from mcd import REPO_ROOT, wait_until
+from analysis.mca import iter_chunk_positions, read_chunk, read_world_metadata
 
 
 def test_healthy(server):
@@ -42,5 +44,26 @@ def test_chunky_help(server):
 
 
 def test_new_world_has_only_spawn_chunks(server):
-    # 要在 Chunky 生成之前检查，所以放在 01 里
-    pytest.skip("等 analysis/mca 存档读取器（kexu）：新世界里只有出生点附近的 chunk")
+    profile = json.loads((REPO_ROOT / "tests/fixtures/mca/spawn_profile.json").read_text())
+    snapshot = server.initial_snapshot
+    meta = read_world_metadata(snapshot)
+    assert meta.seed == server.seed == profile["seed"]
+    assert meta.data_version == profile["data_version"]
+    assert meta.level_name == server.level
+    assert server.world_dir.is_dir()
+    # 同 seed 的生成细节可能改变 SpawnY；边界使用本轮实际出生点。
+    assert server.rcon("gamerule spawnChunkRadius") == profile["spawn_chunk_radius"]
+    positions = list(iter_chunk_positions(snapshot))
+    assert positions, "初始世界为空，不能当作出生区检查通过"
+    sx, _, sz = meta.spawn
+    cx, cz = sx // 16, sz // 16
+    x0, z0, x1, z1 = profile["allowed_relative_bounds"]
+    outside = [(x, z) for x, z in positions if not (x0 <= x-cx <= x1 and z0 <= z-cz <= z1)]
+    assert not outside, f"出生区边界之外存在 chunk：{outside[:20]}"
+    spawn = read_chunk(snapshot, cx, cz)
+    assert spawn is not None and spawn.status == "minecraft:full"
+    assert spawn.y_min <= meta.spawn[1] < spawn.y_max_exclusive
+    sentinel = server.predecessor["sentinel"]
+    assert read_chunk(server.predecessor["snapshot"], *sentinel).status == "minecraft:full"
+    assert read_chunk(snapshot, *sentinel) is None, "新世界遗留了 A 的远处 chunk"
+    assert not (server.world_dir.parent / server.predecessor["level"]).exists()
