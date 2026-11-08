@@ -24,7 +24,7 @@ SECOND_COLUMNS = ('t_s', 'x', 'z', 'view_chunks', 'void_rate', 'void_rate_max', 
 CHUNK_COLUMNS = ('cx', 'cz', 'enter_ms', 'latency_ms', 'censored')
 # done.json 里原样带进 summary.json 的配置（第 7 步预留的两项没有 coordinator 时是 null）
 CONFIG_KEYS = ('run', 'player', 'mode', 'speed', 'y', 'start_x', 'start_z', 'view_distance', 'requested_view_distance',
-               'available_processors', 'coordinator_features', 'demand_lookahead', 'scan_ms_total')
+               'available_processors', 'coordinator_features', 'demand_lookahead', 'scan_ms_total', 'scan_every_ticks')
 
 
 def _finite(value):

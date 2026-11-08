@@ -22,6 +22,7 @@ import net.minecraft.world.phys.Vec3;
  * </ul>
  */
 public final class FlightRecorder {
+    static final int SCAN_EVERY_TICKS = 1;
     final String run;
     private final UUID playerId;
     private final String playerName;
@@ -164,6 +165,8 @@ public final class FlightRecorder {
         // 假玩家的请求视距（原版发包按 clamp(请求, 2, 服务器视距)；加载和生成不受影响，见计划 2.1）
         o.addProperty("requested_view_distance", requestedViewDistance);
         o.addProperty("available_processors", Runtime.getRuntime().availableProcessors());
+        // 每几个 tick 扫一次视野（现在每 tick；计划 5.1：开销超过 MSPT 的 2% 就改成 2），结果里必须带上
+        o.addProperty("scan_every_ticks", SCAN_EVERY_TICKS);
         JsonObject init = new JsonObject();
         init.addProperty("view", initial == null ? 0 : initial.view());
         init.addProperty("not_ready", initial == null ? 0 : initial.notReady());
