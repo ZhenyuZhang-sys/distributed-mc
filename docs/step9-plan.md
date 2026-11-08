@@ -8,7 +8,7 @@
 - **能测的**：客户端 mod 的所有机制——同意界面的开关、下载、起子进程、退出时停、`kill -9` 后 worker 自己退出、token、限速有没有生效（帧时间变长时 worker 是否暂停）。
 - **测不了的**：**Z（开 worker 后 p99 帧时间增加多少）**。llvmpipe 用 CPU 画图，帧时间由 CPU 决定，和真实显卡完全不同；worker 也抢同一批 CPU，测出来的数没有意义。
 - **降级**：Z 和"限速有用"的定量对比放到真实玩家的电脑上测（需要人：一台有显卡的 Windows 或 Linux 电脑，按第 6 节的脚本挂机 10 分钟）。写进 log.md 的"已跳过"等人决定。无头环境里只做定性检查：限速打开时，人为把帧时间拉长（见 9.6），worker 会暂停。
-- **客户端怎么自动连服务器**：1.21.1 支持启动参数 `--quickPlayMultiplayer host:port`，启动后直接进服务器，不用点界面。客户端用开发环境（Loom 的 `runClient` 产物，离线账号），所以**客户端测试用的服务器要离线模式**（只给这个测试用的 compose 叠加文件设 `ONLINE_MODE=FALSE`，绑 127.0.0.1）。
+- **客户端怎么跑**：测的是**正式发布的 jar**，不用 Loom 的开发环境。用无头启动器 HeadlessMC（版本固定，写进脚本）在 Docker 里启动真正的 1.21.1 客户端 + Fabric Loader + 正式的客户端 mod jar，离线账号。启动参数 `--quickPlayMultiplayer host:port` 让它启动后直接进服务器，不用点界面。离线账号进不了正版验证的服务器，所以**客户端测试用的服务器要离线模式**（只给这个测试用的 compose 叠加文件设 `ONLINE_MODE=FALSE`，绑 127.0.0.1）。
 - **资源**：客户端在 llvmpipe 下要吃好几个核。客户端容器绑节点 3 的 57-63（不用超线程兄弟核），和 donor 同一个节点、不碰服务器的节点 2。属于重活，按锁规则拿共享锁，kexu 的 benchmark 跑时等它。
 
 ## 1. 同意和下载
@@ -20,8 +20,12 @@
     - 会从 Mojang 官方地址下载 Minecraft 服务器（约 50MB），放在 `.minecraft/mc-donate/worker/`；
     - **Minecraft EULA**：显示链接（https://aka.ms/MinecraftEULA），要求玩家本人勾选"我已阅读并同意"才能继续。
 - 同意记录写进 `.minecraft/config/mc-donate.json`（`{"consent": true, "eulaAcceptedAt": "..."}`）。没同意之前，mod 什么都不做：不下载、不起进程、不连 coordinator。
-- **测试开关**：系统属性 `mcdonate.test.autoConsent=true` 跳过界面直接当作同意。**只在开发环境里生效**（`FabricLoader.getInstance().isDevelopmentEnvironment()` 为真，也就是 Loom 的 `runClient`）；正式发布的 jar 里这个属性被忽略，并在日志里打一行警告。单元测试覆盖"非开发环境下忽略"。
-- worker 的 `eula.txt` 由 mod 在玩家同意后写入（`eula=true`），因为玩家本人已经在界面上同意过 EULA。测试里是测试开关代替界面，这条写进测试说明。
+- **测试怎么同意**（不替人点同意，也不改正式 jar 的同意流程）：
+    - 正式 jar 里**没有任何"自动同意"的代码**，也不认任何跳过同意的系统属性。同意界面在玩家点"同意"时调用 `Consent.accept()`；界面打开时会查一个 Fabric 入口点 `mcdonate:consent_driver`，正式环境里没有任何 mod 提供它。
+    - 测试另外用一个**只给测试的小 mod** `mcdonate-client-testhooks`（独立的 Gradle 模块，jar 名 `mcdonate-client-testhooks-*.jar`，`fabric.mod.json` 的名字是 "mc-donate client TEST HOOKS — 只用于测试"）。它提供 `mcdonate:consent_driver`：界面一打开就替测试按下"同意"按钮（走和玩家点击完全一样的代码路径）。
+    - 测试时装**正式的客户端 mod jar + 测试小 mod**，所以测的就是正式 jar 的同意流程，只有"点同意"这一下被替代。
+    - `collectMods` 和发布产物里没有测试小 mod；测试小 mod 不会被打进正式 jar。
+- worker 的 `eula.txt` 由 mod 在玩家同意后写入（`eula=true`），因为玩家本人已经在界面上同意过 EULA。测试里是测试小 mod 代替点击，这条写进测试说明。
 
 ### 1.2 下载
 
@@ -33,7 +37,7 @@
 
 ## 2. worker 子进程
 
-- 用游戏自己的 Java（`System.getProperty("java.home")/bin/java`）起 worker：
+- 用游戏自己的 Java（`System.getProperty("java.home")/bin/java`）起 worker（DEV_PLAN：调低进程优先级、限制内存）：
     - 内存 `-Xmx2G`（可配置）；
     - 降低优先级：Linux/macOS 用 `nice -n 10`，Windows 用 `ProcessBuilder` 起 `cmd /c start /low /b`；
     - 系统属性：coordinator 地址、token（见第 3 节）、`mcdonate.parentPid=<游戏进程 PID>`。
@@ -78,15 +82,31 @@
 
 ### 9.1 原版客户端照常进服
 
-- [ ] 用协议层的无头客户端（mineflayer，Node.js，支持 1.21.1，在 Docker 里跑）连测试服务器：能进、能收到区块、服务器日志有"joined the game"，没有因为自定义包报错。这比起一个真的原版客户端便宜得多，而且判定的是"服务器不要求 mod"。
+- [ ] 用协议层的无头客户端 mineflayer 连测试服务器：
+    - **版本固定**：`package.json` 里写死 `"mineflayer": "4.23.0"`（这一版的 minecraft-data 支持 1.21.1；开工时先确认，不支持就换到支持的最早一版并写死），`package-lock.json` 一起提交。
+    - **在哪跑**：测试 compose 里加一个 `mineflayer` 服务（profile `client`），镜像 `node:20.18.1-bookworm-slim`（固定版本），脚本挂进去，`npm ci` 装依赖。
+    - **退路**：mineflayer 不支持 1.21.1 时，用 Python 写一个最小协议客户端（握手 + 登录 + 收第一批区块），只判断"能进服、不被踢"。
+    
+  判定：能进、能收到区块、服务器日志有"joined the game"，没有因为自定义包报错。这比起一个真的原版客户端便宜得多，而且判定的是"服务器不要求 mod"。
+
+### 9.0 测的是正式 jar
+
+- [ ] 正式的客户端 mod jar 里没有测试小 mod 的类、没有 `mcdonate:consent_driver` 的实现（解开 jar 检查类列表和 `fabric.mod.json`）；`build/` 的发布产物里没有 `mcdonate-client-testhooks`
+- [ ] 只装正式 jar（不装测试小 mod）进服挂 30 秒：同意界面在，没有被自动同意（同 9.2 的检查）
 
 ### 9.2 装了 mod 但没同意：不启动任何进程，不下载任何东西
 
-- [ ] 无头客户端（开发环境，不加 autoConsent）进服挂 30 秒：`.minecraft/mc-donate/` 不存在；客户端容器里没有 java 子进程；coordinator 的 `/donor status` 没有新 worker；客户端容器的网络记录里没有访问 piston-meta（容器只放行测试服务器和一个记录 DNS 请求的小代理）
+- [ ] 无头客户端（正式 jar，不装测试小 mod）进服挂 30 秒：`.minecraft/mc-donate/` 不存在；客户端容器里没有 java 子进程；coordinator 的 `/donor status` 没有新 worker；客户端容器的网络记录里没有访问 piston-meta（容器只放行测试服务器和一个记录 DNS 请求的小代理）
 
 ### 9.3 同意后启动，退出世界后停止
 
-- [ ] 加 `mcdonate.test.autoConsent=true` 进服：60 秒内 `/donor status` 出现这个玩家的 worker；退出世界（mod 的测试命令触发断开）后 15 秒内 worker 进程消失、注册表里没了
+- [ ] 正式 jar + 测试小 mod 进服：60 秒内 `/donor status` 出现这个玩家的 worker；退出世界（mod 的测试命令触发断开）后 15 秒内 worker 进程消失、注册表里没了
+
+### 9.3b worker 的资源限制确实生效
+
+- [ ] 从 `/proc/<worker pid>/stat` 读 nice 值（第 19 个字段），等于 10（比游戏进程高 10）
+- [ ] 从 `/proc/<worker pid>/cmdline` 读到 `-Xmx2G`（或测试里设的值）
+- Windows 上的低优先级在无头环境测不了，在 9.7 的真实电脑上顺带确认（任务管理器里 worker 的优先级是"低"）
 
 ### 9.4 `kill -9` 游戏进程
 
@@ -118,8 +138,14 @@ donor 只算地形阶段、矿和结构由服务器自己算，会改变导出�
 - **要等第 7 步之后的**：9.6 的限速和 7.3 的"按实测算力"有关（暂停的 donor 吞吐变成 0，第 7 步的算力估计要能处理），放在 7.3 之后。
 - **协议改动**（3.3）要 kexu 确认后才能动 `mcdonate.common.proto`。
 
-## 7. 风险
+## 7. 已知限制（写进报告）
 
+- **token 走明文 TCP**：coordinator 和 worker 之间没有加密，抓到包的人可以抢在玩家的 worker 之前用掉 token（一次性，被抢用后玩家的 worker 会被拒）。原型阶段接受。以后的工作：coordinator 和 worker 之间加 TLS。
+- **Z 没在这台机器上测**：见第 0 节和 9.7。
+
+## 8. 风险
+
+- **HeadlessMC 跑不起来**：退回 Loom 的开发环境跑客户端，但那时测的不是正式 jar，要在报告里写明，并保留 9.0 的检查（正式 jar 里没有测试代码）。
 - **llvmpipe 太慢**：1.21.1 在 llvmpipe 下可能只有几帧，进服都很慢。降级：把渲染距离设成 2、窗口 320×240；还不行就只用 mineflayer 测服务器端，客户端 mod 的机制（子进程、控制通道、token）在不渲染的情况下测（mod 的这些部分不依赖画面）。
 - **Windows 的低优先级**：无头环境只有 Linux，Windows 的 `start /low` 只能靠人工在 9.7 的真实电脑上顺带确认。
 - **下载依赖外网**：Mojang 和 Fabric 的地址偶尔慢，测试用缓存，只有一条测试真实下载。
