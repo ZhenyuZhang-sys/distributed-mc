@@ -30,12 +30,11 @@ subprojects {
     }
 
     // Loom 1.19 要求用 Java 25 跑 Gradle；编译产物按 Java 21 出，服务器用 Java 21 照常能跑。
-    // 反编译器默认要 4GB，这台机器给不起。
+    // 构建不限资源：反编译器给足内存，线程数用默认（所有核）。
     loom {
         decompilers {
             vineflower {
-                memory = 1280
-                maxThreads = 2
+                memory = 16384
             }
         }
     }

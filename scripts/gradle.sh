@@ -18,7 +18,6 @@ take_heavy_lock
 # 仓库挂在同一个路径，报错里的文件路径和本机一致。
 docker run --rm \
   --user "$(id -u):$(id -g)" \
-  --memory 3g \
   -e GRADLE_USER_HOME=/gradle-home \
   -v "$GRADLE_HOME_DIR:/gradle-home" \
   -v "$REPO_ROOT:$REPO_ROOT" \
