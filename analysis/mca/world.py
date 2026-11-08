@@ -51,12 +51,12 @@ def read_world_metadata(world_dir) -> WorldMetadata:
         raise CorruptChunkError(f"{root}/level.dat: {exc}") from exc
 
 
-def read_chunk(world_dir, cx: int, cz: int):
+def read_chunk(world_dir, cx: int, cz: int, *, incomplete: bool = False):
     root = world_path(world_dir)
     path = root / "region" / f"r.{cx // 32}.{cz // 32}.mca"
     try:
         tag = read_record(path, cx % 32 + 32 * (cz % 32))
-        return None if tag is None else decode_chunk(tag, cx, cz)
+        return None if tag is None else decode_chunk(tag, cx, cz, incomplete=incomplete)
     except FileNotFoundError:
         return None
     except MCAError as exc:

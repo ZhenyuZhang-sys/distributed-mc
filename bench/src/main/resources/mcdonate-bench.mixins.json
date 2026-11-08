@@ -6,7 +6,9 @@
     "ChunkStatusTasksMixin",
     "StageTimingMixin",
     "NoiseBasedChunkGeneratorMixin",
-    "ThreadedLevelLightEngineMixin"
+    "ThreadedLevelLightEngineMixin",
+    "ProtoChunkMixin",
+    "ChunkSerializerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

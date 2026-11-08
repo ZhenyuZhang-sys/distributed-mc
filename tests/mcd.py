@@ -25,16 +25,33 @@ _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _BAD_LINE = re.compile(r"/ERROR\]|\b[\w.$]*(?:Exception|Error)(?=[:\s]|$)|^\s*at [\w.$/]+\(")
 
 
+# 异常的堆栈部分：at 行、Caused by、Suppressed、"... 12 more"
+_STACK_LINE = re.compile(r"^\s*(?:at [\w.$/]+\(|Caused by:|Suppressed:|\.\.\. \d+ more)")
+
+
 def check_log_text(text: str) -> list[str]:
+    """日志里算出错、又不在白名单里的行。
+
+    白名单放过一个异常时，紧跟着的堆栈行（at、Caused by、... N more）属于同一个异常，也一起放过；
+    遇到第一条不是堆栈的行就结束。白名单以外的堆栈照旧报。
+    """
     allowed = [re.compile(line.strip()) for line in WHITELIST.read_text().splitlines()
                if line.strip() and not line.lstrip().startswith("#")]
     bad = []
+    in_allowed_block = False
     for original in text.splitlines():
         line = _ANSI.sub("", _COLOR.sub("", original))
         line = re.sub(r"^\d{4}-\d\d-\d\dT\S+ ", "", line)
         payload = re.sub(r"^(?:\[\d\d:\d\d:\d\d\] )?\[[^\]\n]+\]:\s*(?:\[STDERR\]:\s*)?", "", line)
-        if (_BAD_LINE.search(line) or _BAD_LINE.search(payload)) and not any(pattern.search(line) for pattern in allowed):
-            bad.append(original)
+        is_stack = bool(_STACK_LINE.match(payload))
+        if in_allowed_block and is_stack:
+            continue
+        in_allowed_block = False
+        if _BAD_LINE.search(line) or _BAD_LINE.search(payload):
+            if any(pattern.search(line) for pattern in allowed):
+                in_allowed_block = True
+            else:
+                bad.append(original)
     return bad
 
 
@@ -61,6 +78,14 @@ def limits() -> dict[str, str]:
             k, v = line.split("=", 1)
             out[k] = os.environ.get(k, v)
     return out
+
+
+def load_tile_file(path: Path) -> dict:
+    """读 worker 导出的 tile 文件，返回 {(x, z): chunk 的 NBT}。"""
+    import nbtlib
+
+    root = nbtlib.load(path)
+    return {(int(c["x"]), int(c["z"])): c["data"] for c in root["chunks"]}
 
 
 def wait_until(check, timeout: float, interval: float = 1.0, what: str = "条件"):
@@ -174,7 +199,9 @@ class Server:
         # 1.4.23 的 loop 将半径向上取整，偶数边长会多一行/列。
         # CSV 明确列出目标；square 仅提供覆盖这些坐标的外围边界。
         name = f"step0-{time.time_ns()}"
-        csv_path = TEST_DATA / "config/chunky" / f"{name}.csv"
+        # 坐标清单放进这台服务器自己的 Chunky 配置目录（worker 的在 test-data-worker）
+        data_root = WORKER_DATA if self.service == "worker" else TEST_DATA
+        csv_path = data_root / "config/chunky" / f"{name}.csv"
         csv_path.write_text("".join(f"{x},{z}\n" for x, z in expected))
         if self.artifact_dir:
             self.artifact_dir.mkdir(parents=True, exist_ok=True)

@@ -32,9 +32,11 @@ class Chunk:
     y_min: int = -64
     y_max_exclusive: int = 320
     air: BlockState = AIR
+    # 调用方显式要求读半成品（decode_chunk(..., incomplete=True)）时为真
+    incomplete_ok: bool = False
 
     def _require_full(self):
-        if self.status != "minecraft:full":
+        if self.status != "minecraft:full" and not self.incomplete_ok:
             raise IncompleteChunkError(f"chunk ({self.cx},{self.cz}) 状态 {self.status}，不能计算完整方块结果")
 
     def block_state(self, x: int, y: int, z: int) -> BlockState:
@@ -60,7 +62,12 @@ class Chunk:
         return self._hashes[1]
 
 
-def decode_chunk(tag, cx: int, cz: int) -> Chunk:
+def decode_chunk(tag, cx: int, cz: int, *, incomplete: bool = False) -> Chunk:
+    """解码一个 chunk 的 NBT。
+
+    incomplete=True：半成品也解码方块，可以取方块和 hash（第 3 步比较导出/导入的半成品用）。
+    半成品的方块不是最终结果（邻居的地物可能还会写进来），只能和同一阶段的数据比。
+    """
     try:
         version = int(tag["DataVersion"])
         if version != DATA_VERSION:
@@ -76,10 +83,11 @@ def decode_chunk(tag, cx: int, cz: int) -> Chunk:
         if status.removeprefix("minecraft:") not in known or not status.startswith("minecraft:"):
             raise ValueError(f"未知生成状态 {status}")
         sections = {}
-        if status != "minecraft:full":
+        if status != "minecraft:full" and not incomplete:
             return Chunk(cx, cz, status, version, MappingProxyType(sections))
         seen = set()
-        for section in tag["sections"]:
+        # 早期阶段的半成品可能还没有 section，按全空气处理
+        for section in (tag["sections"] if status == "minecraft:full" else tag.get("sections", [])):
             sy = int(section["Y"])
             if sy in seen:
                 raise ValueError(f"section Y={sy} 重复")
@@ -117,7 +125,7 @@ def decode_chunk(tag, cx: int, cz: int) -> Chunk:
                         raise ValueError(f"section {sy} palette 下标越界 {value}")
                     values.append(value)
             sections[sy] = palette, tuple(values)
-        return Chunk(cx, cz, status, version, MappingProxyType(sections))
+        return Chunk(cx, cz, status, version, MappingProxyType(sections), incomplete_ok=incomplete)
     except UnsupportedFormatError:
         raise
     except (KeyError, TypeError, ValueError, IndexError, OverflowError) as exc:

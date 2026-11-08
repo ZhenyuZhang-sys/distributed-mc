@@ -2,10 +2,6 @@
 # 平时玩的服务器不用这个文件，不装我们的 mod，也没有 worker。
 services:
   minecraft:
-    environment:
-      # 离线模式：Carpet 假玩家上线时不去 Mojang 查皮肤，避免网络超时让测试不稳定。
-      # 测试服务器只绑 127.0.0.1，外面连不进来。
-      ONLINE_MODE: "FALSE"
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。
@@ -24,7 +20,6 @@ services:
     cpus: ${WORKER_CPUS:-4}
     environment:
       MOTD: "mc-donate worker"
-      ONLINE_MODE: "FALSE"
     volumes: !override
       - ./test-data-worker:/data
       - ../build/mods-worker:/mods:ro

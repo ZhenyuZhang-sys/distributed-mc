@@ -9,6 +9,7 @@ import re
 
 import pytest
 
+from analysis.mca import read_chunk
 from mcd import wait_until
 
 CENTER = 5000
@@ -58,7 +59,9 @@ def test_stats_is_json(server):
 
 def test_reset(server):
     server.rcon("bench reset")
-    assert stats(server) == {"full_generated": 0, "full_loaded": 0, "noise": 0}
+    s = stats(server)
+    assert set(s) >= {"full_generated", "full_loaded", "full_resumed", "noise", "features"}, s
+    assert all(v == 0 for v in s.values()), s
 
 
 def test_generated_matches_chunky(generated):
@@ -86,5 +89,11 @@ def test_walking_out_generates(server, generated):
     server.rcon("player bot2 kill")
 
 
-def test_generated_matches_save(generated):
-    pytest.skip("等 analysis/mca 存档读取器（kexu）：full_generated 等于存档里新增的 minecraft:full chunk 数")
+def test_generated_matches_save(server, generated, tmp_path_factory):
+    # Chunky 区域里的 chunk 在存档里全是成品，个数等于 full_generated
+    count, s = generated
+    snap = server.snapshot(tmp_path_factory.mktemp("counts") / "snapshot")
+    lo, hi = (CENTER - RADIUS) // 16, (CENTER + RADIUS) // 16
+    full = sum(1 for x in range(lo, hi + 1) for z in range(lo, hi + 1)
+               if (c := read_chunk(snap, x, z)) is not None and c.status == "minecraft:full")
+    assert full == count == s["full_generated"], (full, count, s)

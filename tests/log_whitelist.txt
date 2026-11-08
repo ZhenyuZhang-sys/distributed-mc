@@ -1,7 +1,7 @@
 # 已知无害的日志行，每行一个正则表达式。
 # 加之前先确认它真的无害，并在上面写一行注释说明原因。
 
-# 在线模式下 Carpet 假玩家上线时，服务器去 Mojang 会话服务器查它的皮肤资料。
-# 网络慢会超时，只影响皮肤显示，和生成无关。
+# Carpet 假玩家上线时，服务器去 Mojang 会话服务器查它的皮肤资料（离线模式也会查）。
+# 网络慢会超时，只影响皮肤显示，和生成无关。后面跟着的堆栈行由 mcd.check_log_text 一起放过。
 Failed to read from https://sessionserver\.mojang\.com/session/minecraft/profile/.* due to Read timed out
 ^Caused by: java\.net\.SocketTimeoutException: Read timed out$

@@ -65,7 +65,3 @@ def test_refuses_tile_with_full_chunks(worker):
         assert not (EXCHANGE / "tile_-20_20.nbt").exists()
     finally:
         worker.rcon("player donorbot kill")
-
-
-def test_same_tile_identical_across_worlds():
-    pytest.skip("等 analysis/mca 存档读取器（kexu）：同一个 tile 在两个全新 worker 世界里导出，tile 内逐列 hash 一致")

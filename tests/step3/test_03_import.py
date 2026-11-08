@@ -9,7 +9,9 @@ import json
 
 import pytest
 
-from mcd import EXCHANGE, wait_until
+from analysis.mca import read_chunk
+from analysis.mca.chunk import decode_chunk
+from mcd import EXCHANGE, load_tile_file, wait_until
 
 # 两个都远离出生点、互不相邻
 TILE = (30, 30)          # 正常导入
@@ -58,6 +60,19 @@ def test_tile_chunk_status_in_save(server, imported):
     assert peek(server, TILE[0] * 4 - 2, TILE[1] * 4) == "none"  # 圈外没写
 
 
+def test_save_matches_export(server, imported, tmp_path_factory):
+    # 存档里的 36 个 chunk 和导出文件逐列一致：写入没丢东西
+    exp, _ = imported
+    snap = server.snapshot(tmp_path_factory.mktemp("import") / "snapshot")
+    exported = load_tile_file(EXCHANGE / exp["file"])
+    assert len(exported) == 36
+    for (x, z), tag in exported.items():
+        saved = read_chunk(snap, x, z, incomplete=True)
+        assert saved is not None, (x, z)
+        assert saved.status == str(tag["Status"]), (x, z)
+        assert saved.column_hashes() == decode_chunk(tag, x, z, incomplete=True).column_hashes(), (x, z)
+
+
 def test_import_twice_skips(server, imported):
     exp, _ = imported
     res = json.loads(import_(server, exp["file"]))
@@ -97,5 +112,3 @@ def test_rejects_missing_file(server):
     assert "refused" in out.lower(), out
 
 
-def test_save_matches_export():
-    pytest.skip("等 analysis/mca 存档读取器（kexu）：导入后存档里 tile 内的 chunk 和导出文件逐列 hash 完全一致")

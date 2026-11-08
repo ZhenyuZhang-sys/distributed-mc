@@ -27,7 +27,7 @@ if chunk is not None and chunk.status == "minecraft:full":
 - 压缩标识支持 gzip（1）、zlib（2）、无压缩（3）。LZ4、未知标识和外部 `.mcc` 明确报 `UnsupportedFormatError`。
 - 方块使用 section Y、palette 和不跨 long 的位打包；至少 4 bit，NBT 有符号 long 转无符号后解码。单状态省略 data，缺省空气 section 正规化为 `minecraft:air`。
 - 合法的缺失 region/空槽位返回 `None`；无效世界根目录报 `FileNotFoundError`。损坏索引报 `CorruptRegionError`，损坏压缩/NBT/方块数据报 `CorruptChunkError`，这些都不会变成“区块不存在”。底层文件权限/I/O 错误向上抛出。
-- 非 full chunk 保留坐标、状态和版本；取方块或 hash 报 `IncompleteChunkError`。未知版本或非默认高度报 `UnsupportedFormatError`。
+- 非 full chunk 保留坐标、状态和版本；取方块或 hash 报 `IncompleteChunkError`。显式传 `incomplete=True`（`read_chunk`、`decode_chunk` 都支持）时也解码半成品的方块，用于比较同一阶段的半成品（第 3 步的导出/导入）；半成品的方块不是最终结果。未知版本或非默认高度报 `UnsupportedFormatError`。
 - 首版不解码 biome，不比较实体、方块实体、光照、tick 或高度图；这些需另增接口。不能把方块 hash 相同解释成全部存档数据相同。
 
 ## Hash schema
