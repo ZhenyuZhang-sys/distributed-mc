@@ -78,7 +78,8 @@ docker compose exec -T minecraft rcon-cli <命令>  # 控制台命令，不带 /
 
 - `main`：只放测试通过的代码。
 - `fish`、`kexu`：各自的开发分支。
-- 开工前先同步：`git rebase main`。仓库没有远程，三个 worktree（`/home/fish/mc`、`mc-fish`、`mc-kexu`）共用一个本地仓库。
-- 一个功能做完、`scripts/test.sh` 全部通过后，再合进 `main`。合并前先 rebase 到最新的 `main`。
+- 远程仓库在 GitHub（`origin`），三个分支都推到上面。
+- 开工前先同步：`git pull origin <自己的分支>`，再 `git merge origin/main`。**用 merge，不用 rebase**：rebase 会改写已经推上去的提交，只能强推。
+- 一个功能做完、`scripts/test.sh` 全部通过后，再合进 `main`：先把最新的 `main` merge 进自己的分支，测试再过一遍，然后 `main` 上 `git merge --ff-only <自己的分支>` 并推送。
 - 尽量分开改：同一步里一人一个模块，避免同时改同一个文件。
 - commit 信息用中文，一句话说清改了什么。

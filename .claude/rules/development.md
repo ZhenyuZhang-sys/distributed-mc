@@ -2,12 +2,12 @@
 
 ## 每个小功能的流程
 
-1. **同步**：`git rebase main`，拿到对方已经合进 `main` 的东西。仓库没有远程，三个目录共用一个本地仓库，不用 fetch。
+1. **同步**：`git fetch origin`，再 `git merge origin/main`，拿到对方已经合进 `main` 的东西。不用 rebase：分支已经推到 GitHub，rebase 后只能强推。
 2. **先写测试**：先写"怎么算做对了"。跑一下，确认它失败，因为功能还没写。
 3. **写功能**：写到测试通过。
 4. **全部重跑**：`scripts/test.sh stepN`，之前所有步骤的测试也要通过。
 5. **提交**：commit 信息用中文，一句话说清改了什么。
-6. **合并**：整块功能做完、测试全过，先 `git rebase main`，再去 `/home/fish/mc` 里 `git merge --ff-only fish`（或 `kexu`）。
+6. **合并**：整块功能做完，先 `git merge origin/main` 并重跑测试，全过后在 `main` 上 `git merge --ff-only fish`（或 `kexu`），推送 `main`。
 
 ## 目录和分支
 
