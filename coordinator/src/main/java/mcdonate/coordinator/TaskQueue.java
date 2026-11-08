@@ -64,6 +64,10 @@ public final class TaskQueue {
         long orphanSince;
         /** 导入被接受时记下来自哪个 donor 世界（按领地派任务用）；整个丢弃的是 null。 */
         String doneWorld;
+        /** 派出时间（对冲用）。 */
+        long leasedAt;
+        /** 对冲撤回过：之后回来的结果不导入，算浪费。 */
+        boolean hedged;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -176,6 +180,41 @@ public final class TaskQueue {
         return true;
     }
 
+    private int hedgeCancelled;
+    private int hedgeWasted;
+
+    /**
+     * 7.4 对冲：把一个租出去的任务撤回，交给服务器（标 DROPPED）。返回原来租着它的 worker（要给它发 cancel），
+     * 不是 LEASED 返回 -1。之后这个任务的结果回来时不导入，算浪费。
+     */
+    public synchronized int hedgeToServer(long taskId) {
+        Task t = tasks.get(taskId);
+        if (t == null || t.state != State.LEASED) {
+            return -1;
+        }
+        int worker = t.worker;
+        leases.remove(worker, taskId);
+        t.state = State.DROPPED;
+        t.worker = -1;
+        t.hedged = true;
+        hedgeCancelled++;
+        return worker;
+    }
+
+    /** 派出时间（对冲判断用）；不是 LEASED 返回 -1。 */
+    public synchronized long leasedAt(long taskId) {
+        Task t = tasks.get(taskId);
+        return t != null && t.state == State.LEASED ? t.leasedAt : -1;
+    }
+
+    public synchronized int hedgeCancelled() {
+        return hedgeCancelled;
+    }
+
+    public synchronized int hedgeWasted() {
+        return hedgeWasted;
+    }
+
     /** 这个 tile 的任务编号，没有返回 -1。 */
     public synchronized long find(int tx, int tz) {
         return byTile.getOrDefault(tileKey(tx, tz), -1L);
@@ -236,6 +275,7 @@ public final class TaskQueue {
             }
         }
         t.state = State.LEASED;
+        t.leasedAt = clock.getAsLong();
         t.worker = worker;
         t.deadline = clock.getAsLong() + leaseMs;
         leases.put(worker, t.id);
@@ -324,6 +364,13 @@ public final class TaskQueue {
         }
         // 这个 worker 交了结果，不管是不是它的，它都空出来了
         leases.remove(worker, taskId);
+        if (t.hedged) {
+            // 对冲撤回后才回来：服务器已经接手，不导入，算浪费
+            if (ok) {
+                hedgeWasted++;
+            }
+            return discard("任务 " + taskId + " 已对冲交给服务器，结果作废");
+        }
         switch (t.state) {
             case DONE:
                 return discard("重复结果：任务 " + taskId + " 已经做完");
