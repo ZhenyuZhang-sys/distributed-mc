@@ -10,6 +10,7 @@ import pytest
 
 from analysis.mca import read_chunk
 from analysis.mca.decor import VANILLA_DECOR_MAX, Diff, compare_chunks, relative_check
+from analysis.seam import ratios, ring_density
 from mcd import SCRIPTS, compose, run, wait_until, worker_id
 
 # 跑一遍要几分钟，--quick 时不跑
@@ -122,6 +123,12 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
         (server.artifact_dir / "e2e-diff.json").write_text(
             json.dumps({"by_category": summary, "imported_decor_rate": imported.decor_rate,
                         "center_diff": center_diff}, indent=2) + "\n")
+    # 只记录不判：导入边界附近按圈的差异密度（analysis/seam.py）
+    seam = ring_density(a, b, GRID, x0, z0, size)
+    print("按圈的差异密度", json.dumps(seam), "第 1 圈 / 第 2 圈", ratios(seam))
+    if server.artifact_dir:
+        (server.artifact_dir / "seam-density.json").write_text(
+            json.dumps({"density": seam, "ratio_ring1": ratios(seam)}, indent=2) + "\n")
     assert not center_diff, f"tile 中间的 chunk 和 worker 不一致，导入丢了东西：{center_diff}"
     assert all(v.strict == 0 for v in acc.values()), summary
     assert all(v.decor_rate <= SANITY for v in acc.values()), summary

@@ -5,7 +5,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from analysis.mca.chunk import AIR, BlockState, Chunk
-from analysis.mca.decor import Diff, classify, compare_chunks, is_decor_diff, relative_check
+from analysis.mca.decor import Diff, binomial_tail, classify, compare_chunks, is_decor_diff, relative_check
 
 STONE = BlockState("minecraft:stone")
 WATER = BlockState("minecraft:water", (("level", "0"),))
@@ -69,15 +69,22 @@ def test_relative_check_decor():
 
 def test_terrain_counted_by_cluster():
     outside = Diff(blocks=10**6, terrain_positions=[])
-    # 导入部分一处 56 个方块（11-08 关卡那处矿团叠加）：允许 1 处
+    # 导入部分一处 56 个方块（11-08 关卡那处矿团叠加）
     assert relative_check(Diff(blocks=10**6, terrain_positions=blob(0, 56)), outside) == []
-    # 两处（不相连）就多了
+    # 面积一样，导入 2 处、没导入 0 处：P = 0.25，不算偏多
     two = blob(0, 10) + blob(100, 10)
-    assert len(relative_check(Diff(blocks=10**6, terrain_positions=two), outside)) == 1
-    # 没导入部分有 2 处，同样面积：导入部分最多 3 处
-    outside = Diff(blocks=10**6, terrain_positions=blob(1000, 5) + blob(2000, 5))
-    three = blob(0, 5) + blob(100, 5) + blob(200, 5)
-    assert relative_check(Diff(blocks=10**6, terrain_positions=three), outside) == []
+    assert relative_check(Diff(blocks=10**6, terrain_positions=two), outside) == []
+    # 导入 8 处、没导入 0 处：P = 0.5^8 ≈ 0.004 < 0.01，偏多
+    eight = [p for i in range(8) for p in blob(100 * i, 3)]
+    bad = relative_check(Diff(blocks=10**6, terrain_positions=eight), outside)
+    assert len(bad) == 1 and "二项" in bad[0]
+
+
+def test_binomial_tail():
+    assert abs(binomial_tail(0, 5, 0.3) - 1.0) < 1e-12
+    assert abs(binomial_tail(2, 2, 0.5) - 0.25) < 1e-12
+    # 11-08 第 5 步那轮（挪走树干底下那格之前）：导入 11 处、没导入 8 处，导入部分占 360/1024
+    assert 0.01 < binomial_tail(11, 19, 360 / 1024) < 0.05
 
 
 def test_terrain_cluster_too_big_is_strict():

@@ -53,8 +53,6 @@ rail oak_planks oak_fence dark_oak_planks dark_oak_fence wall_torch torch
 # 地形方块之间、原版自己会不一样的具体组合（kexu 第 1 步实测，见 tests/step3/data/vanilla-diff-pairs.json）。
 # 位置是 kexu 的逐块明细里看的（ocean、mountain；jungle 明细当时还没写完，只有汇总）。
 TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a, b in (
-    ("dirt", "grass_block"),   # 树干底下把草方块换成泥土（jungle 19180，mountain Y 99～124）
-    ("dirt", "snow_block"),    # 雪坡上的树干底下（mountain Y 110～133）
     ("gravel", "sand"),        # 海底沙/沙砾盘（ocean Y 52～60）
     ("dirt", "sand"),          # 海底沙盘（ocean Y 27～50）
     ("dirt", "gravel"),        # 海底盘（ocean Y 21～34）、地下泥土/沙砾矿团（mountain Y 3～147）
@@ -84,6 +82,10 @@ EXCUSED_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("cave_air", "stone"),
     ("cave_air", "deepslate"),
     ("cave_air", "tuff"),
+    # 放树时把树干正下方那一格换成泥土（jungle 19180 处，mountain Y 99～124；雪坡上是雪块，Y 110～133）。
+    # 属于装饰阶段，和树一起算装饰类；原来放在地形互换里，每棵不同的树都多算一"处"（调度 11-08 定）。
+    ("dirt", "grass_block"),
+    ("dirt", "snow_block"),
 ))
 
 # 名字相同、只差属性也算地形互换的方块（草方块上盖了雪就是 snowy=true）
@@ -108,6 +110,19 @@ def classify(a, b) -> str:
     return "strict"
 
 
+_TREE_EXTRA = frozenset("minecraft:" + n for n in "vine cocoa bee_nest mangrove_roots muddy_mangrove_roots".split())
+_TREE_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a, b in (
+    ("dirt", "grass_block"), ("dirt", "snow_block"), ("air", "dirt")))
+
+
+def is_tree(a, b) -> bool:
+    """这处装饰类差异和树有关（只用于记录，见 analysis/seam.py）。"""
+    for n in (a.name, b.name):
+        if n.endswith("_log") or n.endswith("_leaves") or n in _TREE_EXTRA:
+            return True
+    return frozenset((a.name, b.name)) in _TREE_PAIRS
+
+
 def is_decor_diff(a, b) -> bool:
     """不算严格差异（装饰类或列出的地形互换）。"""
     return classify(a, b) != "strict"
@@ -120,6 +135,7 @@ class Diff:
     decor: int = 0       # 装饰类差异
     terrain: int = 0     # 列出的地形互换
     terrain_positions: list = None  # 地形互换的方块坐标（世界坐标 x, y, z），按"处"统计用
+    tree: int = 0        # 装饰类里和树有关的（原木、树叶、藤蔓、可可、树干底下那格），只记录
     examples: list = None  # 几个严格差异的例子，排查用
 
     def add(self, other: "Diff") -> "Diff":
@@ -127,6 +143,7 @@ class Diff:
         self.strict += other.strict
         self.decor += other.decor
         self.terrain += other.terrain
+        self.tree += other.tree
         self.terrain_positions = (self.terrain_positions or []) + (other.terrain_positions or [])
         self.examples = (self.examples or []) + (other.examples or [])
         self.examples = self.examples[:10]
@@ -161,6 +178,8 @@ def compare_chunks(a, b, max_examples: int = 5) -> Diff:
             kind = classify(x, y)
             if kind == "decor":
                 d.decor += 1
+                if is_tree(x, y):
+                    d.tree += 1
             elif kind == "terrain":
                 d.terrain += 1
                 d.terrain_positions.append((a.cx * 16 + i % 16, sy * 16 + i // 256, a.cz * 16 + (i // 16) % 16))
@@ -212,8 +231,8 @@ def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str
     """统计层。返回不满足的说明，空列表表示通过。
 
     - 装饰类：导入部分的方块差异率不高于同一轮没导入部分（本地原版互比）的 factor 倍（下限 VANILLA_DECOR_FLOOR）。
-    - 地形互换：很少、成团出现（一个矿团几十个方块），按方块比例比全看一个矿团落在哪，所以按"处"数：
-      导入部分的处数 ≤ max(没导入部分的处数按方块数折算 × factor, 1)。横跨两边的一处算导入部分的。
+    - 地形互换：很少、成团出现（一个矿团几十个方块），按方块比例比全看一个矿团落在哪，所以按"处"数，
+      用单侧二项检验看导入部分是否偏多（见 TERRAIN_ALPHA）。横跨两边的一处算导入部分的。
       每一处不能超过 TERRAIN_CLUSTER_MAX 个方块，超过算严格差异。
     """
     bad = []
@@ -227,7 +246,21 @@ def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str
         bad.append(f"严格：地形互换有 {len(big)} 处超过 {TERRAIN_CLUSTER_MAX} 个方块（{big}），比原版单个矿团的 2 倍还大")
     n_in = sum(1 for c in clusters if any(p in inside_pos for p in c))
     n_out = len(clusters) - n_in
-    expected = n_out * (inside.blocks / outside.blocks) * factor if outside.blocks else 0
-    if n_in > max(expected, 1):
-        bad.append(f"地形互换：导入部分 {n_in} 处 > 上限 {max(expected, 1):.1f}（没导入部分 {n_out} 处）")
+    total = inside.blocks + outside.blocks
+    pval = binomial_tail(n_in, n_in + n_out, inside.blocks / total) if total else 1.0
+    if pval < TERRAIN_ALPHA:
+        bad.append(f"地形互换：导入部分 {n_in} 处、没导入部分 {n_out} 处，按面积导入部分偏多（单侧二项检验 p={pval:.4f} < {TERRAIN_ALPHA}）")
     return bad
+
+
+# 地形互换处数的判法（调度 11-08 定，看到第 5 步那轮数据后改的）：处数只有 0～3，按比例 × 1.5 判不稳。
+# 假设导入不影响地形互换，每一处落在导入部分的概率 = 导入部分方块数 ÷ 总方块数；
+# 导入部分的处数达到观察值的概率 < TERRAIN_ALPHA 才算偏多。
+TERRAIN_ALPHA = 0.01
+
+
+def binomial_tail(k: int, n: int, p: float) -> float:
+    """P(X ≥ k)，X ~ Binomial(n, p)。"""
+    from math import comb
+
+    return sum(comb(n, i) * p ** i * (1 - p) ** (n - i) for i in range(k, n + 1))

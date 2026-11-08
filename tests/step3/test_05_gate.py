@@ -21,6 +21,7 @@ import pytest
 
 from analysis.mca import read_chunk
 from analysis.mca.decor import Diff, compare_chunks, relative_check
+from analysis.seam import ratios, ring_density
 
 TILE = (45, -45)   # 远离出生点和其他测试的 tile
 MARGIN = 3         # tile 外面比较几圈
@@ -74,6 +75,12 @@ def gate(server, worker, tmp_path_factory):
                  for r, d in result["rings"].items()}
         (server.artifact_dir / "gate-diff.json").write_text(
             json.dumps({"rings": rings, "details": result["details"]}, indent=2) + "\n")
+    # 只记录不判：导入边界附近按圈的差异密度（analysis/seam.py）
+    seam = ring_density(base / "server", base / "worker", [TILE], x0, z0, size)
+    print("按圈的差异密度", json.dumps(seam), "第 1 圈 / 第 2 圈", ratios(seam))
+    if server.artifact_dir:
+        (server.artifact_dir / "seam-density.json").write_text(
+            json.dumps({"density": seam, "ratio_ring1": ratios(seam)}, indent=2) + "\n")
     return result, base
 
 
