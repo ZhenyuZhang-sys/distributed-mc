@@ -9,6 +9,7 @@ import json
 
 import pytest
 
+from analysis.mca.decor import Diff, compare_chunks
 from analysis.mca import read_chunk
 from analysis.mca.chunk import decode_chunk
 from mcd import donor_imports, EXCHANGE, compose, load_tile_file, run, wait_until, worker_id
@@ -200,12 +201,18 @@ def test_forced_cross_donor_seam_measured(server, worker, worker2, tmp_path_fact
     a, b = server.snapshot(base / "server"), worker.snapshot(base / "worker")
     seam_x = [g[0] * 4 + 2, g[0] * 4 + 3, h[0] * 4, h[0] * 4 + 1]  # 接缝两侧各 2 列 chunk
     diff = total = 0
+    blocks = Diff(examples=[])
     for x in seam_x:
         for z in range(g[1] * 4, g[1] * 4 + 4):
-            diff += sum(p != q for p, q in zip(read_chunk(a, x, z).column_hashes(), read_chunk(b, x, z).column_hashes()))
+            ca, cb = read_chunk(a, x, z), read_chunk(b, x, z)
+            diff += sum(p != q for p, q in zip(ca.column_hashes(), cb.column_hashes()))
             total += 256
+            blocks.add(compare_chunks(ca, cb))
     rate = diff / total
-    print(f"强制跨 donor 接缝两侧 2 个 chunk 内的差异列比例：{rate:.2%}（已知限制，只记录）")
+    print(f"强制跨 donor 接缝两侧 2 个 chunk 内的差异列比例：{rate:.2%}；严格差异 {blocks.strict}，"
+          f"装饰类差异率 {blocks.decor_rate:.4%}（已知限制，只记录）")
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
-        (server.artifact_dir / "forced-seam.json").write_text(json.dumps({"seam_diff_rate": rate}) + "\n")
+        (server.artifact_dir / "forced-seam.json").write_text(json.dumps(
+            {"seam_diff_rate": rate, "strict": blocks.strict, "decor_rate": blocks.decor_rate,
+             "examples": blocks.examples}) + "\n")

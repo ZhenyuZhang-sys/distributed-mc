@@ -2,7 +2,8 @@
 
 - 打开找需求，2 个 donor；1 个旁观假玩家从 (0, 30000) 沿 +x 每 0.5 秒前进 7 格（14 格/秒，骑马的速度），走 30 分钟。
 - 跑完：存档里每个 chunk 都读得出来；抽 1% 的 chunk 在全新世界（同 seed）里单独生成作对照，
-  按"导入的 tile / 服务器生成的"分开比，导入的不高于服务器生成的（同 5.4 的相对判断）；记录指标。
+  按"导入的 tile / 服务器生成的"分开逐块比（analysis/mca/decor.py 两层）：严格层两边都是 0，
+  导入的装饰类差异率不高于服务器生成的 1.5 倍（同 5.4）；记录指标。
 - 会用 new_world.sh 把测试服务器换成全新世界做对照，所以放在第 6 步最后。
 - 2 核再跑一次：MC_CPUS=2 MC_CPUSET=32-33 scripts/test.sh step6 --slow -k soak
 """
@@ -14,6 +15,7 @@ import time
 import pytest
 
 from analysis.mca import iter_chunk_positions, read_chunk
+from analysis.mca.decor import VANILLA_DECOR_FLOOR, Diff, compare_chunks
 from mcd import SCRIPTS, donor_imports, run, worker_id
 
 START = (0, 30000)
@@ -60,13 +62,11 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     server.level = level
     server.chunky_list(sample)
     control = server.snapshot(base / "control")
-    acc = {"imported": [0, 0], "server": [0, 0]}
+    acc = {"imported": Diff(examples=[]), "server": Diff(examples=[])}
     for p in sample:
-        a, b = read_chunk(snap, *p), read_chunk(control, *p)
-        c = acc["imported" if p in imported else "server"]
-        c[0] += sum(u != v for u, v in zip(a.column_hashes(), b.column_hashes()))
-        c[1] += 256
-    rate = {k: (v[0] / v[1] if v[1] else None) for k, v in acc.items()}
+        acc["imported" if p in imported else "server"].add(compare_chunks(read_chunk(snap, *p), read_chunk(control, *p)))
+    rate = {k: (v.decor_rate if v.blocks else None) for k, v in acc.items()}
+    strict = {k: v.strict for k, v in acc.items()}
 
     # 3. 记录
     resumed, generated = stats["full_resumed"], stats["full_generated"]
@@ -78,11 +78,13 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
         # 来晚了：tile 回来时区域已经落进服务器自己占着的范围，只能丢弃
         "late_ratio": status["discarded"]["late"] / max(1, status["accepted"] + sum(status["discarded"].values())),
         "discarded": status["discarded"],
-        "imports_accepted": len(imported_tiles), "sample": len(sample), "diff_rate": rate,
+        "imports_accepted": len(imported_tiles), "sample": len(sample), "decor_rate": rate, "strict": strict,
+        "strict_examples": acc["imported"].examples + acc["server"].examples,
     }
     print(json.dumps(report, ensure_ascii=False))
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
         (server.artifact_dir / "soak.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    assert all(v == 0 for v in strict.values()), report
     if rate["imported"] is not None and rate["server"] is not None:
-        assert rate["imported"] <= max(rate["server"] * 1.5, 0.005), rate
+        assert rate["imported"] <= max(rate["server"] * 1.5, VANILLA_DECOR_FLOOR), rate

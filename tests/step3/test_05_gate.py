@@ -5,10 +5,12 @@
    tile 由服务器接着做完，周围由服务器自己生成，边界在这里接上。
 3. 对照：worker 也用 Chunky 生成同一块 10×10。worker 是同一个 seed 的另一个全新世界，
    跑的就是原版生成（导出不改方块），它就是原版的标准答案。
-4. 两边拍快照，100 个 chunk 逐列比较，按圈统计差异。
+4. 两边拍快照，100 个 chunk 逐块比较，按圈统计差异。
 
-原版不确定率要等第 1 步（kexu）测出来。拿到之前用临时阈值（见 ALLOWED_DIFF），
-另外检查"边界不比外圈差"：外圈和导入无关，它的差异就是这一轮原版自己的噪声。
+比较分两层（analysis/mca/decor.py，kexu 第 1 步的原版不确定率之后定的）：
+- 严格层：地物放的"装饰类"方块（树、草、矿团、sculk、海带……）不算，其余方块必须逐块一致，差异为 0。
+  外圈和导入无关，是两个原版世界互比：它在严格层上也必须是 0，否则说明装饰类清单不全。
+- 统计层：tile 和边界的装饰类方块差异率，不高于外圈（同一轮、同一块地方的原版互比）的 1.5 倍。
 差异明细写进证据目录的 gate-diff.json。
 """
 
@@ -17,19 +19,13 @@ import json
 import pytest
 
 from analysis.mca import read_chunk
+from analysis.mca.decor import VANILLA_DECOR_FLOOR, Diff, compare_chunks
 
 TILE = (45, -45)   # 远离出生点和其他测试的 tile
 MARGIN = 3         # tile 外面比较几圈
 
-# 允许的差异列比例。临时值（11-08）：第 1 步的原版不确定率出来后收紧。
-# 第一次实测：tile 0%，边界 0.68%，第 2 圈 1.9%，第 3 圈 1.6%。
-# 第二次：tile 0%，边界 1.09%，第 2 圈 4.4%，第 3 圈 2.6%。
-# 差异几乎全是地下矿团（安山岩/闪长岩/花岗岩/煤矿）：相邻 chunk 放地物的先后不同，
-# 重叠处谁后放谁覆盖，是原版自己的不确定性；离导入区域越远差异反而越多。
-# 只用来判 tile 和边界：外圈和导入无关，每轮噪声在 2～4% 之间跳，只当基准。
-ALLOWED_DIFF = 0.03
-# 外圈只粗查，防止明显坏掉
-OUTSIDE_SANITY = 0.10
+# 统计层的余量：装饰类差异率不高于外圈的这么多倍
+DECOR_FACTOR = 1.5
 
 
 def area():
@@ -44,7 +40,7 @@ def ring(x, z):
 
 
 def compare(a_root, b_root) -> dict:
-    """逐列比较两个快照里的这块区域，按圈返回 {圈: [不同的列数, 总列数]}，以及不同的 chunk 明细。"""
+    """逐块比较两个快照里的这块区域，按圈返回 {圈: Diff}，以及有严格差异或装饰差异的 chunk 明细。"""
     x0, z0, size = area()
     by_ring, details = {}, []
     for x in range(x0, x0 + size):
@@ -52,12 +48,11 @@ def compare(a_root, b_root) -> dict:
             a, b = read_chunk(a_root, x, z), read_chunk(b_root, x, z)
             assert a is not None and b is not None, (x, z)
             assert a.status == b.status == "minecraft:full", (x, z, a.status, b.status)
-            diff = sum(1 for p, q in zip(a.column_hashes(), b.column_hashes()) if p != q)
-            r = by_ring.setdefault(ring(x, z), [0, 0])
-            r[0] += diff
-            r[1] += 256
-            if diff:
-                details.append({"chunk": [x, z], "ring": ring(x, z), "columns": diff})
+            d = compare_chunks(a, b)
+            by_ring.setdefault(ring(x, z), Diff(examples=[])).add(d)
+            if d.strict or d.decor:
+                details.append({"chunk": [x, z], "ring": ring(x, z), "strict": d.strict, "decor": d.decor,
+                                "examples": d.examples})
     return {"rings": by_ring, "details": details}
 
 
@@ -74,45 +69,54 @@ def gate(server, worker, tmp_path_factory):
     result = compare(server.snapshot(base / "server"), worker.snapshot(base / "worker"))
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
-        (server.artifact_dir / "gate-diff.json").write_text(json.dumps(result, indent=2) + "\n")
+        rings = {r: {"blocks": d.blocks, "strict": d.strict, "decor": d.decor} for r, d in result["rings"].items()}
+        (server.artifact_dir / "gate-diff.json").write_text(
+            json.dumps({"rings": rings, "details": result["details"]}, indent=2) + "\n")
     return result, base
 
 
-def _rate(rings, which) -> float:
-    diff = sum(rings[r][0] for r in which if r in rings)
-    total = sum(rings[r][1] for r in which if r in rings)
-    return diff / total
+def _sum(rings, which) -> Diff:
+    d = Diff(examples=[])
+    for r in which:
+        if r in rings:
+            d.add(rings[r])
+    return d
+
+
+def _strict_examples(result, which):
+    return [c for c in result["details"] if c["ring"] in which and c["strict"]][:10]
 
 
 def test_tile_matches_vanilla(gate):
     result, _ = gate
-    rate = _rate(result["rings"], [0])
-    print(f"tile 内差异列比例 {rate:.4%}")
-    assert rate <= ALLOWED_DIFF, result["details"]
+    d = _sum(result["rings"], [0])
+    print(f"tile 内：严格差异 {d.strict}，装饰类差异率 {d.decor_rate:.4%}")
+    assert d.strict == 0, _strict_examples(result, [0])
 
 
 def test_boundary_matches_vanilla(gate):
     # 紧挨 tile 的一圈：导出时它是半成品，带着 tile 写过来的树和矿；服务器接着做完
     result, _ = gate
-    rate = _rate(result["rings"], [1])
-    print(f"边界一圈差异列比例 {rate:.4%}")
-    assert rate <= ALLOWED_DIFF, result["details"]
+    d = _sum(result["rings"], [1])
+    print(f"边界一圈：严格差异 {d.strict}，装饰类差异率 {d.decor_rate:.4%}")
+    assert d.strict == 0, _strict_examples(result, [1])
 
 
-def test_outer_rings_sane(gate):
-    # 外圈和导入无关，是这一轮原版自己的噪声基准；只粗查
+def test_outer_rings_strict_zero(gate):
+    # 外圈和导入无关，是两个原版世界互比：严格层必须是 0，否则是装饰类清单不全（补 analysis/mca/decor.py）
     result, _ = gate
-    rate = _rate(result["rings"], [2, 3])
-    print(f"外圈差异列比例 {rate:.4%}")
-    assert rate <= OUTSIDE_SANITY, result["details"]
+    d = _sum(result["rings"], [2, 3])
+    print(f"外圈（原版互比）：严格差异 {d.strict}，装饰类差异率 {d.decor_rate:.4%}")
+    assert d.strict == 0, _strict_examples(result, [2, 3])
 
 
-def test_boundary_not_worse_than_outside(gate):
-    # 不依赖阈值：导入要是破坏了边界，边界一圈的差异会明显高过和导入无关的外圈
+def test_decor_not_worse_than_outside(gate):
+    # 统计层：导入的 tile 和边界，装饰类差异率不高于同一轮原版互比（外圈）的 1.5 倍
     result, _ = gate
-    boundary, outside = _rate(result["rings"], [1]), _rate(result["rings"], [2, 3])
-    print(f"边界 {boundary:.4%}，外圈 {outside:.4%}")
-    assert boundary <= max(outside * 1.5, 0.005), (boundary, outside)
+    inside, outside = _sum(result["rings"], [0, 1]), _sum(result["rings"], [2, 3])
+    print(f"装饰类差异率：tile+边界 {inside.decor_rate:.4%}，外圈 {outside.decor_rate:.4%}")
+    assert inside.decor_rate <= max(outside.decor_rate * DECOR_FACTOR, VANILLA_DECOR_FLOOR), \
+        (inside.decor_rate, outside.decor_rate)
 
 
 @pytest.mark.long

@@ -1,0 +1,4853 @@
+{
+"source": "kexu 第 1 步 baseline-20261108T154535 difference-summary.json（按方块名汇总，不含属性）",
+"pairs": [
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:air",
+"count": 213419
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:oak_leaves",
+"count": 205337
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:jungle_leaves",
+"count": 171381
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:air",
+"count": 170800
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:air",
+"count": 142179
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:vine",
+"count": 141923
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:oak_leaves",
+"count": 40700
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:air",
+"count": 34958
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:jungle_log",
+"count": 34594
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:short_grass",
+"count": 19501
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:air",
+"count": 19232
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:vine",
+"count": 16722
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:oak_leaves",
+"count": 16475
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:jungle_leaves",
+"count": 14925
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:oak_leaves",
+"count": 14128
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:jungle_leaves",
+"count": 12506
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:vine",
+"count": 11476
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:jungle_leaves",
+"count": 11385
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:air",
+"count": 10248
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:oak_leaves",
+"count": 9784
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:oak_log",
+"count": 9661
+},
+{
+"area": "jungle",
+"a": "minecraft:grass_block",
+"b": "minecraft:dirt",
+"count": 9601
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:grass_block",
+"count": 9579
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:short_grass",
+"count": 9413
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:vine",
+"count": 8257
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:air",
+"count": 6468
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:fern",
+"count": 6463
+},
+{
+"area": "jungle",
+"a": "minecraft:stone",
+"b": "minecraft:coal_ore",
+"count": 6108
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:stone",
+"count": 5714
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:jungle_log",
+"count": 5229
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:oak_leaves",
+"count": 4981
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:oak_leaves",
+"count": 3272
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:fern",
+"count": 3241
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:short_grass",
+"count": 3154
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:fern",
+"count": 3115
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:vine",
+"count": 2800
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:jungle_log",
+"count": 2776
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:jungle_leaves",
+"count": 2544
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:jungle_log",
+"count": 2528
+},
+{
+"area": "jungle",
+"a": "minecraft:granite",
+"b": "minecraft:andesite",
+"count": 2250
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:vine",
+"count": 2226
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:short_grass",
+"count": 2162
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:granite",
+"count": 1803
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:jungle_log",
+"count": 1662
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:oak_log",
+"count": 1602
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:short_grass",
+"count": 1586
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:oak_leaves",
+"count": 1553
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:diorite",
+"count": 1545
+},
+{
+"area": "jungle",
+"a": "minecraft:diorite",
+"b": "minecraft:andesite",
+"count": 1023
+},
+{
+"area": "jungle",
+"a": "minecraft:granite",
+"b": "minecraft:diorite",
+"count": 1018
+},
+{
+"area": "jungle",
+"a": "minecraft:stone",
+"b": "minecraft:moss_block",
+"count": 946
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:vine",
+"count": 926
+},
+{
+"area": "jungle",
+"a": "minecraft:diorite",
+"b": "minecraft:granite",
+"count": 893
+},
+{
+"area": "jungle",
+"a": "minecraft:stone",
+"b": "minecraft:clay",
+"count": 888
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:jungle_leaves",
+"count": 881
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:oak_log",
+"count": 800
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:oak_log",
+"count": 783
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:vine",
+"count": 759
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:fern",
+"count": 747
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:clay",
+"count": 680
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:fern",
+"count": 571
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:jungle_log",
+"count": 538
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:cocoa",
+"count": 463
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:air",
+"count": 448
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:cave_vines_plant",
+"count": 433
+},
+{
+"area": "jungle",
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:air",
+"count": 371
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:stone",
+"count": 353
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:jungle_leaves",
+"count": 330
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:short_grass",
+"count": 311
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:clay",
+"count": 304
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:cave_vines",
+"count": 280
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:stone",
+"count": 268
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:bamboo",
+"count": 263
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:diorite",
+"count": 246
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:jungle_log",
+"count": 229
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:oak_log",
+"count": 220
+},
+{
+"area": "jungle",
+"a": "minecraft:tuff",
+"b": "minecraft:andesite",
+"count": 218
+},
+{
+"area": "jungle",
+"a": "minecraft:cave_vines",
+"b": "minecraft:air",
+"count": 217
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:short_grass",
+"count": 214
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:cocoa",
+"count": 206
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:air",
+"count": 194
+},
+{
+"area": "jungle",
+"a": "minecraft:diorite",
+"b": "minecraft:clay",
+"count": 185
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:oak_leaves",
+"count": 184
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:clay",
+"count": 174
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:andesite",
+"count": 169
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:tall_grass",
+"count": 162
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:coal_ore",
+"count": 162
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:oak_log",
+"count": 160
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:moss_block",
+"count": 158
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:air",
+"count": 151
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:air",
+"count": 150
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:air",
+"count": 143
+},
+{
+"area": "jungle",
+"a": "minecraft:tuff",
+"b": "minecraft:clay",
+"count": 140
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:moss_carpet",
+"count": 137
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:granite",
+"count": 137
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:moss_block",
+"count": 130
+},
+{
+"area": "jungle",
+"a": "minecraft:diorite",
+"b": "minecraft:coal_ore",
+"count": 130
+},
+{
+"area": "jungle",
+"a": "minecraft:granite",
+"b": "minecraft:tuff",
+"count": 130
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:melon",
+"count": 125
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:fern",
+"count": 115
+},
+{
+"area": "jungle",
+"a": "minecraft:granite",
+"b": "minecraft:coal_ore",
+"count": 110
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:water",
+"count": 104
+},
+{
+"area": "jungle",
+"a": "minecraft:granite",
+"b": "minecraft:moss_block",
+"count": 101
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:oak_leaves",
+"count": 101
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:moss_block",
+"count": 100
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:jungle_leaves",
+"count": 97
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:clay",
+"count": 93
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:melon",
+"count": 93
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:coal_ore",
+"count": 90
+},
+{
+"area": "jungle",
+"a": "minecraft:tuff",
+"b": "minecraft:granite",
+"count": 88
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:dirt",
+"count": 87
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_gold_ore",
+"count": 87
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:short_grass",
+"count": 86
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:cocoa",
+"count": 79
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:fern",
+"count": 77
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:deepslate",
+"count": 75
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:oak_log",
+"count": 66
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:short_grass",
+"count": 66
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:deepslate",
+"count": 66
+},
+{
+"area": "jungle",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:water",
+"count": 59
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:moss_carpet",
+"count": 59
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:vine",
+"count": 58
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:melon",
+"count": 58
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:cocoa",
+"count": 58
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:air",
+"count": 57
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:andesite",
+"count": 57
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:short_grass",
+"count": 57
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:diorite",
+"count": 55
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:big_dripleaf_stem",
+"count": 54
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:oak_leaves",
+"count": 52
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:oak_log",
+"count": 52
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:dirt",
+"count": 51
+},
+{
+"area": "jungle",
+"a": "minecraft:copper_ore",
+"b": "minecraft:dirt",
+"count": 50
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:moss_block",
+"count": 50
+},
+{
+"area": "jungle",
+"a": "minecraft:tuff",
+"b": "minecraft:deepslate_coal_ore",
+"count": 50
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:kelp_plant",
+"count": 50
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:water",
+"count": 49
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:dirt",
+"count": 48
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:dirt",
+"count": 47
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:gravel",
+"count": 47
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:big_dripleaf",
+"count": 45
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:clay",
+"count": 44
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:coal_ore",
+"count": 43
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:azalea",
+"count": 42
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:vine",
+"count": 41
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:tall_grass",
+"count": 41
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:short_grass",
+"count": 41
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:dirt",
+"count": 40
+},
+{
+"area": "jungle",
+"a": "minecraft:azalea",
+"b": "minecraft:air",
+"count": 39
+},
+{
+"area": "jungle",
+"a": "minecraft:diorite",
+"b": "minecraft:moss_block",
+"count": 39
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:clay",
+"count": 38
+},
+{
+"area": "jungle",
+"a": "minecraft:copper_ore",
+"b": "minecraft:coal_ore",
+"count": 36
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:poppy",
+"count": 35
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:cocoa",
+"count": 33
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:coal_ore",
+"count": 33
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:dirt",
+"count": 31
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:deepslate",
+"count": 29
+},
+{
+"area": "jungle",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:air",
+"count": 28
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:vine",
+"count": 28
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:granite",
+"count": 27
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:poppy",
+"count": 27
+},
+{
+"area": "jungle",
+"a": "minecraft:poppy",
+"b": "minecraft:air",
+"count": 27
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:short_grass",
+"count": 26
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:gravel",
+"count": 25
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 25
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_copper_ore",
+"b": "minecraft:copper_ore",
+"count": 25
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:cocoa",
+"count": 25
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:jungle_log",
+"count": 25
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:deepslate",
+"count": 24
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:clay",
+"count": 24
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:fern",
+"count": 24
+},
+{
+"area": "jungle",
+"a": "minecraft:poppy",
+"b": "minecraft:oak_leaves",
+"count": 24
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:oak_leaves",
+"count": 23
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:copper_ore",
+"count": 23
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:azalea",
+"count": 23
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:big_dripleaf",
+"count": 23
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:air",
+"count": 22
+},
+{
+"area": "jungle",
+"a": "minecraft:iron_ore",
+"b": "minecraft:clay",
+"count": 22
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:jungle_log",
+"count": 21
+},
+{
+"area": "jungle",
+"a": "minecraft:dandelion",
+"b": "minecraft:air",
+"count": 21
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:copper_ore",
+"count": 21
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:melon",
+"count": 21
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:dandelion",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:small_dripleaf",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:azalea",
+"b": "minecraft:moss_carpet",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:azalea",
+"b": "minecraft:short_grass",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:cave_vines",
+"b": "minecraft:cave_vines_plant",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:andesite",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:azalea",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:tall_seagrass",
+"count": 20
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:air",
+"count": 19
+},
+{
+"area": "jungle",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:air",
+"count": 19
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:flowering_azalea",
+"count": 18
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:melon",
+"count": 18
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:tuff",
+"count": 18
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:bamboo",
+"count": 18
+},
+{
+"area": "jungle",
+"a": "minecraft:stone",
+"b": "minecraft:water",
+"count": 18
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:water",
+"count": 17
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:iron_ore",
+"count": 17
+},
+{
+"area": "jungle",
+"a": "minecraft:copper_ore",
+"b": "minecraft:clay",
+"count": 17
+},
+{
+"area": "jungle",
+"a": "minecraft:copper_ore",
+"b": "minecraft:gravel",
+"count": 17
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_coal_ore",
+"b": "minecraft:tuff",
+"count": 17
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:cocoa",
+"count": 17
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:melon",
+"count": 17
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:poppy",
+"count": 16
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:bamboo",
+"count": 15
+},
+{
+"area": "jungle",
+"a": "minecraft:poppy",
+"b": "minecraft:short_grass",
+"count": 15
+},
+{
+"area": "jungle",
+"a": "minecraft:seagrass",
+"b": "minecraft:water",
+"count": 15
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:bamboo",
+"count": 15
+},
+{
+"area": "jungle",
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:cave_vines_plant",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:iron_ore",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:gravel",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:dandelion",
+"b": "minecraft:oak_leaves",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:moss_block",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:iron_ore",
+"b": "minecraft:deepslate_iron_ore",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:iron_ore",
+"b": "minecraft:gravel",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:kelp",
+"b": "minecraft:water",
+"count": 14
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:copper_ore",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:fern",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:jungle_leaves",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:gravel",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:air",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:granite",
+"b": "minecraft:clay",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:moss_carpet",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:moss_block",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:seagrass",
+"count": 13
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:tall_grass",
+"count": 12
+},
+{
+"area": "jungle",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:water",
+"count": 12
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:kelp",
+"count": 12
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:small_dripleaf",
+"count": 12
+},
+{
+"area": "jungle",
+"a": "minecraft:copper_ore",
+"b": "minecraft:deepslate_copper_ore",
+"count": 11
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:iron_ore",
+"count": 11
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:dirt",
+"count": 11
+},
+{
+"area": "jungle",
+"a": "minecraft:gold_ore",
+"b": "minecraft:stone",
+"count": 11
+},
+{
+"area": "jungle",
+"a": "minecraft:stone",
+"b": "minecraft:gold_ore",
+"count": 11
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:dirt",
+"count": 11
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_coal_ore",
+"count": 10
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:cocoa",
+"count": 10
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:bamboo",
+"count": 10
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:big_dripleaf_stem",
+"count": 10
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:glow_lichen",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:bamboo",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:jungle_leaves",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:cave_vines",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:dirt",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:dirt",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:dandelion",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:water",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:tuff",
+"b": "minecraft:moss_block",
+"count": 9
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:gravel",
+"count": 8
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:poppy",
+"count": 8
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:iron_ore",
+"count": 8
+},
+{
+"area": "jungle",
+"a": "minecraft:sugar_cane",
+"b": "minecraft:air",
+"count": 8
+},
+{
+"area": "jungle",
+"a": "minecraft:azalea",
+"b": "minecraft:tall_grass",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:granite",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:dandelion",
+"b": "minecraft:short_grass",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:gravel",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:short_grass",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:deepslate_lapis_ore",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:flowering_azalea",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:poppy",
+"count": 7
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:water",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:fern",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:jungle_log",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:vine",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:glow_lichen",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:iron_ore",
+"b": "minecraft:moss_block",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:jungle_leaves",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:big_dripleaf_stem",
+"count": 6
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:copper_ore",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:water",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:melon",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:lapis_ore",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:iron_ore",
+"b": "minecraft:dirt",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:cocoa",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:oak_log",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:flowering_azalea",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:dandelion",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:water",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:poppy",
+"b": "minecraft:fern",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:stone",
+"count": 5
+},
+{
+"area": "jungle",
+"a": "minecraft:cave_vines",
+"b": "minecraft:cave_vines",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:gold_ore",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:oak_log",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:poppy",
+"b": "minecraft:vine",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:redstone_ore",
+"b": "minecraft:gravel",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:seagrass",
+"b": "minecraft:tall_seagrass",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:flowering_azalea",
+"count": 4
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:clay",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:big_dripleaf_stem",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:short_grass",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:big_dripleaf",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:deepslate_coal_ore",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:big_dripleaf_stem",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:dandelion",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:moss_carpet",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:tall_grass",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:iron_ore",
+"b": "minecraft:coal_ore",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:dandelion",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:kelp",
+"b": "minecraft:kelp_plant",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:seagrass",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:brown_mushroom",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:big_dripleaf_stem",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:clay",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:spore_blossom",
+"b": "minecraft:cave_vines_plant",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:azalea",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:seagrass",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:oak_leaves",
+"count": 3
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:water",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:fern",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:small_dripleaf",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:big_dripleaf",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:clay",
+"b": "minecraft:diorite",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:dandelion",
+"b": "minecraft:fern",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:dandelion",
+"b": "minecraft:jungle_leaves",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:dandelion",
+"b": "minecraft:vine",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:gold_ore",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:tuff",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:moss_block",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:cocoa",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:fern",
+"b": "minecraft:bamboo",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:cave_vines_plant",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:oak_leaves",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:short_grass",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:gold_ore",
+"b": "minecraft:deepslate_gold_ore",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:gold_ore",
+"b": "minecraft:gravel",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:gold_ore",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:poppy",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:kelp",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:tall_seagrass",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:glow_lichen",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:dirt",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:big_dripleaf",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:stone",
+"b": "minecraft:big_dripleaf",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:sugar_cane",
+"b": "minecraft:short_grass",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:kelp_plant",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:deepslate",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:water",
+"b": "minecraft:sand",
+"count": 2
+},
+{
+"area": "jungle",
+"a": "minecraft:air",
+"b": "minecraft:brown_mushroom",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:andesite",
+"b": "minecraft:small_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:azalea",
+"b": "minecraft:big_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:bamboo",
+"b": "minecraft:jungle_log",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:big_dripleaf_stem",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:moss_block",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:brown_mushroom",
+"b": "minecraft:oak_leaves",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:glow_lichen",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:coal_ore",
+"b": "minecraft:lapis_ore",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:cocoa",
+"b": "minecraft:cocoa",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:copper_ore",
+"b": "minecraft:lapis_ore",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:dandelion",
+"b": "minecraft:jungle_log",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:big_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate",
+"b": "minecraft:small_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_coal_ore",
+"b": "minecraft:deepslate",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:moss_block",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:dirt",
+"b": "minecraft:oak_log",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:azalea",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:gold_ore",
+"b": "minecraft:lapis_ore",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:grass_block",
+"b": "minecraft:clay",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:deepslate_lapis_ore",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:gravel",
+"b": "minecraft:water",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:jungle_log",
+"b": "minecraft:bamboo",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:coal_ore",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:gold_ore",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:lava",
+"b": "minecraft:tuff",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:melon",
+"b": "minecraft:dirt",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:big_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_block",
+"b": "minecraft:small_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:big_dripleaf_stem",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:small_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:oak_log",
+"b": "minecraft:dandelion",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:poppy",
+"b": "minecraft:dandelion",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:poppy",
+"b": "minecraft:jungle_log",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:seagrass",
+"b": "minecraft:kelp_plant",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:short_grass",
+"b": "minecraft:big_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:moss_block",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:short_grass",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:sugar_cane",
+"b": "minecraft:fern",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:sugar_cane",
+"b": "minecraft:oak_leaves",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:big_dripleaf",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:big_dripleaf_stem",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:tall_grass",
+"b": "minecraft:vine",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:dandelion",
+"count": 1
+},
+{
+"area": "jungle",
+"a": "minecraft:vine",
+"b": "minecraft:tall_grass",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate",
+"b": "minecraft:sculk",
+"count": 55041
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate",
+"count": 51221
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_vein",
+"b": "minecraft:air",
+"count": 41847
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:sculk_vein",
+"count": 40961
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:stone",
+"count": 6353
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:coal_ore",
+"count": 6105
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_leaves",
+"b": "minecraft:air",
+"count": 6074
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:spruce_leaves",
+"count": 5630
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_vein",
+"b": "minecraft:sculk_vein",
+"count": 5565
+},
+{
+"area": "mountain",
+"a": "minecraft:tuff",
+"b": "minecraft:sculk",
+"count": 4705
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:tuff",
+"count": 4186
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:snow",
+"count": 3741
+},
+{
+"area": "mountain",
+"a": "minecraft:snow",
+"b": "minecraft:air",
+"count": 3675
+},
+{
+"area": "mountain",
+"a": "minecraft:granite",
+"b": "minecraft:andesite",
+"count": 2677
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:oak_leaves",
+"count": 2589
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:air",
+"count": 2454
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_bricks",
+"b": "minecraft:sculk",
+"count": 1982
+},
+{
+"area": "mountain",
+"a": "minecraft:andesite",
+"b": "minecraft:granite",
+"count": 1779
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_bricks",
+"count": 1664
+},
+{
+"area": "mountain",
+"a": "minecraft:diorite",
+"b": "minecraft:granite",
+"count": 1613
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_tiles",
+"b": "minecraft:sculk",
+"count": 1505
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:sculk",
+"count": 1486
+},
+{
+"area": "mountain",
+"a": "minecraft:granite",
+"b": "minecraft:diorite",
+"count": 1472
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_tiles",
+"count": 1459
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:smooth_basalt",
+"count": 1378
+},
+{
+"area": "mountain",
+"a": "minecraft:andesite",
+"b": "minecraft:diorite",
+"count": 1310
+},
+{
+"area": "mountain",
+"a": "minecraft:diorite",
+"b": "minecraft:andesite",
+"count": 1237
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_leaves",
+"b": "minecraft:spruce_leaves",
+"count": 1050
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:sculk_sensor",
+"count": 994
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_sensor",
+"b": "minecraft:air",
+"count": 978
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_leaves",
+"b": "minecraft:air",
+"count": 924
+},
+{
+"area": "mountain",
+"a": "minecraft:cracked_deepslate_bricks",
+"b": "minecraft:sculk",
+"count": 898
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:stone",
+"count": 874
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:birch_leaves",
+"count": 848
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:sculk",
+"count": 834
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:gravel",
+"count": 788
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:cracked_deepslate_bricks",
+"count": 755
+},
+{
+"area": "mountain",
+"a": "minecraft:cracked_deepslate_tiles",
+"b": "minecraft:sculk",
+"count": 695
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:spruce_log",
+"count": 665
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_log",
+"b": "minecraft:air",
+"count": 665
+},
+{
+"area": "mountain",
+"a": "minecraft:cobbled_deepslate",
+"b": "minecraft:sculk",
+"count": 630
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:cracked_deepslate_tiles",
+"count": 626
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:polished_deepslate",
+"count": 598
+},
+{
+"area": "mountain",
+"a": "minecraft:polished_deepslate",
+"b": "minecraft:sculk",
+"count": 573
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:cobbled_deepslate",
+"count": 558
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_vein",
+"b": "minecraft:cave_air",
+"count": 556
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:oak_leaves",
+"count": 501
+},
+{
+"area": "mountain",
+"a": "minecraft:snow",
+"b": "minecraft:spruce_leaves",
+"count": 447
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_leaves",
+"b": "minecraft:snow",
+"count": 397
+},
+{
+"area": "mountain",
+"a": "minecraft:cave_air",
+"b": "minecraft:sculk_vein",
+"count": 390
+},
+{
+"area": "mountain",
+"a": "minecraft:andesite",
+"b": "minecraft:coal_ore",
+"count": 320
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:calcite",
+"count": 280
+},
+{
+"area": "mountain",
+"a": "minecraft:diorite",
+"b": "minecraft:sculk",
+"count": 252
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:andesite",
+"count": 251
+},
+{
+"area": "mountain",
+"a": "minecraft:smooth_basalt",
+"b": "minecraft:sculk",
+"count": 244
+},
+{
+"area": "mountain",
+"a": "minecraft:granite",
+"b": "minecraft:coal_ore",
+"count": 242
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_log",
+"b": "minecraft:air",
+"count": 233
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:glow_lichen",
+"count": 231
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:oak_log",
+"count": 227
+},
+{
+"area": "mountain",
+"a": "minecraft:diorite",
+"b": "minecraft:coal_ore",
+"count": 227
+},
+{
+"area": "mountain",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:air",
+"count": 221
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:granite",
+"count": 218
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:diorite",
+"count": 206
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:cave_air",
+"count": 194
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:deepslate",
+"count": 189
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_vein",
+"b": "minecraft:sculk_sensor",
+"count": 175
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_sensor",
+"b": "minecraft:sculk_vein",
+"count": 162
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:diorite",
+"count": 150
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_leaves",
+"b": "minecraft:spruce_log",
+"count": 148
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_gold_ore",
+"count": 147
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:sculk_catalyst",
+"count": 142
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_leaves",
+"b": "minecraft:oak_leaves",
+"count": 140
+},
+{
+"area": "mountain",
+"a": "minecraft:cave_air",
+"b": "minecraft:air",
+"count": 140
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:birch_leaves",
+"count": 131
+},
+{
+"area": "mountain",
+"a": "minecraft:tuff",
+"b": "minecraft:deepslate",
+"count": 128
+},
+{
+"area": "mountain",
+"a": "minecraft:snow_block",
+"b": "minecraft:dirt",
+"count": 127
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:sculk_shrieker",
+"count": 126
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:snow_block",
+"count": 121
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:air",
+"count": 121
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_coal_ore",
+"count": 115
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_log",
+"b": "minecraft:spruce_leaves",
+"count": 110
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_log",
+"b": "minecraft:air",
+"count": 109
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:deepslate",
+"count": 109
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:dirt",
+"count": 107
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:birch_log",
+"count": 102
+},
+{
+"area": "mountain",
+"a": "minecraft:snow",
+"b": "minecraft:spruce_log",
+"count": 102
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_log",
+"b": "minecraft:snow",
+"count": 102
+},
+{
+"area": "mountain",
+"a": "minecraft:calcite",
+"b": "minecraft:sculk",
+"count": 98
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:granite",
+"count": 96
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:gravel",
+"count": 95
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:gravel",
+"count": 90
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:andesite",
+"count": 90
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_leaves",
+"b": "minecraft:birch_leaves",
+"count": 88
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 84
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_shrieker",
+"b": "minecraft:air",
+"count": 82
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:grass_block",
+"count": 77
+},
+{
+"area": "mountain",
+"a": "minecraft:grass_block",
+"b": "minecraft:dirt",
+"count": 73
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:sculk",
+"count": 72
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_coal_ore",
+"b": "minecraft:deepslate",
+"count": 71
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate",
+"b": "minecraft:tuff",
+"count": 64
+},
+{
+"area": "mountain",
+"a": "minecraft:tuff",
+"b": "minecraft:diorite",
+"count": 59
+},
+{
+"area": "mountain",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:sculk_vein",
+"count": 55
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:sculk_catalyst",
+"count": 55
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:dirt",
+"count": 52
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:coal_ore",
+"count": 51
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:oak_log",
+"count": 48
+},
+{
+"area": "mountain",
+"a": "minecraft:andesite",
+"b": "minecraft:stone",
+"count": 45
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:gold_ore",
+"count": 45
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:dirt",
+"count": 43
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_vein",
+"b": "minecraft:glow_lichen",
+"count": 43
+},
+{
+"area": "mountain",
+"a": "minecraft:andesite",
+"b": "minecraft:sculk",
+"count": 40
+},
+{
+"area": "mountain",
+"a": "minecraft:iron_ore",
+"b": "minecraft:deepslate_iron_ore",
+"count": 39
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_log",
+"b": "minecraft:oak_leaves",
+"count": 39
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:sculk",
+"count": 38
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 38
+},
+{
+"area": "mountain",
+"a": "minecraft:gold_ore",
+"b": "minecraft:stone",
+"count": 37
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:dirt",
+"count": 36
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_vein",
+"b": "minecraft:sculk_catalyst",
+"count": 34
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:diorite",
+"count": 34
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 33
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:coal_ore",
+"count": 32
+},
+{
+"area": "mountain",
+"a": "minecraft:granite",
+"b": "minecraft:sculk",
+"count": 32
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:andesite",
+"count": 32
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:deepslate",
+"count": 31
+},
+{
+"area": "mountain",
+"a": "minecraft:soul_sand",
+"b": "minecraft:sculk",
+"count": 30
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:iron_ore",
+"count": 29
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:sculk",
+"count": 29
+},
+{
+"area": "mountain",
+"a": "minecraft:copper_ore",
+"b": "minecraft:coal_ore",
+"count": 28
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate",
+"b": "minecraft:sculk_catalyst",
+"count": 28
+},
+{
+"area": "mountain",
+"a": "minecraft:grass_block",
+"b": "minecraft:sculk",
+"count": 28
+},
+{
+"area": "mountain",
+"a": "minecraft:grass_block",
+"b": "minecraft:grass_block",
+"count": 26
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_deepslate",
+"b": "minecraft:sculk",
+"count": 25
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_iron_ore",
+"count": 25
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:sculk_vein",
+"count": 25
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:copper_ore",
+"count": 24
+},
+{
+"area": "mountain",
+"a": "minecraft:copper_ore",
+"b": "minecraft:dirt",
+"count": 23
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:iron_ore",
+"count": 22
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:sculk",
+"count": 21
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_lapis_ore",
+"count": 21
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_shrieker",
+"b": "minecraft:sculk_vein",
+"count": 21
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_vein",
+"b": "minecraft:sculk_shrieker",
+"count": 21
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:sculk",
+"count": 20
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:infested_stone",
+"count": 19
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:sculk",
+"count": 19
+},
+{
+"area": "mountain",
+"a": "minecraft:iron_ore",
+"b": "minecraft:dirt",
+"count": 18
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:soul_sand",
+"count": 18
+},
+{
+"area": "mountain",
+"a": "minecraft:spruce_leaves",
+"b": "minecraft:birch_leaves",
+"count": 17
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_leaves",
+"b": "minecraft:spruce_leaves",
+"count": 16
+},
+{
+"area": "mountain",
+"a": "minecraft:iron_ore",
+"b": "minecraft:coal_ore",
+"count": 16
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_lapis_ore",
+"count": 15
+},
+{
+"area": "mountain",
+"a": "minecraft:diorite",
+"b": "minecraft:stone",
+"count": 15
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:birch_log",
+"count": 15
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_log",
+"b": "minecraft:oak_leaves",
+"count": 14
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:infested_deepslate",
+"count": 13
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:tuff",
+"count": 12
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_leaves",
+"b": "minecraft:oak_log",
+"count": 11
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:iron_ore",
+"count": 11
+},
+{
+"area": "mountain",
+"a": "minecraft:iron_ore",
+"b": "minecraft:gravel",
+"count": 11
+},
+{
+"area": "mountain",
+"a": "minecraft:cave_air",
+"b": "minecraft:glow_lichen",
+"count": 10
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:sculk",
+"count": 10
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:iron_ore",
+"count": 10
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:lapis_ore",
+"count": 10
+},
+{
+"area": "mountain",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:deepslate_lapis_ore",
+"count": 10
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_gold_ore",
+"count": 10
+},
+{
+"area": "mountain",
+"a": "minecraft:copper_ore",
+"b": "minecraft:gravel",
+"count": 9
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:copper_ore",
+"count": 9
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_stone",
+"b": "minecraft:infested_deepslate",
+"count": 9
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_log",
+"b": "minecraft:birch_leaves",
+"count": 9
+},
+{
+"area": "mountain",
+"a": "minecraft:tuff",
+"b": "minecraft:deepslate_gold_ore",
+"count": 9
+},
+{
+"area": "mountain",
+"a": "minecraft:andesite",
+"b": "minecraft:gold_ore",
+"count": 8
+},
+{
+"area": "mountain",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:cave_air",
+"count": 8
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_deepslate",
+"b": "minecraft:infested_stone",
+"count": 8
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_sensor",
+"b": "minecraft:sculk_shrieker",
+"count": 8
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:gravel",
+"count": 7
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:snow",
+"count": 7
+},
+{
+"area": "mountain",
+"a": "minecraft:snow",
+"b": "minecraft:oak_leaves",
+"count": 7
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_leaves",
+"b": "minecraft:birch_log",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:andesite",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:deepslate",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:granite",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:infested_stone",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_stone",
+"b": "minecraft:coal_ore",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_sensor",
+"b": "minecraft:sculk_catalyst",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:granite",
+"count": 6
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:tuff",
+"count": 5
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:gold_ore",
+"count": 5
+},
+{
+"area": "mountain",
+"a": "minecraft:gold_ore",
+"b": "minecraft:andesite",
+"count": 5
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:deepslate",
+"count": 5
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_stone",
+"b": "minecraft:dirt",
+"count": 5
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_stone",
+"b": "minecraft:gravel",
+"count": 5
+},
+{
+"area": "mountain",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:coal_ore",
+"count": 5
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_log",
+"b": "minecraft:birch_leaves",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:lapis_ore",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:gravel",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_deepslate",
+"b": "minecraft:gravel",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:redstone_ore",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:coal_ore",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:cave_air",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:tuff",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 4
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:bee_nest",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:bee_nest",
+"b": "minecraft:air",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_copper_ore",
+"b": "minecraft:copper_ore",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:lapis_ore",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:copper_ore",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:glow_lichen",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:gold_ore",
+"b": "minecraft:granite",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_stone",
+"b": "minecraft:copper_ore",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:iron_ore",
+"b": "minecraft:sculk",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_leaves",
+"b": "minecraft:short_grass",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:short_grass",
+"b": "minecraft:oak_leaves",
+"count": 3
+},
+{
+"area": "mountain",
+"a": "minecraft:andesite",
+"b": "minecraft:deepslate_gold_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:birch_log",
+"b": "minecraft:short_grass",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:cave_air",
+"b": "minecraft:sculk_catalyst",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:cobbled_deepslate",
+"b": "minecraft:sculk_catalyst",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:cobblestone",
+"b": "minecraft:sculk_vein",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:cobweb",
+"b": "minecraft:cave_air",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:cobweb",
+"b": "minecraft:spawner",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:copper_ore",
+"b": "minecraft:infested_stone",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_copper_ore",
+"b": "minecraft:sculk",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:gravel",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:gravel",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:redstone_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:emerald_ore",
+"b": "minecraft:gravel",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:emerald_ore",
+"b": "minecraft:infested_stone",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:gravel",
+"b": "minecraft:deepslate_iron_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:infested_stone",
+"b": "minecraft:emerald_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:iron_ore",
+"b": "minecraft:gold_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:dirt",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:copper_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk",
+"b": "minecraft:deepslate_copper_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:sculk_shrieker",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:tuff",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_shrieker",
+"b": "minecraft:sculk_sensor",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:spawner",
+"b": "minecraft:cave_air",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:lapis_ore",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:tuff",
+"b": "minecraft:sculk_catalyst",
+"count": 2
+},
+{
+"area": "mountain",
+"a": "minecraft:air",
+"b": "minecraft:tall_grass",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:cave_air",
+"b": "minecraft:cobweb",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:cave_air",
+"b": "minecraft:spawner",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:coal_ore",
+"b": "minecraft:redstone_ore",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:copper_ore",
+"b": "minecraft:deepslate_copper_ore",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:diamond_ore",
+"b": "minecraft:stone",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:dirt",
+"b": "minecraft:stone",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:oak_log",
+"b": "minecraft:snow",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:cracked_deepslate_tiles",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:deepslate_diamond_ore",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:sculk_sensor",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:sculk_shrieker",
+"b": "minecraft:sculk_catalyst",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:short_grass",
+"b": "minecraft:birch_log",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:short_grass",
+"b": "minecraft:tall_grass",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:snow",
+"b": "minecraft:oak_log",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:spawner",
+"b": "minecraft:cobweb",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:diamond_ore",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:lava",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:stone",
+"b": "minecraft:sculk_catalyst",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:tall_grass",
+"b": "minecraft:air",
+"count": 1
+},
+{
+"area": "mountain",
+"a": "minecraft:tall_grass",
+"b": "minecraft:short_grass",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:water",
+"count": 3791
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:kelp_plant",
+"count": 3787
+},
+{
+"area": "ocean",
+"a": "minecraft:diorite",
+"b": "minecraft:granite",
+"count": 2689
+},
+{
+"area": "ocean",
+"a": "minecraft:granite",
+"b": "minecraft:diorite",
+"count": 2540
+},
+{
+"area": "ocean",
+"a": "minecraft:andesite",
+"b": "minecraft:diorite",
+"count": 2232
+},
+{
+"area": "ocean",
+"a": "minecraft:diorite",
+"b": "minecraft:andesite",
+"count": 1800
+},
+{
+"area": "ocean",
+"a": "minecraft:granite",
+"b": "minecraft:andesite",
+"count": 1652
+},
+{
+"area": "ocean",
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:water",
+"count": 955
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:tall_seagrass",
+"count": 932
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp",
+"b": "minecraft:water",
+"count": 829
+},
+{
+"area": "ocean",
+"a": "minecraft:andesite",
+"b": "minecraft:granite",
+"count": 818
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:kelp",
+"count": 802
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:seagrass",
+"count": 626
+},
+{
+"area": "ocean",
+"a": "minecraft:seagrass",
+"b": "minecraft:water",
+"count": 615
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate",
+"b": "minecraft:clay",
+"count": 335
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:deepslate",
+"count": 269
+},
+{
+"area": "ocean",
+"a": "minecraft:coal_ore",
+"b": "minecraft:stone",
+"count": 209
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_block",
+"b": "minecraft:deepslate",
+"count": 207
+},
+{
+"area": "ocean",
+"a": "minecraft:sand",
+"b": "minecraft:gravel",
+"count": 198
+},
+{
+"area": "ocean",
+"a": "minecraft:stone",
+"b": "minecraft:coal_ore",
+"count": 183
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate",
+"b": "minecraft:moss_block",
+"count": 180
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:tall_seagrass",
+"count": 159
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:clay",
+"count": 148
+},
+{
+"area": "ocean",
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:kelp_plant",
+"count": 145
+},
+{
+"area": "ocean",
+"a": "minecraft:diorite",
+"b": "minecraft:tuff",
+"count": 138
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:sand",
+"count": 129
+},
+{
+"area": "ocean",
+"a": "minecraft:dirt",
+"b": "minecraft:sand",
+"count": 111
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:seagrass",
+"count": 111
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:air",
+"count": 106
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:clay",
+"count": 106
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:dirt",
+"count": 103
+},
+{
+"area": "ocean",
+"a": "minecraft:seagrass",
+"b": "minecraft:kelp_plant",
+"count": 97
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_block",
+"b": "minecraft:clay",
+"count": 94
+},
+{
+"area": "ocean",
+"a": "minecraft:seagrass",
+"b": "minecraft:tall_seagrass",
+"count": 80
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:short_grass",
+"count": 79
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp_plant",
+"b": "minecraft:kelp",
+"count": 75
+},
+{
+"area": "ocean",
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:seagrass",
+"count": 73
+},
+{
+"area": "ocean",
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:air",
+"count": 70
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp",
+"b": "minecraft:kelp_plant",
+"count": 70
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_block",
+"b": "minecraft:tuff",
+"count": 68
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:air",
+"count": 66
+},
+{
+"area": "ocean",
+"a": "minecraft:diorite",
+"b": "minecraft:coal_ore",
+"count": 61
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:moss_block",
+"count": 57
+},
+{
+"area": "ocean",
+"a": "minecraft:sand",
+"b": "minecraft:dirt",
+"count": 53
+},
+{
+"area": "ocean",
+"a": "minecraft:tall_grass",
+"b": "minecraft:air",
+"count": 50
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:moss_carpet",
+"count": 48
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp",
+"b": "minecraft:kelp",
+"count": 48
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:cave_vines_plant",
+"count": 46
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:cave_vines",
+"count": 38
+},
+{
+"area": "ocean",
+"a": "minecraft:coal_ore",
+"b": "minecraft:diorite",
+"count": 37
+},
+{
+"area": "ocean",
+"a": "minecraft:cave_vines",
+"b": "minecraft:air",
+"count": 36
+},
+{
+"area": "ocean",
+"a": "minecraft:andesite",
+"b": "minecraft:coal_ore",
+"count": 32
+},
+{
+"area": "ocean",
+"a": "minecraft:coal_ore",
+"b": "minecraft:gravel",
+"count": 30
+},
+{
+"area": "ocean",
+"a": "minecraft:dirt",
+"b": "minecraft:gravel",
+"count": 29
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:tall_grass",
+"count": 28
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:gravel",
+"count": 28
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:moss_carpet",
+"count": 28
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:deepslate",
+"count": 27
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:short_grass",
+"count": 26
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_gold_ore",
+"count": 25
+},
+{
+"area": "ocean",
+"a": "minecraft:tuff",
+"b": "minecraft:moss_block",
+"count": 24
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:iron_ore",
+"count": 23
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:big_dripleaf_stem",
+"count": 22
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:coal_ore",
+"count": 22
+},
+{
+"area": "ocean",
+"a": "minecraft:sand",
+"b": "minecraft:clay",
+"count": 21
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:azalea",
+"count": 20
+},
+{
+"area": "ocean",
+"a": "minecraft:dirt",
+"b": "minecraft:coal_ore",
+"count": 18
+},
+{
+"area": "ocean",
+"a": "minecraft:coal_ore",
+"b": "minecraft:dirt",
+"count": 17
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_copper_ore",
+"b": "minecraft:copper_ore",
+"count": 17
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:big_dripleaf",
+"count": 16
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:air",
+"count": 16
+},
+{
+"area": "ocean",
+"a": "minecraft:copper_ore",
+"b": "minecraft:dirt",
+"count": 16
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:gold_ore",
+"count": 16
+},
+{
+"area": "ocean",
+"a": "minecraft:coal_ore",
+"b": "minecraft:andesite",
+"count": 15
+},
+{
+"area": "ocean",
+"a": "minecraft:gold_ore",
+"b": "minecraft:stone",
+"count": 15
+},
+{
+"area": "ocean",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:air",
+"count": 14
+},
+{
+"area": "ocean",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:air",
+"count": 14
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:small_dripleaf",
+"count": 12
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:air",
+"count": 12
+},
+{
+"area": "ocean",
+"a": "minecraft:coal_ore",
+"b": "minecraft:deepslate_coal_ore",
+"count": 12
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:azalea",
+"count": 12
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:deepslate",
+"count": 12
+},
+{
+"area": "ocean",
+"a": "minecraft:copper_ore",
+"b": "minecraft:deepslate_copper_ore",
+"count": 9
+},
+{
+"area": "ocean",
+"a": "minecraft:copper_ore",
+"b": "minecraft:gravel",
+"count": 9
+},
+{
+"area": "ocean",
+"a": "minecraft:stone",
+"b": "minecraft:gold_ore",
+"count": 9
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:big_dripleaf",
+"count": 9
+},
+{
+"area": "ocean",
+"a": "minecraft:azalea",
+"b": "minecraft:short_grass",
+"count": 8
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:gravel",
+"count": 8
+},
+{
+"area": "ocean",
+"a": "minecraft:gold_ore",
+"b": "minecraft:deepslate_gold_ore",
+"count": 8
+},
+{
+"area": "ocean",
+"a": "minecraft:iron_ore",
+"b": "minecraft:deepslate_iron_ore",
+"count": 8
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:tall_grass",
+"count": 8
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:moss_block",
+"count": 8
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_coal_ore",
+"b": "minecraft:coal_ore",
+"count": 7
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:copper_ore",
+"count": 7
+},
+{
+"area": "ocean",
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:kelp",
+"count": 7
+},
+{
+"area": "ocean",
+"a": "minecraft:azalea",
+"b": "minecraft:air",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:coal_ore",
+"b": "minecraft:copper_ore",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:clay",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:glow_lichen",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:iron_ore",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:redstone_ore",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:azalea",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:tall_grass",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:redstone_ore",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:flowering_azalea",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:tall_grass",
+"b": "minecraft:moss_carpet",
+"count": 6
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:water",
+"count": 5
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 5
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:sand",
+"count": 5
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:redstone_ore",
+"count": 5
+},
+{
+"area": "ocean",
+"a": "minecraft:iron_ore",
+"b": "minecraft:gravel",
+"count": 5
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp",
+"b": "minecraft:tall_seagrass",
+"count": 5
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:big_dripleaf_stem",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:deepslate",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:clay",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:cave_air",
+"b": "minecraft:glow_lichen",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:water",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:gravel",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:cave_air",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:granite",
+"b": "minecraft:coal_ore",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_block",
+"b": "minecraft:deepslate_iron_ore",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:redstone_ore",
+"b": "minecraft:gravel",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:tall_grass",
+"b": "minecraft:short_grass",
+"count": 4
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:deepslate_lapis_ore",
+"count": 3
+},
+{
+"area": "ocean",
+"a": "minecraft:copper_ore",
+"b": "minecraft:coal_ore",
+"count": 3
+},
+{
+"area": "ocean",
+"a": "minecraft:copper_ore",
+"b": "minecraft:iron_ore",
+"count": 3
+},
+{
+"area": "ocean",
+"a": "minecraft:dirt",
+"b": "minecraft:copper_ore",
+"count": 3
+},
+{
+"area": "ocean",
+"a": "minecraft:kelp",
+"b": "minecraft:seagrass",
+"count": 3
+},
+{
+"area": "ocean",
+"a": "minecraft:seagrass",
+"b": "minecraft:kelp",
+"count": 3
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:flowering_azalea",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:azalea",
+"b": "minecraft:moss_carpet",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:clay",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:small_dripleaf",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:small_dripleaf",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:cave_vines",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:tuff",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate",
+"b": "minecraft:water",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:lapis_ore",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:dirt",
+"b": "minecraft:moss_block",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:moss_carpet",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:short_grass",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:glow_lichen",
+"b": "minecraft:air",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:gravel",
+"b": "minecraft:lapis_ore",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:iron_ore",
+"b": "minecraft:copper_ore",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:gravel",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:big_dripleaf",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:moss_carpet",
+"b": "minecraft:flowering_azalea",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:big_dripleaf",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:big_dripleaf_stem",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:short_grass",
+"b": "minecraft:small_dripleaf",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:clay",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:tuff",
+"b": "minecraft:clay",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:water",
+"b": "minecraft:small_dripleaf",
+"count": 2
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:glow_lichen",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:air",
+"b": "minecraft:vine",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:clay",
+"b": "minecraft:deepslate_iron_ore",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:diamond_ore",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:dirt",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:dirt",
+"b": "minecraft:deepslate_redstone_ore",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:dirt",
+"b": "minecraft:iron_ore",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:iron_ore",
+"b": "minecraft:dirt",
+"count": 1
+},
+{
+"area": "ocean",
+"a": "minecraft:lapis_ore",
+"b": "minecraft:deepslate_lapis_ore",
+"count": 1
+}
+]
+}

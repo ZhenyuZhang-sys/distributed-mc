@@ -9,13 +9,14 @@ import json
 import pytest
 
 from analysis.mca import read_chunk
+from analysis.mca.decor import VANILLA_DECOR_FLOOR, VANILLA_DECOR_MAX, Diff, compare_chunks
 from mcd import SCRIPTS, compose, run, wait_until, worker_id
 
 # 跑一遍要几分钟，--quick 时不跑
 pytestmark = pytest.mark.long
 
-# 粗查：任何一类差异超过 10% 就算明显坏了
-SANITY = 0.10
+# 粗查：装饰类差异率超过原版最乱的区域（jungle）的 1.5 倍就算明显坏了
+SANITY = VANILLA_DECOR_MAX * 1.5
 
 
 def status(server) -> dict:
@@ -81,11 +82,10 @@ def test_ten_tiles_written(server, ten):
 
 def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     # 和第 3 步关卡一样：服务器把这块区域做成成品，worker（同 seed 的另一个全新世界）
-    # 也生成同一块作为原版答案，逐列比。
-    #
-    # 不用固定阈值：第一次实测这片区域原版自己的噪声就有 3～4%（地下晶洞、地表树多，
-    # 相邻 chunk 放地物的先后不同），个别 tile 到 10%。所以拿同一轮、同一片区域里
-    # 导入的部分（tile 和边界一圈）和完全没导入的部分（两边各自从头生成）比。
+    # 也生成同一块作为原版答案，逐块比，分两层（analysis/mca/decor.py）：
+    # - 严格层（装饰类方块以外）：导入的、没导入的都必须是 0。没导入的部分是两个原版世界互比，
+    #   它不是 0 说明装饰类清单不全。
+    # - 统计层：导入部分（tile 和边界一圈）的装饰类差异率不高于没导入部分（同一轮原版互比）的 1.5 倍。
     x0, z0 = G0 * 4 - 2, G0 * 4 - 2
     size = 6 * 4 + 4 + 4
     server.chunky_square(x0, z0, size)
@@ -100,30 +100,31 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
             return "ring1"
         return "not_imported"
 
-    acc = {"tile": [0, 0], "ring1": [0, 0], "not_imported": [0, 0]}
+    acc = {k: Diff(examples=[]) for k in ("tile", "ring1", "not_imported")}
     center_diff = {}
     for x in range(x0, x0 + size):
         for z in range(z0, z0 + size):
             ca, cb = read_chunk(a, x, z), read_chunk(b, x, z)
             assert ca.status == cb.status == "minecraft:full", (x, z)
-            d = sum(p != q for p, q in zip(ca.column_hashes(), cb.column_hashes()))
-            c = acc[category(x, z)]
-            c[0] += d
-            c[1] += 256
+            d = compare_chunks(ca, cb)
+            acc[category(x, z)].add(d)
             # 每个 tile 中间 2×2：邻居全在 tile 里，地物都在 worker 上做完了，
-            # 导入后没有谁再往里写，必须和 worker 逐块一致
-            if any(tx * 4 + 1 <= x <= tx * 4 + 2 and tz * 4 + 1 <= z <= tz * 4 + 2 for tx, tz in GRID) and d:
-                center_diff[f"{x},{z}"] = d
-    rate = {k: v[0] / v[1] for k, v in acc.items()}
-    imported = (acc["tile"][0] + acc["ring1"][0]) / (acc["tile"][1] + acc["ring1"][1])
-    print(f"差异列比例：{rate}，导入部分合计 {imported:.2%}")
+            # 导入后没有谁再往里写，必须和 worker 逐块一致（装饰类也算）
+            if any(tx * 4 + 1 <= x <= tx * 4 + 2 and tz * 4 + 1 <= z <= tz * 4 + 2 for tx, tz in GRID) \
+                    and (d.strict or d.decor):
+                center_diff[f"{x},{z}"] = {"strict": d.strict, "decor": d.decor}
+    imported = Diff(examples=[]).add(acc["tile"]).add(acc["ring1"])
+    summary = {k: {"strict": v.strict, "decor_rate": v.decor_rate, "examples": v.examples} for k, v in acc.items()}
+    print(f"严格差异 / 装饰类差异率：{ {k: (v.strict, f'{v.decor_rate:.4%}') for k, v in acc.items()} }")
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
         (server.artifact_dir / "e2e-diff.json").write_text(
-            json.dumps({"rate": rate, "imported": imported, "center_diff": center_diff}, indent=2) + "\n")
+            json.dumps({"by_category": summary, "imported_decor_rate": imported.decor_rate,
+                        "center_diff": center_diff}, indent=2) + "\n")
     assert not center_diff, f"tile 中间的 chunk 和 worker 不一致，导入丢了东西：{center_diff}"
-    assert all(v <= SANITY for v in rate.values()), rate
-    assert imported <= max(rate["not_imported"] * 1.5, 0.005), (imported, rate)
+    assert all(v.strict == 0 for v in acc.values()), summary
+    assert all(v.decor_rate <= SANITY for v in acc.values()), summary
+    assert imported.decor_rate <= max(acc["not_imported"].decor_rate * 1.5, VANILLA_DECOR_FLOOR), summary
 
 
 # ---- kill worker ----
