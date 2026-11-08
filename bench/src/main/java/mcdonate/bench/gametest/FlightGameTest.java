@@ -27,7 +27,9 @@ import net.minecraft.world.level.ChunkPos;
  * 第 4 步 4.2：/bench fly 和 FlightRecorder（docs/step4-plan.md 3.1、4 节）。
  * 全部通过命令字符串驱动，和 Python 端用 RCON 的方式一样。
  */
+/* GameTest 服务器不按 20 TPS 限速（实测约 100 TPS），墙钟飞行的超时要按 tick 数放宽。 */
 public class FlightGameTest implements FabricGameTest {
+    static final int VIEW = 10;
 
     static int run(GameTestHelper h, String command) {
         MinecraftServer server = h.getLevel().getServer();
@@ -49,10 +51,14 @@ public class FlightGameTest implements FabricGameTest {
 
     /** 放一个模拟玩家到某个 chunk 的最东一格（往 +x 走一格就跨进下一个 chunk）。 */
     static ServerPlayer player(GameTestHelper h) {
+        // GameTest 服务器的视距小于 2（不是正式配置）；换成协议的 10，视野才是 453 个 chunk。GameTest 世界是超平坦，生成很快。
+        if (h.getLevel().getServer().getPlayerList().getViewDistance() != VIEW) h.getLevel().getServer().getPlayerList().setViewDistance(VIEW);
         ServerPlayer p = h.makeMockServerPlayerInLevel();
         BlockPos at = h.absolutePos(new BlockPos(1, 2, 1));
         double x = Math.floorDiv(at.getX(), 16) * 16 + 15.5;
         p.teleportTo(h.getLevel(), x, at.getY() + 40, at.getZ() + 0.5, 0, 0);
+        // 原版同维度 teleportTo 不更新 ChunkMap 里的玩家位置（真客户端回移动包时才更新；Carpet 假玩家每 tick 自己更新）
+        h.getLevel().getChunkSource().move(p);
         return p;
     }
 
@@ -89,6 +95,29 @@ public class FlightGameTest implements FabricGameTest {
         }
     }
 
+    /** 失败时看是哪几圈没就绪：圈号 → 个数，以及其中有 ChunkHolder 但还没到可发送状态的个数。 */
+    static String notReadyByRing(GameTestHelper h, ServerPlayer p) {
+        DIAG.setLength(0);
+        java.util.TreeMap<Integer, int[]> rings = new java.util.TreeMap<>();
+        ChunkPos c = p.chunkPosition();
+        var map = (mcdonate.bench.mixin.ChunkMapAccess) h.getLevel().getChunkSource().chunkMap;
+        ChunkTrackingView.of(c, VIEW).forEach(q -> {
+            var holder = map.mcdonate$visibleHolder(q.toLong());
+            if (holder == null || holder.getChunkToSend() == null) {
+                int[] n = rings.computeIfAbsent(Math.max(Math.abs(q.x - c.x), Math.abs(q.z - c.z)), k -> new int[2]);
+                n[0]++;
+                if (holder != null) n[1]++;
+                if (holder != null && DIAG.length() < 1500) DIAG.append(String.format(" (%d,%d)L%d %s t=%s", q.x - c.x, q.z - c.z,
+                        holder.getTicketLevel(), holder.getFullStatus(), holder.getTickingChunk() != null));
+            }
+        });
+        StringBuilder sb = new StringBuilder();
+        rings.forEach((d, n) -> sb.append(d).append(':').append(n[0]).append("(有holder ").append(n[1]).append(") "));
+        return sb.append(DIAG).toString();
+    }
+
+    static final StringBuilder DIAG = new StringBuilder();
+
     static int viewSize(GameTestHelper h) {
         int[] n = {0};
         ChunkTrackingView.of(new ChunkPos(0, 0), h.getLevel().getServer().getPlayerList().getViewDistance()).forEach(p -> n[0]++);
@@ -96,13 +125,14 @@ public class FlightGameTest implements FabricGameTest {
     }
 
     /** 墙钟模式走路速度飞 3 秒：玩家按速度往 +x 走，seconds.jsonl 正好 3 行，视野数等于原版发包范围。 */
-    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 1200)
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
     public void wallFlightWritesOneRowPerSecond(GameTestHelper h) {
         ServerPlayer p = player(h);
         double x0 = p.getX(), z0 = p.getZ();
         String run = newRun("wall");
         check(run(h, "bench fly start " + p.getStringUUID() + " 4.3 3 " + run + " wall") == 1, "fly start 失败");
         int view = viewSize(h);
+        check(view == 453, "视距 10 时原版发包范围应是 453 个 chunk：" + view);
         h.succeedWhen(() -> {
             JsonObject done = done(h, run);
             List<JsonObject> rows = lines(h, run, "seconds.jsonl");
@@ -135,7 +165,7 @@ public class FlightGameTest implements FabricGameTest {
     }
 
     /** tick 模式：位置只跟 tick 数走，飞满 1 秒正好前进 速度 × 1 格。 */
-    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 1200)
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
     public void tickFlightMovesByTicks(GameTestHelper h) {
         ServerPlayer p = player(h);
         double x0 = p.getX();
@@ -151,7 +181,7 @@ public class FlightGameTest implements FabricGameTest {
     }
 
     /** 中途 stop：done.json 标 stopped，飞行不再推玩家。 */
-    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 1200)
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
     public void stopEndsFlightEarly(GameTestHelper h) {
         ServerPlayer p = player(h);
         String run = newRun("stop");
@@ -168,9 +198,12 @@ public class FlightGameTest implements FabricGameTest {
     }
 
     /** /bench fly ready：返回值是视野里还没就绪的 chunk 数（Python 起飞前等它变 0）。 */
-    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 1200)
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
     public void readyCountsDownToZero(GameTestHelper h) {
         ServerPlayer p = player(h);
-        h.succeedWhen(() -> check(run(h, "bench fly ready " + p.getStringUUID()) == 0, "初始视野还没全部就绪"));
+        h.succeedWhen(() -> {
+            int notReady = run(h, "bench fly ready " + p.getStringUUID());
+            check(notReady == 0, "初始视野还没全部就绪：" + notReady + " 个，按圈（切比雪夫距离）：" + notReadyByRing(h, p));
+        });
     }
 }

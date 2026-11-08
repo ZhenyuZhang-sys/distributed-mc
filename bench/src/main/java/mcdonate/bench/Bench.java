@@ -1,6 +1,7 @@
 package mcdonate.bench;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import mcdonate.bench.flight.FlightCommands;
 import mcdonate.common.ModIds;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -14,7 +15,7 @@ import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 测量 mod：生成计数、阶段计时。 */
+/** 测量 mod：生成计数、阶段计时、飞行测量（第 4 步）。 */
 public final class Bench implements ModInitializer {
     public static final String MOD_ID = ModIds.of("bench");
     private static final Logger LOG = LoggerFactory.getLogger(MOD_ID);
@@ -29,6 +30,8 @@ public final class Bench implements ModInitializer {
         //   /bench track on|off   按 chunk 记录 noise、features（测试用，默认关）
         //   /bench chunk <x> <z>  这个 chunk 跑过几次 noise、features
         //   /bench view           每个玩家视距内已经做好（加载成成品）的 chunk 数，加上平均 MSPT（冒烟测试估虚空率用）
+        //   /bench fly ...        第 4 步飞行测量：start / stop / status / ready，见 FlightCommands
+        FlightCommands.registerEvents();
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("bench")
                         .requires(source -> source.hasPermission(2))
@@ -63,6 +66,7 @@ public final class Bench implements ModInitializer {
                             ctx.getSource().sendSuccess(() -> Component.literal(s), false);
                             return 1;
                         }))
+                        .then(FlightCommands.node())
                         .then(Commands.literal("timing")
                                 .then(Commands.literal("on").executes(ctx -> setTiming(ctx.getSource(), true)))
                                 .then(Commands.literal("off").executes(ctx -> setTiming(ctx.getSource(), false))))));

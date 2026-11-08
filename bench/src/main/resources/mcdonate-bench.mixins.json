@@ -8,7 +8,8 @@
     "NoiseBasedChunkGeneratorMixin",
     "ThreadedLevelLightEngineMixin",
     "ProtoChunkMixin",
-    "ChunkSerializerMixin"
+    "ChunkSerializerMixin",
+    "ChunkMapAccess"
   ],
   "injectors": {
     "defaultRequire": 1
