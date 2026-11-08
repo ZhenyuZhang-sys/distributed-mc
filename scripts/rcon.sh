@@ -6,4 +6,5 @@ source "$(dirname "$0")/lib.sh"
 
 [[ $# -ge 1 ]] || die "用法：scripts/rcon.sh <命令>"
 [[ -f "$TEST_ENV" ]] || die "还没有 $TEST_ENV，先跑 scripts/new_world.sh"
-tc exec -T minecraft rcon-cli "$@"
+# -- 之后都当命令内容，否则负坐标（-5000）会被当成选项
+tc exec -T minecraft rcon-cli -- "$@"
