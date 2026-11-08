@@ -1,0 +1,1755 @@
+{
+"source": "fish e0169c2 decor.classify 在 kexu 第 1 步全部差异组合（含同名只差属性）及清单里每一对上的结论",
+"cases": [
+{
+"a": "minecraft:air",
+"b": "minecraft:azalea",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:bamboo",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:bee_nest",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:big_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:big_dripleaf_stem",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:birch_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:birch_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:brown_mushroom",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:cave_air",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:cave_vines",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:cave_vines_plant",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:clay",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:cocoa",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:dandelion",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:dirt",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:fern",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:flowering_azalea",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:glow_lichen",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:jungle_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:jungle_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:melon",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:moss_carpet",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:poppy",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:sculk_catalyst",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:sculk_sensor",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:sculk_shrieker",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:snow",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:spruce_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:spruce_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:stone",
+"expected": "strict"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:sugar_cane",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:tall_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:big_dripleaf_stem",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:clay",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:coal_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:deepslate_gold_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:diorite",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:gold_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:granite",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:andesite",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:azalea",
+"b": "minecraft:big_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:azalea",
+"b": "minecraft:flowering_azalea",
+"expected": "decor"
+},
+{
+"a": "minecraft:azalea",
+"b": "minecraft:moss_carpet",
+"expected": "decor"
+},
+{
+"a": "minecraft:azalea",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:azalea",
+"b": "minecraft:tall_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:bamboo",
+"b": "minecraft:bamboo",
+"expected": "decor"
+},
+{
+"a": "minecraft:bamboo",
+"b": "minecraft:fern",
+"expected": "decor"
+},
+{
+"a": "minecraft:bamboo",
+"b": "minecraft:jungle_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:bamboo",
+"b": "minecraft:jungle_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:bamboo",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:bamboo",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:bamboo",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:big_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:big_dripleaf_stem",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:clay",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:deepslate",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:moss_carpet",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:tall_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:clay",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:deepslate",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:moss_carpet",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:tall_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:big_dripleaf_stem",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:birch_leaves",
+"b": "minecraft:birch_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:birch_leaves",
+"b": "minecraft:birch_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:birch_leaves",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:birch_leaves",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:birch_leaves",
+"b": "minecraft:spruce_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:birch_log",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:birch_log",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:brown_mushroom",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:calcite",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:cobweb",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:glow_lichen",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:sculk_catalyst",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:spawner",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_vines",
+"b": "minecraft:cave_vines",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_vines",
+"b": "minecraft:cave_vines_plant",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:cave_vines_plant",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:glow_lichen",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_vines_plant",
+"b": "minecraft:spore_blossom",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:coal_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:copper_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:deepslate",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:deepslate_iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:deepslate_lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:deepslate_redstone_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:diorite",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:dirt",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:granite",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:grass_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:sand",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:clay",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:copper_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:deepslate_coal_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:diorite",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:dirt",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:gold_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:granite",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:infested_stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:redstone_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:coal_ore",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:cobbled_deepslate",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:cobbled_deepslate",
+"b": "minecraft:sculk_catalyst",
+"expected": "decor"
+},
+{
+"a": "minecraft:cobblestone",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:cobweb",
+"b": "minecraft:spawner",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:cocoa",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:dirt",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:fern",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:jungle_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:jungle_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:melon",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:cocoa",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:copper_ore",
+"b": "minecraft:deepslate_copper_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:copper_ore",
+"b": "minecraft:dirt",
+"expected": "decor"
+},
+{
+"a": "minecraft:copper_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:copper_ore",
+"b": "minecraft:infested_stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:copper_ore",
+"b": "minecraft:iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:copper_ore",
+"b": "minecraft:lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:copper_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:cracked_deepslate_bricks",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:cracked_deepslate_tiles",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:cracked_deepslate_tiles",
+"b": "minecraft:sculk_catalyst",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:fern",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:jungle_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:jungle_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:poppy",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:dandelion",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_coal_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_diamond_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_gold_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:deepslate_lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:gravel",
+"expected": "terrain"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:sculk_catalyst",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:water",
+"expected": "terrain"
+},
+{
+"a": "minecraft:deepslate_bricks",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_coal_ore",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_copper_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:diamond_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:sculk_catalyst",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_diamond_ore",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:deepslate_redstone_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:gold_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_gold_ore",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_iron_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_lapis_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:dirt",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:redstone_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_redstone_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate_tiles",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:diamond_ore",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:diorite",
+"b": "minecraft:granite",
+"expected": "decor"
+},
+{
+"a": "minecraft:diorite",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:diorite",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:diorite",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:diorite",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:fern",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:gold_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:granite",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:grass_block",
+"expected": "terrain"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:gravel",
+"expected": "terrain"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:infested_stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:jungle_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:melon",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:sand",
+"expected": "terrain"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:snow_block",
+"expected": "terrain"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:stone",
+"expected": "terrain"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:emerald_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:emerald_ore",
+"b": "minecraft:infested_stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:jungle_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:jungle_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:melon",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:poppy",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:sugar_cane",
+"expected": "decor"
+},
+{
+"a": "minecraft:fern",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:moss_carpet",
+"expected": "decor"
+},
+{
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:flowering_azalea",
+"b": "minecraft:tall_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:glow_lichen",
+"b": "minecraft:glow_lichen",
+"expected": "decor"
+},
+{
+"a": "minecraft:glow_lichen",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:glow_lichen",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:glow_lichen",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:gold_ore",
+"b": "minecraft:granite",
+"expected": "decor"
+},
+{
+"a": "minecraft:gold_ore",
+"b": "minecraft:gravel",
+"expected": "decor"
+},
+{
+"a": "minecraft:gold_ore",
+"b": "minecraft:iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:gold_ore",
+"b": "minecraft:lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:gold_ore",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:granite",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:granite",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:granite",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:granite",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:grass_block",
+"b": "minecraft:grass_block",
+"expected": "terrain"
+},
+{
+"a": "minecraft:grass_block",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:infested_deepslate",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:infested_stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:iron_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:lapis_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:redstone_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:sand",
+"expected": "terrain"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:water",
+"expected": "terrain"
+},
+{
+"a": "minecraft:infested_deepslate",
+"b": "minecraft:infested_stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:infested_deepslate",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:iron_ore",
+"b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:iron_ore",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:jungle_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:jungle_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:melon",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_leaves",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_log",
+"b": "minecraft:melon",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_log",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_log",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_log",
+"b": "minecraft:poppy",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_log",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:jungle_log",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp",
+"b": "minecraft:kelp",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp",
+"b": "minecraft:kelp_plant",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp",
+"b": "minecraft:seagrass",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp",
+"b": "minecraft:tall_seagrass",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp_plant",
+"b": "minecraft:seagrass",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp_plant",
+"b": "minecraft:tall_seagrass",
+"expected": "decor"
+},
+{
+"a": "minecraft:kelp_plant",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:lapis_ore",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:lava",
+"b": "minecraft:stone",
+"expected": "terrain"
+},
+{
+"a": "minecraft:lava",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:melon",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:melon",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:melon",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:melon",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:moss_block",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:moss_block",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:moss_block",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:moss_block",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:moss_carpet",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:moss_carpet",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:moss_carpet",
+"b": "minecraft:tall_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:oak_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:poppy",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:snow",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:sugar_cane",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_leaves",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_log",
+"b": "minecraft:oak_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_log",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_log",
+"b": "minecraft:snow",
+"expected": "decor"
+},
+{
+"a": "minecraft:oak_log",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:polished_deepslate",
+"b": "minecraft:sculk",
+"expected": "decor"
+},
+{
+"a": "minecraft:poppy",
+"b": "minecraft:short_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:poppy",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:sand",
+"b": "minecraft:water",
+"expected": "terrain"
+},
+{
+"a": "minecraft:sculk",
+"b": "minecraft:sculk_catalyst",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk",
+"b": "minecraft:smooth_basalt",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk",
+"b": "minecraft:soul_sand",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:sculk_sensor",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:sculk_shrieker",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_catalyst",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_sensor",
+"b": "minecraft:sculk_shrieker",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_sensor",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_shrieker",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:sculk_vein",
+"b": "minecraft:sculk_vein",
+"expected": "decor"
+},
+{
+"a": "minecraft:seagrass",
+"b": "minecraft:tall_seagrass",
+"expected": "decor"
+},
+{
+"a": "minecraft:seagrass",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:short_grass",
+"b": "minecraft:small_dripleaf",
+"expected": "decor"
+},
+{
+"a": "minecraft:short_grass",
+"b": "minecraft:sugar_cane",
+"expected": "decor"
+},
+{
+"a": "minecraft:short_grass",
+"b": "minecraft:tall_grass",
+"expected": "decor"
+},
+{
+"a": "minecraft:short_grass",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:small_dripleaf",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:snow",
+"b": "minecraft:spruce_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:snow",
+"b": "minecraft:spruce_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:spruce_leaves",
+"b": "minecraft:spruce_leaves",
+"expected": "decor"
+},
+{
+"a": "minecraft:spruce_leaves",
+"b": "minecraft:spruce_log",
+"expected": "decor"
+},
+{
+"a": "minecraft:stone",
+"b": "minecraft:diamond_ore",
+"expected": "decor"
+},
+{
+"a": "minecraft:stone",
+"b": "minecraft:glass",
+"expected": "strict"
+},
+{
+"a": "minecraft:stone",
+"b": "minecraft:water",
+"expected": "terrain"
+},
+{
+"a": "minecraft:tall_grass",
+"b": "minecraft:vine",
+"expected": "decor"
+},
+{
+"a": "minecraft:tall_seagrass",
+"b": "minecraft:water",
+"expected": "decor"
+},
+{
+"a": "minecraft:vine",
+"b": "minecraft:vine",
+"expected": "decor"
+}
+]
+}
