@@ -44,7 +44,11 @@ cobweb spawner chest
 deepslate_bricks cracked_deepslate_bricks deepslate_tiles cracked_deepslate_tiles polished_deepslate cobbled_deepslate
 deepslate_brick_stairs deepslate_brick_slab deepslate_brick_wall deepslate_tile_stairs deepslate_tile_slab deepslate_tile_wall
 cobblestone mossy_cobblestone
+magma_block
+rail oak_planks oak_fence dark_oak_planks dark_oak_fence wall_torch torch
 """.split())
+# 最后两行（11-08 fish 本地对照补的）：magma_block 是海底岩浆块地物；rail 以下是废弃矿井等地下结构的方块。
+# 结构件放不放、放在哪，要看邻居 chunk 当时的状态（比如有没有水），原版自己就不确定。
 
 # 地形方块之间、原版自己会不一样的具体组合（kexu 第 1 步实测，见 tests/step3/data/vanilla-diff-pairs.json）。
 # 位置是 kexu 的逐块明细里看的（ocean、mountain；jungle 明细当时还没写完，只有汇总）。
@@ -61,6 +65,8 @@ TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("sand", "water"),         # jungle 2 处，泉水或沙盘
     ("gravel", "water"),       # jungle 1 处
     ("lava", "stone"),         # 岩浆泉（mountain 1 处）
+    ("dirt", "water"),         # 湖、泉水（fish 本地对照 Y 5～51）
+    ("grass_block", "water"),  # 地表小湖（fish 本地对照 Y 79）
 ))
 # 两边分别是这两种时算装饰类：
 #   air/cave_air：古城等结构用 cave_air 填空，本来就都是空气；
@@ -68,6 +74,12 @@ TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
 EXCUSED_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a, b in (
     ("air", "cave_air"),
     ("air", "dirt"),
+    # 废弃矿井的走廊用 cave_air 挖开石头（fish 本地对照，Y −50～27）。
+    # 噪声洞穴是 air，雕刻器是确定的，所以 cave_air 对石头只会来自结构；
+    # 导入丢块表现为 air 对石头，仍是严格差异。
+    ("cave_air", "stone"),
+    ("cave_air", "deepslate"),
+    ("cave_air", "tuff"),
 ))
 
 # 名字相同、只差属性也算地形互换的方块（草方块上盖了雪就是 snowy=true）

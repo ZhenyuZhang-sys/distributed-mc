@@ -1,5 +1,11 @@
 package mcdonate.coordinator;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+
+import java.util.List;
+
+import java.util.ArrayList;
+
 import mcdonate.common.Config;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,6 +39,8 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 public final class DemandScanner {
     static final int QUEUE_CAP = Config.getInt("demandQueueCap", 256);
     /** inner 在"视距 + 原版占内存的圈数"之外再留几圈。 */
+    /** 已知含有服务器 chunk 的 tile（键是 tile 坐标打包成 long），只在主线程上用。 */
+    private final LongOpenHashSet serverTiles = new LongOpenHashSet();
     static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
     private static final int PENDING = Integer.MIN_VALUE;
     private static final int ABSENT = -1;
@@ -72,17 +80,22 @@ public final class DemandScanner {
         int queued = tasks.count(TaskQueue.State.QUEUED);
         for (ServerPlayer p : level.players()) {
             ChunkPos at = p.chunkPosition();
-            for (TilePos tile : Demand.nearestFirst(Demand.tilesAround(at.x, at.z, outer), at.x, at.z)) {
+            // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再排序
+            List<TilePos> candidates = new ArrayList<>();
+            for (TilePos tile : Demand.tilesAround(at.x, at.z, outer)) {
+                if (Demand.minChunkDistance(tile, at.x, at.z) > inner) {
+                    candidates.add(tile);
+                }
+            }
+            for (TilePos tile : Demand.nearestFirst(candidates, at.x, at.z)) {
                 if (queued >= QUEUE_CAP) {
                     break;
                 }
-                if (Demand.minChunkDistance(tile, at.x, at.z) <= inner) {
-                    continue; // 服务器自己会碰到的范围，不交给 donor
-                }
-                if (tasks.find(tile.x(), tile.z()) >= 0) {
+                long tk = ChunkPos.asLong(tile.x(), tile.z());
+                if (serverTiles.contains(tk) || tasks.find(tile.x(), tile.z()) >= 0) {
                     continue;
                 }
-                RegionRules.Enqueue e = Demand.decide(tile, key -> info(chunkMap, access, key));
+                RegionRules.Enqueue e = decide(tile, tk, chunkMap, access);
                 if (e.enqueue() && tasks.enqueue(tile.x(), tile.z(), e.world())) {
                     queued++;
                 }
@@ -94,25 +107,41 @@ public final class DemandScanner {
         maxNanos = Math.max(maxNanos, dt);
     }
 
-    private ChunkInfo info(ChunkMap chunkMap, ChunkMapAccessor access, long key) {
-        if (access.mcdonate$getUpdatingChunkIfPresent(key) != null || access.mcdonate$pendingUnloads().containsKey(key)) {
-            return ChunkInfo.loaded();
+    /**
+     * 和 {@link Demand#decide} 规则一样（接缝规则 0.3），只是查到服务器的或在内存里的 chunk 就停，不再查剩下的。
+     * 存档里状态还不知道的 chunk 发起异步读、这一轮不入队；同一个区域里其他不知道的也一起发起，下一轮就齐了。
+     * 含有服务器 chunk 的 tile 记进 serverTiles，以后不再查：服务器的 chunk 不会变回空的或 donor 的。
+     */
+    private RegionRules.Enqueue decide(TilePos tile, long tileKey, ChunkMap chunkMap, ChunkMapAccessor access) {
+        List<ChunkInfo> region = new ArrayList<>(36);
+        boolean unknown = false;
+        for (int x = tile.minChunkX() - 1; x <= tile.maxChunkX() + 1; x++) {
+            for (int z = tile.minChunkZ() - 1; z <= tile.maxChunkZ() + 1; z++) {
+                long key = ChunkPos.asLong(x, z);
+                if (access.mcdonate$getUpdatingChunkIfPresent(key) != null || access.mcdonate$pendingUnloads().containsKey(key)) {
+                    return RegionRules.Enqueue.no("在内存里");
+                }
+                Integer s = DISK.get(key);
+                if (s == null) {
+                    DISK.put(key, PENDING);
+                    chunkMap.read(new ChunkPos(key)).thenAccept(tag -> DISK.replace(key, PENDING,
+                            tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT)));
+                    unknown = true;
+                } else if (s == PENDING) {
+                    unknown = true;
+                } else if (s == ABSENT) {
+                    region.add(ChunkInfo.empty());
+                } else {
+                    String owner = Ownership.owner(key);
+                    if (owner == null) {
+                        serverTiles.add(tileKey);
+                        return RegionRules.Enqueue.no("服务器的 chunk");
+                    }
+                    region.add(ChunkInfo.owned(owner, s));
+                }
+            }
         }
-        Integer s = DISK.get(key);
-        if (s == null) {
-            DISK.put(key, PENDING);
-            chunkMap.read(new ChunkPos(key)).thenAccept(tag -> DISK.replace(key, PENDING,
-                    tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT)));
-            return ChunkInfo.loaded(); // 不确定：这一轮不入队
-        }
-        if (s == PENDING) {
-            return ChunkInfo.loaded();
-        }
-        if (s == ABSENT) {
-            return ChunkInfo.empty();
-        }
-        String owner = Ownership.owner(key);
-        return owner == null ? ChunkInfo.server() : ChunkInfo.owned(owner, s);
+        return unknown ? RegionRules.Enqueue.no("存档状态还在读") : RegionRules.enqueue(region);
     }
 
     /** 离玩家这么多圈以内的 tile 不交给 donor（见类注释）。 */

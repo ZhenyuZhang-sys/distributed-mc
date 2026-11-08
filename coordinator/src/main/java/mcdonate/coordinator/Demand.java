@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -41,7 +42,7 @@ final class Demand {
     }
 
     /** 按 tile 中心到玩家所在 chunk 的距离排序，近的在前。 */
-    static List<TilePos> nearestFirst(Set<TilePos> tiles, int cx, int cz) {
+    static List<TilePos> nearestFirst(Collection<TilePos> tiles, int cx, int cz) {
         List<TilePos> out = new ArrayList<>(tiles);
         out.sort(Comparator.comparingDouble((TilePos t) -> {
             double dx = t.minChunkX() + 1.5 - cx, dz = t.minChunkZ() + 1.5 - cz;
