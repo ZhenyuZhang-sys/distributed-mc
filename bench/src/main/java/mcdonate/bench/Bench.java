@@ -7,6 +7,10 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +28,7 @@ public final class Bench implements ModInitializer {
         //   /bench reset          计数和计时都清零
         //   /bench track on|off   按 chunk 记录 noise、features（测试用，默认关）
         //   /bench chunk <x> <z>  这个 chunk 跑过几次 noise、features
+        //   /bench view           每个玩家视距内已经做好（加载成成品）的 chunk 数，加上平均 MSPT（冒烟测试估虚空率用）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("bench")
                         .requires(source -> source.hasPermission(2))
@@ -53,10 +58,44 @@ public final class Bench implements ModInitializer {
                                                     ctx.getSource().sendSuccess(() -> Component.literal(s), false);
                                                     return 1;
                                                 }))))
+                        .then(Commands.literal("view").executes(ctx -> {
+                            String s = view(ctx.getSource().getServer());
+                            ctx.getSource().sendSuccess(() -> Component.literal(s), false);
+                            return 1;
+                        }))
                         .then(Commands.literal("timing")
                                 .then(Commands.literal("on").executes(ctx -> setTiming(ctx.getSource(), true)))
                                 .then(Commands.literal("off").executes(ctx -> setTiming(ctx.getSource(), false))))));
         LOG.info("{} loaded", MOD_ID);
+    }
+
+    /**
+     * 简化的虚空率：视距内（方形，和原版发 chunk 的范围一样）还没有成品 chunk 的比例。
+     * 第 4 步有正式的定义和测法，这个只给第 6 步冒烟用。在主线程上调用（命令就在主线程）。
+     */
+    static String view(MinecraftServer server) {
+        int r = server.getPlayerList().getViewDistance();
+        StringBuilder sb = new StringBuilder("{\"view\":").append(r).append(",\"players\":[");
+        int i = 0;
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            ServerLevel level = p.serverLevel();
+            ChunkPos c = p.chunkPosition();
+            int total = 0, ready = 0;
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    total++;
+                    if (level.getChunkSource().getChunkNow(c.x + dx, c.z + dz) != null) {
+                        ready++;
+                    }
+                }
+            }
+            if (i++ > 0) {
+                sb.append(',');
+            }
+            sb.append("{\"name\":\"").append(p.getGameProfile().getName()).append("\",\"total\":").append(total)
+                    .append(",\"ready\":").append(ready).append('}');
+        }
+        return sb.append("],\"mspt\":").append(server.getAverageTickTimeNanos() / 1_000_000.0).append('}').toString();
     }
 
     private static int setTracking(CommandSourceStack source, boolean on) {
