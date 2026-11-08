@@ -61,10 +61,12 @@ def load_areas(path=ROOT/'bench/areas.json'):
         if row['biome_fraction'] < .70: raise ValueError('区域 biome 比例不足')
     return result
 
-def matrix(seed):
+def matrix(seed,repeats=5):
+    """轮数来自 protocol 的 repeats；少跑几轮是完整矩阵的前缀。"""
+    if type(repeats) is not int or repeats<2:raise ValueError('每配置至少 2 轮才能算 CV')
     rng=random.Random(seed)
     result=[]
-    for repeat in range(1,6):
+    for repeat in range(1,repeats+1):
         group=[(area,cpu,repeat) for area in AREA_IDS for cpu in (1,2,4)]
         rng.shuffle(group)
         result.extend(group)

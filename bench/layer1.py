@@ -13,7 +13,7 @@ from .archive import seal,verify
 from .environment import configure,preflight,software
 from .events import LogStream
 from .metrics import Cgroup,Sampler,metrics
-from .models import ROOT,atomic_json,canonical,digest,load_areas,matrix,protocol_id
+from .models import AREA_IDS,ROOT,atomic_json,canonical,digest,load_areas,matrix,protocol_id
 from .server import compose,run,start_chunky
 from .session import WorldSession,resource_environment
 
@@ -207,6 +207,13 @@ def attempt(campaign,slot,area,cpus,repeat,p,order=0,profile=False,warmup=None,r
     directory=slot_dir/f'attempt-{len(previous)+1:03}'
     return one_run(directory,area,cpus,repeat,p,order,profile,warmup)
 
+def profile_slots(p):
+    """阶段分析跑哪些 (区域, 核数)。protocol 没写就跑全部 9 个；粗测只跑了 ocean 4 核。"""
+    slots=p.get('profile_slots') or [[a,c] for a in AREA_IDS for c in (1,2,4)]
+    if any(a not in AREA_IDS or c not in (1,2,4) for a,c in slots) or len({tuple(x) for x in slots})!=len(slots):
+        raise ValueError('profile_slots 只能是不重复的 [区域, 1/2/4]')
+    return [tuple(x) for x in slots]
+
 def load_protocol(path,areas_path,env):
     p=json.loads(Path(path).read_text())
     if protocol_id(p)!=p['protocol_id']:raise ValueError('冻结协议摘要错误')
@@ -261,20 +268,20 @@ def execute(action,areas_path,protocol_path,resume_id=None):
         campaign=baseline/'profile';campaign.mkdir(exist_ok=True)
         atomic_json(campaign/'protocol.json',profile_p)
         rows=[];stages=[]
-        for area in areas.values():
-            for cpu in (1,2,4):
-                r=attempt(campaign,f'{area.id}-c{cpu}',area,cpu,1,profile_p,profile=True,resume=True)
-                rows.append(r)
-                path=Path(r['manifest_path']).parent
-                data=json.loads((path/'bench-stages.json').read_text())
-                total=sum(s['cpu_ns'] for s in data['stages'].values())
-                for stage,values in data['stages'].items():
-                    stages.append(dict(baseline_campaign_id=resume_id,profile_protocol_id=profile_p['protocol_id'],
-                        area_id=area.id,cpu_count=cpu,run_id=r['run_id'],stage=stage,**values,
-                        cpu_ms=values['cpu_ns']/1e6,wall_ms=values['wall_ns']/1e6,cpu_share=values['cpu_ns']/total,
-                        measured_stage_cpu_to_container=total/1e6/r['cpu_ms']))
+        for area_id,cpu in profile_slots(p):
+            area=areas[area_id]
+            r=attempt(campaign,f'{area.id}-c{cpu}',area,cpu,1,profile_p,profile=True,resume=True)
+            rows.append(r)
+            path=Path(r['manifest_path']).parent
+            data=json.loads((path/'bench-stages.json').read_text())
+            total=sum(s['cpu_ns'] for s in data['stages'].values())
+            for stage,values in data['stages'].items():
+                stages.append(dict(baseline_campaign_id=resume_id,profile_protocol_id=profile_p['protocol_id'],
+                    area_id=area.id,cpu_count=cpu,run_id=r['run_id'],stage=stage,**values,
+                    cpu_ms=values['cpu_ns']/1e6,wall_ms=values['wall_ns']/1e6,cpu_share=values['cpu_ns']/total,
+                    measured_stage_cpu_to_container=total/1e6/r['cpu_ms']))
         write_csv(campaign/'stages.csv',stages);write_csv(campaign/'runs.csv',rows)
-        atomic_json(campaign/'result.json',dict(status='passed',parent_protocol_id=p['protocol_id'],protocol_id=profile_p['protocol_id'],runs=9))
+        atomic_json(campaign/'result.json',dict(status='passed',parent_protocol_id=p['protocol_id'],protocol_id=profile_p['protocol_id'],runs=len(rows)))
         return baseline
     campaign=RUNS/(resume_id or ('baseline-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')))
     if campaign.exists():
@@ -283,10 +290,10 @@ def execute(action,areas_path,protocol_path,resume_id=None):
     else:
         campaign.mkdir();atomic_json(campaign/'protocol.json',p)
         shutil.copy2(areas_path,campaign/'areas.json')
-        atomic_json(campaign/'matrix.json',matrix(p['matrix_seed']))
+        atomic_json(campaign/'matrix.json',matrix(p['matrix_seed'],p.get('repeats',5)))
     rows=[]
     try:
-        for index,(kind,cpu,repeat) in enumerate(matrix(p['matrix_seed'])):
+        for index,(kind,cpu,repeat) in enumerate(matrix(p['matrix_seed'],p.get('repeats',5))):
             rows.append(attempt(campaign,f'{kind}-c{cpu}-r{repeat}',areas[kind],cpu,repeat,p,index,resume=bool(resume_id)))
             write_csv(campaign/'layer1.csv',rows)
         from .statistics import summarize
@@ -294,14 +301,14 @@ def execute(action,areas_path,protocol_path,resume_id=None):
         for kind in areas:
             for cpu in (1,2,4):
                 subset=[r for r in rows if r['area_id']==kind and r['cpu_count']==cpu]
-                s=summarize([r['chunks_per_s'] for r in subset])
+                s=summarize([r['chunks_per_s'] for r in subset],minimum=p.get('repeats',5))
                 s.update(area_id=kind,cpu_count=cpu,cpu_ms_per_chunk_mean=statistics.mean(r['cpu_ms_per_chunk'] for r in subset),
                          cpu_ms_per_chunk_median=statistics.median(r['cpu_ms_per_chunk'] for r in subset),
                          cpu_ms_per_chunk_std=statistics.stdev(r['cpu_ms_per_chunk'] for r in subset))
                 summaries.append(s)
         write_csv(campaign/'layer1-summary.csv',summaries)
         if any(s['cv']>=p['cv_threshold'] for s in summaries):raise RuntimeError('正式矩阵 CV 不达标；保留全部数据，不发布本次结果')
-        atomic_json(campaign/'result.json',dict(status='matrix_passed',protocol_id=p['protocol_id'],runs=45))
+        atomic_json(campaign/'result.json',dict(status='matrix_passed',protocol_id=p['protocol_id'],runs=len(rows)))
         execute('profile',areas_path,protocol_path,campaign.name)
         from analysis.summarize_layer1 import summarize_campaign
         summarize_campaign(campaign,publish=True)

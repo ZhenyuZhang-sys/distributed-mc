@@ -21,6 +21,34 @@ def test_variability_not_hidden():
     assert r['cv']==0
     assert summarize([1,1,1,1,100])['cv']>.1
     with pytest.raises(ValueError): summarize([1,1])
+    # 粗测：每配置至少 2 轮也能算 CV，n 如实记录。
+    assert summarize([100,110],minimum=2)['n']==2
+    assert summarize([100,110,90],minimum=2)['n']==3
+    with pytest.raises(ValueError): summarize([100],minimum=1)
+
+
+def test_comparison_pairs_formal_and_coarse():
+    from analysis.summarize_layer1 import comparison_pairs
+    full={('ocean',c,r) for c in (1,2,4) for r in range(1,6)}
+    formal=comparison_pairs('ocean',full)
+    assert [g for g,_,_ in formal].count('repeat_1cpu')==2 and [g for g,_,_ in formal].count('repeat_4cpu')==2
+    assert [g for g,_,_ in formal].count('cross_1_4cpu')==5 and len(formal)==9
+    # 粗测只用已有轮次：同核 1 对 2，跨核同 repeat；2 核单列一组，不混进主比较。
+    have={('ocean',1,1),('ocean',1,2),('ocean',2,1),('ocean',2,2),('ocean',2,3),('ocean',4,1),('ocean',4,2)}
+    coarse=comparison_pairs('ocean',have,coarse=True)
+    assert coarse==[('repeat_1cpu',('ocean',1,1),('ocean',1,2)),('repeat_4cpu',('ocean',4,1),('ocean',4,2)),
+                    ('cross_1_4cpu',('ocean',1,1),('ocean',4,1)),('cross_1_4cpu',('ocean',1,2),('ocean',4,2)),
+                    ('repeat_2cpu',('ocean',2,1),('ocean',2,2))]
+    with pytest.raises(ValueError,match='缺'):comparison_pairs('ocean',have)
+    with pytest.raises(ValueError,match='比较'):comparison_pairs('ocean',{('ocean',1,1),('ocean',4,2)},coarse=True)
+
+
+def test_profile_slots_configurable():
+    from bench.layer1 import profile_slots
+    assert len(profile_slots({}))==9
+    assert profile_slots({'profile_slots':[['ocean',4]]})==[('ocean',4)]
+    for bad in ([['lava',4]],[['ocean',3]],[['ocean',4],['ocean',4]]):
+        with pytest.raises(ValueError):profile_slots({'profile_slots':bad})
 
 def test_escape_in_manifest_rejected(tmp_path):
     outside=tmp_path/'outside';outside.write_text('x')

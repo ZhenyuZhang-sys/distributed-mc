@@ -16,6 +16,10 @@ def test_matrix_and_protocol():
     m = matrix(42)
     assert len(m) == len(set(m)) == 45
     assert m == matrix(42) and m != matrix(43)
+    # 轮数可配置；少跑几轮正好是完整矩阵的前缀，粗测结果以后能接着补满。
+    short = matrix(42, repeats=2)
+    assert len(short) == 18 and short == m[:18] and {r for _, _, r in short} == {1, 2}
+    with pytest.raises(ValueError): matrix(42, repeats=1)
     assert protocol_id({'seed':1,'protocol_id':'old'}) == protocol_id({'seed':1})
     assert protocol_id({'seed':1}) != protocol_id({'seed':2})
 
