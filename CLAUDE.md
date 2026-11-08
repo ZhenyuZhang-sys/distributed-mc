@@ -22,9 +22,23 @@ analysis/      Python：存档读取器、实验脚本、画图
 scripts/       rcon.sh、new_world.sh、test.sh
 ```
 
+## 详细规则
+
+- 开发流程、目录分工、资源限制：`.claude/rules/development.md`
+- 测试方法：`.claude/rules/testing.md`
+
 ## 常用命令
 
-都在 `docker/` 目录下运行：
+测试服务器（在仓库根目录运行，只会碰 `mc-test`）：
+
+```bash
+scripts/test.sh step0              # 跑测试，退出码 0 才算通过
+scripts/new_world.sh <名字> [seed]  # 测试服务器换一个全新世界
+scripts/rcon.sh <命令>              # 给测试服务器发控制台命令
+scripts/test_server.sh up|down|status|logs
+```
+
+平时玩的服务器，在 `/home/fish/mc/docker/` 里运行：
 
 ```bash
 docker compose up -d --wait --wait-timeout 600   # 启动
@@ -49,7 +63,7 @@ docker compose exec -T minecraft rcon-cli <命令>  # 控制台命令，不带 /
 
 - `main`：只放测试通过的代码。
 - `fish`、`kexu`：各自的开发分支。
-- 开工前先同步：`git fetch && git rebase origin/main`。
+- 开工前先同步：`git rebase main`。仓库没有远程，三个 worktree（`/home/fish/mc`、`mc-fish`、`mc-kexu`）共用一个本地仓库。
 - 一个功能做完、`scripts/test.sh` 全部通过后，再合进 `main`。合并前先 rebase 到最新的 `main`。
 - 尽量分开改：同一步里一人一个模块，避免同时改同一个文件。
 - commit 信息用中文，一句话说清改了什么。
