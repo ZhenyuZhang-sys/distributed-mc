@@ -13,6 +13,7 @@ import mcdonate.coordinator.TaskQueue.Decision;
 import mcdonate.coordinator.TaskQueue.State;
 import org.junit.jupiter.api.Test;
 
+/** 不涉及认主的队列行为。用到两个 tile 时故意不相邻，免得触发"包一片"（见 TaskQueueAffinityTest）。 */
 class TaskQueueTest {
     private static final long LEASE = 30_000;
     private final AtomicLong now = new AtomicLong(1_000_000);
@@ -36,19 +37,19 @@ class TaskQueueTest {
     @Test
     void idleWorkerTakesHeadInOrder() {
         q.enqueue(1, 1);
-        q.enqueue(2, 2);
+        q.enqueue(5, 5);
         Assignment a = assign(1);
         assertEquals(1, a.tx());
         assertEquals(LEASE, a.leaseMs());
         assertTrue(q.assign(1).isEmpty(), "手上有任务的 worker 不再拿");
-        assertEquals(2, assign(2).tx());
+        assertEquals(5, assign(2).tx());
         assertTrue(q.assign(3).isEmpty(), "队列空了");
     }
 
     @Test
     void leaseExpiresBackToHead() {
         q.enqueue(1, 1);
-        q.enqueue(2, 2);
+        q.enqueue(5, 5);
         Assignment a = assign(1);
         now.addAndGet(LEASE - 1);
         assertEquals(List.of(), q.expire());
@@ -84,7 +85,7 @@ class TaskQueueTest {
     @Test
     void workerGoneReturnsTaskToHeadImmediately() {
         q.enqueue(1, 1);
-        q.enqueue(2, 2);
+        q.enqueue(5, 5);
         Assignment a = assign(1);
         assertEquals(List.of(a.taskId()), q.workerGone(1));
         assertEquals(1, assign(2).tx());
@@ -162,10 +163,10 @@ class TaskQueueTest {
     @Test
     void failureFromLeaseHolderRequeuesAtTail() {
         q.enqueue(1, 1);
-        q.enqueue(2, 2);
+        q.enqueue(5, 5);
         Assignment a = assign(1);
         assertEquals(Action.REQUEUE, q.onResult(1, a.taskId(), false).action());
-        assertEquals(2, assign(1).tx(), "失败的放到队尾");
+        assertEquals(5, assign(1).tx(), "失败的放到队尾");
         assertEquals(1, assign(2).tx());
     }
 
@@ -216,8 +217,8 @@ class TaskQueueTest {
     @Test
     void statusJson() {
         q.enqueue(1, 1);
-        q.enqueue(2, 2);
+        q.enqueue(5, 5);
         assign(5);
-        assertEquals("{\"queued\":1,\"leased\":1,\"done\":0,\"failed\":0}", q.countsJson());
+        assertEquals("{\"queued\":1,\"leased\":1,\"done\":0,\"failed\":0,\"dropped\":0}", q.countsJson());
     }
 }
