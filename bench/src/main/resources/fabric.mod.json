@@ -16,5 +16,8 @@
     "main": [
       "mcdonate.bench.Bench"
     ]
-  }
+  },
+  "mixins": [
+    "mcdonate-bench.mixins.json"
+  ]
 }

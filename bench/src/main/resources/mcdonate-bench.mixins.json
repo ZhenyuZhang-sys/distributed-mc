@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "mcdonate.bench.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ChunkStatusTasksMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
