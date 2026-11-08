@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from mcd import REPO_ROOT, SCRIPTS, Server, compose, limits, run, wait_until
-from bench.server import quarantine_chunky_tasks
+from bench.server import quarantine_chunky_tasks, quarantine_worker_chunky_tasks
 from analysis.mca import read_chunk, read_world_metadata
 
 DEFAULT_SEED = 424242
@@ -28,7 +28,8 @@ def pytest_addoption(parser):
 
 
 def prepare_step0():
-    if os.environ.get("MCD_LOCK_HELD") != "1":
+    # benchmark（--slow）持独占锁（"1"），普通测试持共享锁（"shared"），见 scripts/lib.sh
+    if os.environ.get("MCD_LOCK_HELD") not in ("1", "shared"):
         pytest.fail("服务器测试请通过 scripts/test.sh 运行，保证整轮持锁。")
     profile_path = REPO_ROOT / "tests/fixtures/mca/spawn_profile.json"
     if not profile_path.exists():
@@ -51,6 +52,7 @@ def prepare_step0():
             active = Server(level, DEFAULT_SEED, started, artifact_dir=evidence / level)
             if not compose("ps", "-q", "minecraft").strip():
                 quarantine_chunky_tasks(evidence / level)
+                quarantine_worker_chunky_tasks(evidence / level)
             run(str(SCRIPTS / "new_world.sh"), level, str(DEFAULT_SEED), timeout=900)
             wait_until(lambda: "Done (" in active.logs(), timeout=30, what="启动完成")
             return active
@@ -77,6 +79,32 @@ def prepare_step0():
     finally:
         if active is not None and not active.retired:
             active.finish()
+
+
+def _donor(server, service: str):
+    """donor 服务器（第 3 步起 worker，第 6 步起 worker2）：和测试服务器一起起来，
+    同一个 seed、同名的全新世界，存档目录分开。跟着 server 走：每一步换世界时一起换。"""
+    w = Server(level=server.level, seed=server.seed, started_at=server.started_at,
+               artifact_dir=(server.artifact_dir / service) if server.artifact_dir else None, service=service)
+    yield w
+    # 在测试服务器收尾（停容器）之前：日志存进证据目录，再查错误
+    if server.retired:
+        return
+    if w.artifact_dir:
+        w.archive_logs(w.artifact_dir / "logs")
+    bad = w.error_lines()
+    if bad:
+        pytest.fail(f"{service} 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+
+
+@pytest.fixture(scope="module")
+def worker(server):
+    yield from _donor(server, "worker")
+
+
+@pytest.fixture(scope="module")
+def worker2(server, worker):
+    yield from _donor(server, "worker2")
 
 
 _skipped: list[str] = []

@@ -19,9 +19,17 @@ run/
 
 # 测试服务器（scripts/lib.sh 自动生成）
 docker/.env.test
+# 本目录用哪组核（scripts/lib.sh 叠在 n100.env 之后）
+docker/.env.local
 docker/test-data/
+docker/test-data-worker/
+docker/test-data-worker2/
+docker/test-exchange/
 .pytest_cache/
 artifacts/
+
+# 单元测试跑 Minecraft 类时生成的日志
+*/logs/
 
 # 第 1 步原始实验与勘探归档
 analysis/results/runs/

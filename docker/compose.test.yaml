@@ -1,8 +1,48 @@
-# 只给测试服务器用，叠加在 compose.yaml 上（scripts/lib.sh 的 tc 会带上）。
-# 平时玩的服务器不用这个文件，不装我们的 mod。
+# 只给测试用，叠加在 compose.yaml 上（scripts/lib.sh 的 tc 会带上）。
+# 平时玩的服务器不用这个文件，不装我们的 mod，也没有 worker。
 services:
   minecraft:
+    environment:
+      # 自动找需求默认关：别的测试的假玩家周围不要自动放任务。第 6 步的找需求测试用 /donor demand on 打开
+      JVM_OPTS: "-Dmcdonate.demand=off"
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。
       - ../build/mods:/mods:ro
+      # 交换目录：worker 导出的文件放这里，服务器从这里导入
+      - ./test-exchange:/exchange
+
+  # donor worker：同一个镜像、同一个 seed（MC_SEED），自己的存档目录。
+  # 模拟玩家的电脑：端口不对外，绑另一组核，不抢服务器的。
+  # 按需启动：只有打开 profile "worker" 才起（test.sh step3 及以后自动打开）。
+  # 第 0～2 步和第 1 步的测量不会多起一台服务器。手动：COMPOSE_PROFILES=worker scripts/...
+  worker:
+    profiles: ["worker"]
+    extends:
+      file: compose.yaml
+      service: minecraft
+    ports: !reset []
+    cpuset: ${WORKER_CPUSET:-8-11}
+    cpus: ${WORKER_CPUS:-4}
+    environment:
+      MOTD: "mc-donate worker"
+      # 第 5 步：建世界前向 coordinator 要 seed，起来后连上去领任务
+      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580"
+      # 故意和 MC_SEED 不一样：证明 worker 用的是 coordinator 给的 seed
+      SEED: "1"
+    volumes: !override
+      - ./test-data-worker:/data
+      - ../build/mods-worker:/mods:ro
+      - ./test-exchange:/exchange
+
+  # 第二个 donor（第 6 步：多个 donor）。和 worker 一样，只是存档目录和核不同。
+  # 单独的 profile：test.sh step6 及以后才起，第 3～5 步只有一个 worker
+  worker2:
+    profiles: !override ["worker2"]
+    extends:
+      service: worker
+    cpuset: ${WORKER2_CPUSET:-4-7}
+    volumes: !override
+      - ./test-data-worker2:/data
+      - ../build/mods-worker:/mods:ro
+      - ./test-exchange:/exchange

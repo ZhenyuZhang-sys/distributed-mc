@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import time
-from .server import REPO_ROOT, SCRIPTS, Server, compose, limits, quarantine_chunky_tasks, run, wait_until
+from .server import REPO_ROOT, SCRIPTS, Server, compose, limits, quarantine_chunky_tasks, quarantine_worker_chunky_tasks, run, wait_until
 from .models import atomic_json, digest
 
 
@@ -15,10 +15,13 @@ def require_managed():
         lock=Path('/tmp/mc-donate-heavy.lock').stat()
         fd=os.fstat(9)
         if (lock.st_dev,lock.st_ino)!=(fd.st_dev,fd.st_ino): raise RuntimeError('锁文件身份不符')
-        fcntl.flock(9,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        # benchmark（bench.sh、test.sh --slow）持独占锁，普通测试持共享锁（scripts/lib.sh）。
+        # 按已持有的模式重新确认；不能把共享锁升级成独占，否则会挡住别的目录的测试。
+        mode=os.environ.get('MCD_LOCK_HELD')
+        if mode not in ('1','shared'): raise RuntimeError('缺少持锁上下文')
+        fcntl.flock(9,(fcntl.LOCK_EX if mode=='1' else fcntl.LOCK_SH)|fcntl.LOCK_NB)
     except (OSError,RuntimeError) as exc:
-        raise RuntimeError('必须经 scripts/bench.sh 或 scripts/test.sh 持共享锁运行') from exc
-    if os.environ.get('MCD_LOCK_HELD')!='1': raise RuntimeError('缺少持锁上下文')
+        raise RuntimeError('必须经 scripts/bench.sh 或 scripts/test.sh 持锁运行') from exc
 
 
 def cpu_pool():
@@ -70,12 +73,13 @@ class WorldSession:
         self.directory=Path(directory);self.directory.mkdir(parents=True,exist_ok=False)
         self.level=f'{prefix}_{time.time_ns()}'
         self.server=Server(self.level,seed,datetime.now(timezone.utc).isoformat(),artifact_dir=self.directory)
-        self.finished=False;self.error=None;self.stale_chunky_tasks=[]
+        self.finished=False;self.error=None;self.stale_chunky_tasks=[];self.stale_worker_chunky_tasks=[]
     def start(self):
         try:
             # 服务器停着时才清：每轮都是全新世界，这时的 Chunky 任务文件一定是残留。
             if not compose('ps','-q','minecraft').strip():
                 self.stale_chunky_tasks=quarantine_chunky_tasks(self.directory)
+                self.stale_worker_chunky_tasks=quarantine_worker_chunky_tasks(self.directory)
             run(str(SCRIPTS/'new_world.sh'),self.level,str(self.server.seed),timeout=900)
             wait_until(lambda:'Done (' in self.server.logs(),timeout=60,what='服务器启动完成')
             if self.server.health()!='healthy': raise RuntimeError('服务器未就绪')
@@ -94,7 +98,7 @@ class WorldSession:
             raise
         finally:
             self.finished=True
-            atomic_json(self.directory/'session.json',dict(level=self.level,finished=True,error=self.error,stale_chunky_tasks=self.stale_chunky_tasks))
+            atomic_json(self.directory/'session.json',dict(level=self.level,finished=True,error=self.error,stale_chunky_tasks=self.stale_chunky_tasks,stale_worker_chunky_tasks=self.stale_worker_chunky_tasks))
     def cleanup(self):
         if not self.finished or self.error:raise RuntimeError('未成功归档的世界不能删除')
         shell_function('assert_test_instance')

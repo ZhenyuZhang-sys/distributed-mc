@@ -2,6 +2,7 @@ package mcdonate.bench.mixin;
 
 import java.util.concurrent.CompletableFuture;
 import mcdonate.bench.Counters;
+import mcdonate.bench.FromDisk;
 import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.Level;
@@ -19,13 +20,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(ChunkStatusTasks.class)
 abstract class ChunkStatusTasksMixin {
 
-    // 存档里读出的完整 chunk 包在 ImposterProtoChunk 里；普通 ProtoChunk 是这里刚生成完的
+    // 存档里读出的成品包在 ImposterProtoChunk 里；存档里读出的半成品带 FromDisk 标记；
+    // 其余是这台服务器从头生成的
     @Inject(method = "full", at = @At("HEAD"))
     private static void mcdonate$countFull(WorldGenContext context, ChunkStep step,
             StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk,
             CallbackInfoReturnable<CompletableFuture<ChunkAccess>> cir) {
         if (context.level().dimension() == Level.OVERWORLD) {
-            Counters.onFull(chunk instanceof ImposterProtoChunk);
+            Counters.FullKind kind = chunk instanceof ImposterProtoChunk ? Counters.FullKind.LOADED
+                    : chunk instanceof FromDisk d && d.mcdonate$isFromDisk() ? Counters.FullKind.RESUMED
+                    : Counters.FullKind.GENERATED;
+            Counters.onFull(kind);
         }
     }
 
@@ -34,7 +39,16 @@ abstract class ChunkStatusTasksMixin {
             StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk,
             CallbackInfoReturnable<CompletableFuture<ChunkAccess>> cir) {
         if (context.level().dimension() == Level.OVERWORLD) {
-            Counters.onNoise();
+            Counters.onNoise(chunk.getPos().x, chunk.getPos().z);
+        }
+    }
+
+    @Inject(method = "generateFeatures", at = @At("HEAD"))
+    private static void mcdonate$countFeatures(WorldGenContext context, ChunkStep step,
+            StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk,
+            CallbackInfoReturnable<CompletableFuture<ChunkAccess>> cir) {
+        if (context.level().dimension() == Level.OVERWORLD) {
+            Counters.onFeatures(chunk.getPos().x, chunk.getPos().z);
         }
     }
 }

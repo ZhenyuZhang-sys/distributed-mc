@@ -13,10 +13,14 @@ JDK_IMAGE="${MCD_JDK_IMAGE:-eclipse-temurin:25-jdk}"
 GRADLE_HOME_DIR="${MCD_GRADLE_HOME:-$HOME/.cache/mc-donate-gradle}"
 mkdir -p "$GRADLE_HOME_DIR"
 
-take_heavy_lock
+# benchmark 跑的时候等它（全局锁的共享模式）；同一个目录里的构建排队。
+# 另外不碰 benchmark 所在的 NUMA 节点，其余的核照样用满。
+take_checkout_lock
+take_shared_lock
 
 # 仓库挂在同一个路径，报错里的文件路径和本机一致。
 docker run --rm \
+  --cpuset-cpus "$(build_cpus)" \
   --user "$(id -u):$(id -g)" \
   -e GRADLE_USER_HOME=/gradle-home \
   -v "$GRADLE_HOME_DIR:/gradle-home" \
