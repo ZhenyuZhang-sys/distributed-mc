@@ -60,6 +60,13 @@ final class CoordinatorServer {
     /** 严格导入（第 6 步的区域规则）；关掉就用第 3 步的旧规则（只给测试故意制造接缝用）。 */
     volatile boolean strict = true;
     final AtomicInteger discardedConflict = new AtomicInteger();
+    /** 整个丢弃按原因分：来晚了（区域已在服务器内存里）、碰到别的 donor 世界、碰到服务器生成的。 */
+    final java.util.Map<RegionRules.Discard, AtomicInteger> discardedBy = new java.util.EnumMap<>(RegionRules.Discard.class);
+    {
+        for (RegionRules.Discard d : RegionRules.Discard.values()) {
+            discardedBy.put(d, new AtomicInteger());
+        }
+    }
     /** 严格导入里被接受的结果数（丢弃比例的分母之一）。 */
     final AtomicInteger acceptedImports = new AtomicInteger();
     /** 每个导入的记录，测试用：tile、donor 世界、写了几个、是否整个丢弃。 */
@@ -195,6 +202,7 @@ final class CoordinatorServer {
                 TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file);
                 if (!res.accepted()) {
                     discardedConflict.incrementAndGet();
+                    discardedBy.get(res.discard()).incrementAndGet();
                     LOG.info("导入任务 {}（worker {}，tile {}）整个丢弃：{}", r.taskId(), workerId, tile, res.reason());
                 } else {
                     acceptedImports.incrementAndGet();
@@ -235,7 +243,11 @@ final class CoordinatorServer {
         }
         return sb.append("],\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
                 .append(",\"discarded_conflict\":").append(discardedConflict.get())
-                .append(",\"discard_ratio\":").append(discardRatio()).append('}').toString();
+                .append(",\"discard_ratio\":").append(discardRatio())
+                .append(",\"discarded\":{\"late\":").append(discardedBy.get(RegionRules.Discard.LOADED).get())
+                .append(",\"other_world\":").append(discardedBy.get(RegionRules.Discard.OTHER_WORLD).get())
+                .append(",\"server\":").append(discardedBy.get(RegionRules.Discard.SERVER).get())
+                .append("},\"accepted\":").append(acceptedImports.get()).append('}').toString();
     }
 
     /** 跨 donor 冲突被整个丢弃的结果占所有严格导入结果的比例（donor 白干的比例）。第 7 步要压低它。 */

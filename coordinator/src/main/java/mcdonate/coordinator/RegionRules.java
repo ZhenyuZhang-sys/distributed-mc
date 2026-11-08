@@ -50,8 +50,11 @@ final class RegionRules {
 
     enum Action { WRITE, OVERWRITE, SKIP }
 
+    /** 整个丢弃的原因分类：来晚了（区域已经在服务器内存里）、碰到别的 donor 世界、碰到服务器生成的。 */
+    enum Discard { NONE, LOADED, OTHER_WORLD, SERVER }
+
     /** 导入的决定：整个丢弃（accepted = false，带原因），或者每个 chunk 怎么处理。 */
-    record ImportPlan<K>(boolean accepted, String reason, Map<K, Action> actions) {}
+    record ImportPlan<K>(boolean accepted, String reason, Map<K, Action> actions, Discard discard) {}
 
     private RegionRules() {}
 
@@ -89,23 +92,23 @@ final class RegionRules {
                 case EMPTY -> actions.put(e.getKey(), Action.WRITE);
                 case OWNED -> {
                     if (!c.owner().equals(world)) {
-                        return discard("碰到别的 donor 世界 " + c.owner() + " 导入的 chunk");
+                        return discard("碰到别的 donor 世界 " + c.owner() + " 导入的 chunk", Discard.OTHER_WORLD);
                     }
                     // 同一个世界后导出的是超集：状态不比导入的靠后就覆盖
                     actions.put(e.getKey(), c.status() <= e.getValue() ? Action.OVERWRITE : Action.SKIP);
                 }
                 case SERVER -> {
-                    return discard("碰到服务器的 chunk");
+                    return discard("碰到服务器的 chunk", Discard.SERVER);
                 }
                 case LOADED -> {
-                    return discard("碰到内存里的 chunk");
+                    return discard("碰到内存里的 chunk", Discard.LOADED);
                 }
             }
         }
-        return new ImportPlan<>(true, "", actions);
+        return new ImportPlan<>(true, "", actions, Discard.NONE);
     }
 
-    private static <K> ImportPlan<K> discard(String reason) {
-        return new ImportPlan<>(false, reason, Map.of());
+    private static <K> ImportPlan<K> discard(String reason, Discard kind) {
+        return new ImportPlan<>(false, reason, Map.of(), kind);
     }
 }

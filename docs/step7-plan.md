@@ -26,7 +26,7 @@ DEV_PLAN 的要求：每项改动做成一个开关；全部关闭就是 v0（�
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `coordinator_features` | 字符串列表 | 开着的开关，比如 `["territory","deadline"]`；空列表 = v0 |
-| `demand_margin` | 整数 | 找需求多看几圈（`mcdonate.demandMargin`），默认 12 |
+| `demand_lookahead` | 整数 | 找需求的提前量（`mcdonate.demandLookahead`），默认 8。（原来的 `demand_margin` 作废：范围改成按原版依赖算，见第 6 步计划） |
 | `tile_size` | 整数 | 1、2、4、8（`mcdonate.tileSize`），默认 4 |
 | `donors` | 对象列表 | 每个 donor：`{"name","cpuset","cpus","mem"}`，没有 donor 是空列表 |
 | `server_cpus` / `server_cpuset` | 数字 / 字符串 | 服务器的核数配额和绑核 |
@@ -37,7 +37,8 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 
 | 字段 | 说明 |
 | --- | --- |
-| `discard_ratio` | 跨 donor 冲突被整个丢弃的结果比例（donor 白干） |
+| `discard_ratio` | 被整个丢弃的结果比例（donor 白干） |
+| `discarded.late` / `.other_world` / `.server` | 整个丢弃按原因分：来晚了（区域已在服务器内存里）、碰到别的 donor、碰到服务器生成的 |
 | `imports_accepted` / `imports_discarded` | 导入接受、整个丢弃的个数 |
 | `hedge_cancelled` | 对冲时撤掉交给服务器的任务数 |
 | `hedge_wasted_tiles` | 撤掉后 donor 结果才回来、被丢弃的个数（浪费量） |
@@ -71,12 +72,13 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 | 7.3 throughput（加慢 donor：上一版本 + 慢 donor、本版 + 慢 donor） | 鞘翅 | 2 × 5 | 10 |
 | 7.4 hedge | 鞘翅 | 1 × 5 | 5 |
 | 7.5 tile 大小（1、2、8，4 已有） | 鞘翅 | 3 × 5 | 15 |
+| 7.5 提前量（16、24，8 已有） | 鞘翅 | 2 × 5 | 10 |
 | 7.6 waitdonor | 鞘翅 | 1 × 5 | 5 |
 | 4 核记录：v0 和全开 | 鞘翅 | 2 × 5 | 10 |
-| **小计** | | | **90 轮 ≈ 6 小时** |
+| **小计** | | | **100 轮 ≈ 6.7 小时** |
 | 可持续探索容量（v0、全开，2 核） | 鞘翅 | 见第 2 节 | ≈ 2 小时 |
 | 每项的正确性检查（见 0.6） | 鞘翅 | 6 × 10 分钟 | ≈ 1 小时 |
-| **合计** | | | **≈ 9.5 小时** |
+| **合计** | | | **≈ 10 小时** |
 
 - 走路速度不跑：4.3 格/秒在 2 核上原版也跟得上，donor 看不出差别。
 - 消融是 benchmark，拿独占锁，期间别的测试都要等。分成三批，每批开跑前在 log.md 时间线写一行（开始时间、预计结束）：
@@ -130,7 +132,13 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 - 原 donor 的结果后来回来时，按第 6 步的规则（碰到服务器的 chunk → 整个丢弃），计入 `hedge_wasted_tiles`。
 - 通过标准（DEV_PLAN）：就绪延迟 p99 显著下降；浪费量有记录。
 
-### 7.5 tile 大小（参数 `tileSize`）
+### 7.5 参数：tile 大小和提前量
+
+**提前量**（`mcdonate.demandLookahead`）：donor 能分到活的窗口 ≈ 提前量 ÷ 玩家速度。默认 8 圈时鞘翅只有约 4 秒，和 donor 做一个 tile 的 2～3 秒（加网络、排队、导入）差不多，很多 tile 回来时已经落进服务器自己占着的范围，只能丢弃（`discarded.late`）。提前量越大窗口越宽，但扫描量、队列长度、donor 白干（玩家拐弯后不再需要）都会涨。
+- 跑 8、16、24 三个值（鞘翅，各 5 次），看就绪延迟 p95、`discarded.late` 比例、扫描耗时，选默认值。
+- 和 7.2（预测 + deadline）有交互：有了预测，提前量可以只往前进方向拉长。所以在 7.2 之后跑。
+
+**tile 大小**（参数 `tileSize`）：
 
 - `TilePos.SIZE` 改成参数：1、2、4、8。导出外圈总是 1 圈，外圈重复比例 (n+2)²/n² − 1（1：800%，2：300%，4：125%，8：56%）。
 - 接缝规则、找需求、认主都按 tile 大小算。单元测试覆盖每个大小的区域计算、负坐标。

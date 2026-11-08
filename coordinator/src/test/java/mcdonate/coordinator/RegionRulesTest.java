@@ -103,6 +103,7 @@ class RegionRulesTest {
     void otherWorldDiscardsWholeResult() {
         ImportPlan<Integer> p = RegionRules.importPlan(current(ChunkInfo.owned("V", CARVERS)), "W", incoming(INIT_LIGHT));
         assertEquals(false, p.accepted());
+        assertEquals(RegionRules.Discard.OTHER_WORLD, p.discard());
         assertTrue(p.reason().contains("V"), p.reason());
     }
 
@@ -114,6 +115,8 @@ class RegionRulesTest {
 
     @Test
     void loadedChunkDiscardsWholeResult() {
-        assertEquals(false, RegionRules.importPlan(current(ChunkInfo.loaded()), "W", incoming(INIT_LIGHT)).accepted());
+        ImportPlan<Integer> p = RegionRules.importPlan(current(ChunkInfo.loaded()), "W", incoming(INIT_LIGHT));
+        assertEquals(false, p.accepted());
+        assertEquals(RegionRules.Discard.LOADED, p.discard(), "来晚了：区域已经在服务器内存里");
     }
 }

@@ -74,6 +74,10 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
         "chunks_on_disk": len(positions), "full_chunks": len(full),
         "donor_share": resumed / (resumed + generated) if resumed + generated else 0,
         "discard_ratio": status["discard_ratio"], "scan": status["scan"],
+        "speed_blocks_per_s": SPEED,
+        # 来晚了：tile 回来时区域已经落进服务器自己占着的范围，只能丢弃
+        "late_ratio": status["discarded"]["late"] / max(1, status["accepted"] + sum(status["discarded"].values())),
+        "discarded": status["discarded"],
         "imports_accepted": len(imported_tiles), "sample": len(sample), "diff_rate": rate,
     }
     print(json.dumps(report, ensure_ascii=False))

@@ -112,7 +112,8 @@ final class TileImporter {
     }
 
     /** 严格导入的结果：整个丢弃（带原因），或者写了几个、覆盖了几个、跳过了几个。 */
-    record StrictResult(boolean accepted, String reason, int written, int overwritten, int skipped) {}
+    record StrictResult(boolean accepted, String reason, int written, int overwritten, int skipped,
+            RegionRules.Discard discard) {}
 
     /**
      * 第 6 步的严格导入（docs/step6-plan.md 0.3）：先查整个区域，碰到别的 donor 世界、服务器的、
@@ -132,7 +133,7 @@ final class TileImporter {
         }
         RegionRules.ImportPlan<Long> plan = RegionRules.importPlan(current, file.worldId(), incoming);
         if (!plan.accepted()) {
-            return new StrictResult(false, plan.reason(), 0, 0, 0);
+            return new StrictResult(false, plan.reason(), 0, 0, 0, plan.discard());
         }
         int written = 0, overwritten = 0, skipped = 0;
         for (Map.Entry<Long, RegionRules.Action> e : plan.actions().entrySet()) {
@@ -151,7 +152,7 @@ final class TileImporter {
             Ownership.record(e.getKey(), file.worldId());
             DemandScanner.diskChanged(e.getKey(), ChunkStatus.byName(c.status()).getIndex());
         }
-        return new StrictResult(true, "", written, overwritten, skipped);
+        return new StrictResult(true, "", written, overwritten, skipped, RegionRules.Discard.NONE);
     }
 
     /** 一个 chunk 现在的情况：在内存里、空、归属某个 donor 世界、服务器的。在主线程上调用。 */
