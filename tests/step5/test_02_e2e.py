@@ -51,11 +51,18 @@ def baseline(server, worker):
 
 # ---- 放 10 个 tile，和原版比 ----
 
-GRID = [(80 + 2 * i, 80 + 2 * j) for j in range(3) for i in range(4)][:10]
+# 远离同一轮里其他测试生成过的区域（第 2 步计数测试在 chunk 296～363 一带生成过，
+# 第一版放在 tile 80 一带和它重叠，导入时被判"已存在"跳过，污染了对照）
+G0 = -120
+GRID = [(G0 + 2 * i, G0 + 2 * j) for j in range(3) for i in range(4)][:10]
 
 
 @pytest.fixture(scope="module")
 def ten(server, worker, baseline):
+    # 前提：这些 tile 在服务器存档里一个 chunk 都没有，导入的才全是 worker 生成的
+    touched = [t for t in GRID if any(server.rcon(f"donor peek {t[0] * 4 + dx} {t[1] * 4 + dz}") != "none"
+                                      for dx in range(-1, 5) for dz in range(-1, 5))]
+    assert not touched, f"这些 tile 已经被别的测试生成过，换个位置：{touched}"
     before = done(server)
     enqueue(server, GRID)
     wait_done(server, before + 10)
@@ -74,8 +81,8 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     # 不用固定阈值：第一次实测这片区域原版自己的噪声就有 3～4%（地下晶洞、地表树多，
     # 相邻 chunk 放地物的先后不同），个别 tile 到 10%。所以拿同一轮、同一片区域里
     # 导入的部分（tile 和边界一圈）和完全没导入的部分（两边各自从头生成）比。
-    x0, z0 = 80 * 4 - 2, 80 * 4 - 2
-    size = (86 - 80) * 4 + 4 + 4
+    x0, z0 = G0 * 4 - 2, G0 * 4 - 2
+    size = 6 * 4 + 4 + 4
     server.chunky_square(x0, z0, size)
     worker.chunky_square(x0, z0, size)
     base = tmp_path_factory.mktemp("e2e")
@@ -89,19 +96,27 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
         return "not_imported"
 
     acc = {"tile": [0, 0], "ring1": [0, 0], "not_imported": [0, 0]}
+    center_diff = {}
     for x in range(x0, x0 + size):
         for z in range(z0, z0 + size):
             ca, cb = read_chunk(a, x, z), read_chunk(b, x, z)
             assert ca.status == cb.status == "minecraft:full", (x, z)
+            d = sum(p != q for p, q in zip(ca.column_hashes(), cb.column_hashes()))
             c = acc[category(x, z)]
-            c[0] += sum(p != q for p, q in zip(ca.column_hashes(), cb.column_hashes()))
+            c[0] += d
             c[1] += 256
+            # 每个 tile 中间 2×2：邻居全在 tile 里，地物都在 worker 上做完了，
+            # 导入后没有谁再往里写，必须和 worker 逐块一致
+            if any(tx * 4 + 1 <= x <= tx * 4 + 2 and tz * 4 + 1 <= z <= tz * 4 + 2 for tx, tz in GRID) and d:
+                center_diff[f"{x},{z}"] = d
     rate = {k: v[0] / v[1] for k, v in acc.items()}
     imported = (acc["tile"][0] + acc["ring1"][0]) / (acc["tile"][1] + acc["ring1"][1])
     print(f"差异列比例：{rate}，导入部分合计 {imported:.2%}")
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
-        (server.artifact_dir / "e2e-diff.json").write_text(json.dumps({"rate": rate, "imported": imported}, indent=2) + "\n")
+        (server.artifact_dir / "e2e-diff.json").write_text(
+            json.dumps({"rate": rate, "imported": imported, "center_diff": center_diff}, indent=2) + "\n")
+    assert not center_diff, f"tile 中间的 chunk 和 worker 不一致，导入丢了东西：{center_diff}"
     assert all(v <= SANITY for v in rate.values()), rate
     assert imported <= max(rate["not_imported"] * 1.5, 0.005), (imported, rate)
 
