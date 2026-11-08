@@ -45,3 +45,32 @@ def test_bad_schema_rejected(tmp_path):
         Rules({**data, 'schema': 2})
     with pytest.raises(ValueError):
         Rules({**data, 'terrain_pairs': [['minecraft:dirt', 'minecraft:dirt']]})
+
+
+# ---- 和 fish 的 analysis/mca/decor.py 同步（合进 main 以后，以它为准） ----
+
+def test_json_is_exported_from_fish_decor_py():
+    # decor.json 由 analysis/export_decor.py 从 decor.py 导出；decor.py 改了没重新导出，这里会失败。
+    from analysis import export_decor
+    assert json.loads(PATH.read_text()) == export_decor.build()
+
+
+def test_json_carries_terrain_test_parameters():
+    # 地形互换的判法参数也放进 JSON，Java 和 Python 读同一份：每处 ≤ 66 方块，处数单侧二项检验 p < 0.01。
+    from analysis.mca import decor as fish
+    rules = load()
+    assert rules.terrain_cluster_max == fish.TERRAIN_CLUSTER_MAX == 66
+    assert rules.terrain_alpha == fish.TERRAIN_ALPHA == 0.01
+
+
+def test_cases_agree_with_fish_classify():
+    from collections import namedtuple
+
+    from analysis.mca import decor as fish
+    state = namedtuple('State', 'name')
+    for c in CASES:
+        assert fish.classify(state(c['a']), state(c['b'])) == c['expected'], c
+    pairs = {frozenset((c['a'], c['b'])): c['expected'] for c in CASES}
+    assert pairs[frozenset(('minecraft:air', 'minecraft:water'))] == 'terrain'  # 湖（fish d81a7ad）
+    assert pairs[frozenset(('minecraft:dirt', 'minecraft:grass_block'))] == 'decor'  # 树干正下方（fish 66fa803）
+    assert pairs[frozenset(('minecraft:dirt', 'minecraft:snow_block'))] == 'decor'

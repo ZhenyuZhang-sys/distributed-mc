@@ -126,6 +126,39 @@ class VerifyTest {
         assertEquals(Verdict.Outcome.STRICT_MISMATCH, Verdict.of(c, Thresholds.defaults()).outcome());
     }
 
+    /** donor 在 y0 起、边长 size 的立方体里把参考里的空气换成水（湖或海被导入弄丢的反方向也一样）。 */
+    static ChunkComparison airWaterCube(int size) throws IOException {
+        CompoundTag donor = chunk("mountain-c1-r1");
+        ChunkBlocks b = new ChunkBlocks(donor);
+        int y0 = b.maxY() - 20;
+        for (int y = y0; y < y0 + size; y++)
+            for (int z = 0; z < size; z++)
+                for (int x = 0; x < size; x++) {
+                    assertEquals("minecraft:air", b.name(x, y, z));
+                    b.set(x, y, z, SectionBlocks.block("minecraft:water"));
+                }
+        b.write();
+        return CMP.compare(donor, chunk("mountain-c1-r1"));
+    }
+
+    @Test
+    void largeAirWaterRegionIsStrict() throws IOException {
+        // 空气对水是地形互换（湖），但每处不超过 66 个方块；丢一大片海照样是严格差异。
+        assertEquals(66, RULES.terrainClusterMax());
+        ChunkComparison c = airWaterCube(5);
+        assertEquals(125, c.strict(), "超过上限的一处整处算严格");
+        assertEquals(0, c.terrain());
+        assertEquals(Verdict.Outcome.STRICT_MISMATCH, Verdict.of(c, Thresholds.defaults()).outcome());
+    }
+
+    @Test
+    void smallAirWaterPocketIsTerrain() throws IOException {
+        ChunkComparison c = airWaterCube(3);
+        assertEquals(0, c.strict());
+        assertEquals(27, c.terrain());
+        assertEquals(Verdict.Outcome.CLEAN, Verdict.of(c, Thresholds.defaults()).outcome());
+    }
+
     @Test
     void changedBiomeIsStrict() throws IOException {
         CompoundTag donor = chunk("mountain-c1-r1");
