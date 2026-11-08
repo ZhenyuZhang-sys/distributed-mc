@@ -32,6 +32,7 @@ class Chunk:
     y_min: int = -64
     y_max_exclusive: int = 320
     air: BlockState = AIR
+    biomes: Mapping = field(default_factory=dict, repr=False)
 
     def _require_full(self):
         if self.status != "minecraft:full":
@@ -46,6 +47,17 @@ class Chunk:
             return AIR
         palette, indices = section
         index = 0 if indices is None else indices[(y % 16) * 256 + z * 16 + x]
+        return palette[index]
+
+    def biome(self, x: int, y: int, z: int) -> str:
+        self._require_full()
+        if not (0 <= x < 16 and 0 <= z < 16 and self.y_min <= y < self.y_max_exclusive):
+            raise IndexError((x,y,z))
+        try:
+            palette, indices = self.biomes[y // 16]
+        except KeyError as exc:
+            raise CorruptChunkError(f"chunk ({self.cx},{self.cz}) section {y//16} 缺少 biome") from exc
+        index = 0 if indices is None else indices[((y % 16)//4)*16 + (z//4)*4 + x//4]
         return palette[index]
 
     @cached_property
@@ -79,11 +91,25 @@ def decode_chunk(tag, cx: int, cz: int) -> Chunk:
         if status != "minecraft:full":
             return Chunk(cx, cz, status, version, MappingProxyType(sections))
         seen = set()
+        biomes = {}
         for section in tag["sections"]:
             sy = int(section["Y"])
             if sy in seen:
                 raise ValueError(f"section Y={sy} 重复")
             seen.add(sy)
+            if "biomes" in section and -4 <= sy < 20:
+                store = section["biomes"]
+                palette = tuple(str(x) for x in store["palette"])
+                if not palette or len(palette) > 64: raise ValueError("biome palette 非法")
+                indices = None
+                if len(palette) > 1:
+                    bits = (len(palette)-1).bit_length()
+                    per_word = 64//bits
+                    words = store["data"]
+                    if len(words) != (64+per_word-1)//per_word: raise ValueError("biome data 长度不符")
+                    indices = tuple((int(words[i//per_word]) & ((1<<64)-1)) >> ((i%per_word)*bits) & ((1<<bits)-1) for i in range(64))
+                    if max(indices) >= len(palette): raise ValueError("biome palette 下标越界")
+                biomes[sy] = palette, indices
             states = section.get("block_states")
             if states is None:
                 # 当前格式允许仅含光照的 section；缺失方块存储是空气。
@@ -117,7 +143,7 @@ def decode_chunk(tag, cx: int, cz: int) -> Chunk:
                         raise ValueError(f"section {sy} palette 下标越界 {value}")
                     values.append(value)
             sections[sy] = palette, tuple(values)
-        return Chunk(cx, cz, status, version, MappingProxyType(sections))
+        return Chunk(cx, cz, status, version, MappingProxyType(sections), biomes=MappingProxyType(biomes))
     except UnsupportedFormatError:
         raise
     except (KeyError, TypeError, ValueError, IndexError, OverflowError) as exc:

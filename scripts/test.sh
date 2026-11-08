@@ -59,12 +59,13 @@ trap cleanup EXIT
 
 cd "$REPO_ROOT"
 
-# 第 2 步起有 mod 要构建。先构建（含 JUnit），再起服务器：构建用满整机，会干扰测试。
-if (( n >= 2 )); then
+# 第 1 步起需要现有测量 mod。先构建（含 JUnit），再起服务器：构建用满整机，会干扰测试。
+if (( n >= 1 )); then
   info "构建 mod 并跑单元测试"
   "$REPO_ROOT/scripts/gradle.sh" build collectMods
-  # 服务器内测试（GameTest）：一台专门的服务器，跑完自己退出
-  "$REPO_ROOT/scripts/gametest.sh"
+  "$MCD_PYTHON" -m bench.cli stamp
+  # 服务器内测试仍从第 2 步开始。
+  if (( n >= 2 )); then "$REPO_ROOT/scripts/gametest.sh"; fi
 fi
 
 info "运行：${dirs[*]}"

@@ -26,8 +26,7 @@ def pytest_addoption(parser):
     parser.addoption("--allow-skip", action="store_true", help="有测试被跳过也算通过")
 
 
-@pytest.fixture(scope="session")
-def server():
+def prepare_step0():
     if os.environ.get("MCD_LOCK_HELD") != "1":
         pytest.fail("服务器测试请通过 scripts/test.sh 运行，保证整轮持锁。")
     profile_path = REPO_ROOT / "tests/fixtures/mca/spawn_profile.json"
@@ -73,14 +72,8 @@ def server():
         (evidence / "run.json").write_text(json.dumps(run_metadata, ensure_ascii=False, indent=2) + "\n")
         yield b
     finally:
-        if active is not None:
-            try:
-                compose("stop", timeout=180)
-            finally:
-                active.archive_logs(evidence / "final-logs")
-            bad = active.error_lines()
-            if bad:
-                pytest.fail("服务器日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+        if active is not None and not active.retired:
+            active.finish()
 
 
 _skipped: list[str] = []
@@ -99,3 +92,35 @@ def pytest_sessionfinish(session, exitstatus):
             for nodeid in _skipped:
                 tr.write_line(f"  {nodeid}")
         session.exitstatus = 1
+
+
+@pytest.fixture(scope="session")
+def server_manager():
+    from bench.session import ServerManager
+    manager = ServerManager(prepare_step0)
+    try:
+        yield manager
+    finally:
+        manager.finish()
+
+
+@pytest.fixture(scope="module")
+def server(request, server_manager):
+    import re
+    match = re.search(r"step(\d+)", str(request.node.path))
+    if not match:
+        pytest.fail("服务器 fixture 缺少测试阶段")
+    return server_manager.acquire(int(match.group(1)))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def managed_termination():
+    import signal
+    previous = signal.getsignal(signal.SIGTERM)
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt(f"收到信号 {signum}")
+    signal.signal(signal.SIGTERM, interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)

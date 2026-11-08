@@ -22,3 +22,6 @@ docker/.env.test
 docker/test-data/
 .pytest_cache/
 artifacts/
+
+# 第 1 步原始实验与勘探归档
+analysis/results/runs/
