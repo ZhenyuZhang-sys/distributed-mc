@@ -30,8 +30,10 @@ def fake_env(tmp_path):
     lock = tmp_path / 'heavy.lock'
     lock.touch()
     env = {**os.environ, 'PATH': f'{bin_dir}:{os.environ["PATH"]}', 'MCD_HEAVY_LOCK': str(lock)}
-    for k in ('MCD_LOCK_HELD', 'MCD_CHECKOUT_LOCK_HELD'):
-        env.pop(k, None)
+    env.pop('MCD_LOCK_HELD', None)
+    # 只测全局锁。本目录的锁假装已经拿着：完整 test.sh 里跑这个测试时，外层 test.sh 正拿着本目录的锁，
+    # 里面的 test.sh 要是再去拿，会一直排队，测不到全局锁。
+    env['MCD_CHECKOUT_LOCK_HELD'] = '1'
     return env, lock, marker
 
 
@@ -66,6 +68,6 @@ def test_waits_for_shared_holders(tmp_path, name):
         time.sleep(0.3)
         r = subprocess.run(['timeout', '3', *CASES[name]], env=env, capture_output=True, text=True, timeout=30)
         assert r.returncode == 124, r.stderr
-        assert '排队等待' in r.stderr and not marker.exists(), r.stderr
+        assert '另一个重活正在跑' in r.stderr and not marker.exists(), r.stderr  # 全局锁的排队提示，不是本目录锁的
     finally:
         holder.kill()
