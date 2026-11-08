@@ -191,7 +191,8 @@ fish 的导入已经做了：DataVersion、坐标、状态是 full、tile 大小
 | --- | --- | --- | --- |
 | 8.0 | 数据验证 | pytest（离线，第 1 步快照）：生物群系两次一样；地表高度两次一样；`extra`/`missing` 方向对称 | **已做**：生物群系 0 差异、方向对称成立；地表高度不成立，移到统计层（`tests/step8/test_01_vanilla_checks.py`） |
 | 8.0a | 共用清单 | pytest：`decor.json` 的判定和 fish 的 `decor.py` 在第 1 步全部差异上一致；JUnit 读同一文件得到同样结论 | 通过；然后请 fish 把 `decor.py` 改成读这份文件 |
-| 8.1 | 作弊开关 | JUnit：每种模式改的位置和个数对；`collude` 两个 donor 结果逐字节一样 | 通过 |
+| 8.1 | 作弊开关 | JUnit：每种模式改的位置和个数对；`collude` 两个 donor 结果逐字节一样 | **已做**：`worker/.../cheat/`（只新增文件），改 chunk 的 NBT，11 项 JUnit（真实数据用第 1 步快照里的一个 mountain chunk） |
+| 8.1b | 接进导出 | fish 第 3/5/6 步进 main、merge main 之后，在 worker 导出 tile 前约好的调用点加一行；配置项写进 `docs/config.md` | 端到端：开 `ore` 的 worker 导出的 tile 里多了钻石 |
 | 8.2 | 严格层和统计层（Java） | JUnit：和 `decor.py` 在同一批样例上结论一致；塞 20 个钻石被统计层抓到；原版对不报 | 通过 |
 | 8.3 | 第 1 层整块重算 | 端到端：一个诚实 donor + 本地受信任 worker，抽查率 100% 跑 5 分钟，误报 0；每种作弊 1 次，被抓到 | 通过 |
 | 8.4 | 第 2 层按列抽样 | JUnit + 端到端：压平和平地被抓到；原版快照上误报 0 | 通过，或照实降级 |
