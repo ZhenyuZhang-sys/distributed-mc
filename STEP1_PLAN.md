@@ -1,6 +1,6 @@
 **第 1 步：基线测量实施计划**
 
-> 本文件保留为早期草案。当前实施依据见 [docs/step1-plan.md](docs/step1-plan.md)，已对照当前代码、CPU 12–15 配置和第 0 步缺项更新。下文的 CPU 编号、环境路径和历史通过数量不代表当前状态。
+> 本文件保留为早期草案。当前实施依据见 [docs/step1-plan.md](docs/step1-plan.md)，已对照 Step0 的完成状态、CPU 12–15 配置、Chunky CSV 目标和现有 bench mod 更新。下文的 CPU 编号、环境路径、模组与历史通过数量不代表当前状态。
 
 依据：[DEV_PLAN.md](DEV_PLAN.md) 的测试约定、第 0 步和第 1 步，[第 0 步详细计划](docs/step0-plan.md)，以及 `CLAUDE.md` 引用的开发、测试规则。脚本接口已对照当前 `scripts/`、`tests/` 和 `docker/compose.yaml` 核查。本文件区分现有能力与待实现扩展，不代表已经完成第 1 步测量。
 
