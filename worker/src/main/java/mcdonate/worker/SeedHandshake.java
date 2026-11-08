@@ -6,12 +6,12 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.function.LongSupplier;
-import mcdonate.common.tempproto.Frame;
-import mcdonate.common.tempproto.FrameDecoder;
-import mcdonate.common.tempproto.Hello;
-import mcdonate.common.tempproto.Message;
-import mcdonate.common.tempproto.Protocol;
-import mcdonate.common.tempproto.Welcome;
+import mcdonate.common.proto.Frame;
+import mcdonate.common.proto.FrameDecoder;
+import mcdonate.common.proto.Hello;
+import mcdonate.common.proto.Message;
+import mcdonate.common.proto.Protocol;
+import mcdonate.common.proto.Welcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

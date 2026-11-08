@@ -9,18 +9,17 @@ import java.net.Socket;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import mcdonate.common.TilePos;
-import mcdonate.common.tempproto.Cancel;
-import mcdonate.common.tempproto.Frame;
-import mcdonate.common.tempproto.FrameDecoder;
-import mcdonate.common.tempproto.Heartbeat;
-import mcdonate.common.tempproto.Hello;
-import mcdonate.common.tempproto.Message;
-import mcdonate.common.tempproto.Protocol;
-import mcdonate.common.tempproto.ProtocolException;
-import mcdonate.common.tempproto.Result;
-import mcdonate.common.tempproto.Task;
-import mcdonate.common.tempproto.Welcome;
-import net.minecraft.nbt.CompoundTag;
+import mcdonate.common.proto.Cancel;
+import mcdonate.common.proto.Frame;
+import mcdonate.common.proto.FrameDecoder;
+import mcdonate.common.proto.Heartbeat;
+import mcdonate.common.proto.Hello;
+import mcdonate.common.proto.Message;
+import mcdonate.common.proto.Protocol;
+import mcdonate.common.proto.ProtocolException;
+import mcdonate.common.proto.Result;
+import mcdonate.common.proto.Task;
+import mcdonate.common.proto.Welcome;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +39,7 @@ final class WorkerClient {
     private final String host;
     private final int port;
     private final Set<Long> cancelled = ConcurrentHashMap.newKeySet();
-    private volatile long currentTask = -1;
+    private volatile long currentTask = Heartbeat.NO_TASK;
     private volatile Socket socket;
     private volatile boolean running = true;
     private volatile boolean seedMismatch;
@@ -143,7 +142,7 @@ final class WorkerClient {
 
     private void onTask(Task t) {
         if (seedMismatch) {
-            send(new Result(t.taskId(), false, "seed 不一致", new CompoundTag()));
+            send(Result.failure(t.taskId(), "seed 不一致"));
             return;
         }
         currentTask = t.taskId();
@@ -151,18 +150,23 @@ final class WorkerClient {
             Result r;
             try {
                 TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
-                r = new Result(t.taskId(), true, "", g.file().toTag());
+                r = Result.success(t.taskId(), g.file().toTag());
             } catch (RuntimeException e) {
                 LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
-                r = new Result(t.taskId(), false, e.toString(), new CompoundTag());
+                r = Result.failure(t.taskId(), truncate(e.toString()));
             }
-            currentTask = -1;
+            currentTask = Heartbeat.NO_TASK;
             if (cancelled.remove(t.taskId())) {
                 LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
                 return;
             }
             send(r);
         });
+    }
+
+    /** NBT 字符串最长 65535 字节，错误信息太长编码会失败：截到 4000 个字符。 */
+    static String truncate(String s) {
+        return s.length() <= 4000 ? s : s.substring(0, 4000);
     }
 
     private void heartbeatLoop() {

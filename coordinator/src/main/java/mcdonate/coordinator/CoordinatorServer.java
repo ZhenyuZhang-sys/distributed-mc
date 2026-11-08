@@ -18,17 +18,17 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import mcdonate.common.TileFile;
-import mcdonate.common.tempproto.Cancel;
-import mcdonate.common.tempproto.Frame;
-import mcdonate.common.tempproto.FrameDecoder;
-import mcdonate.common.tempproto.Heartbeat;
-import mcdonate.common.tempproto.Hello;
-import mcdonate.common.tempproto.Message;
-import mcdonate.common.tempproto.Protocol;
-import mcdonate.common.tempproto.ProtocolException;
-import mcdonate.common.tempproto.Result;
-import mcdonate.common.tempproto.Task;
-import mcdonate.common.tempproto.Welcome;
+import mcdonate.common.proto.Cancel;
+import mcdonate.common.proto.Frame;
+import mcdonate.common.proto.FrameDecoder;
+import mcdonate.common.proto.Heartbeat;
+import mcdonate.common.proto.Hello;
+import mcdonate.common.proto.Message;
+import mcdonate.common.proto.Protocol;
+import mcdonate.common.proto.ProtocolException;
+import mcdonate.common.proto.Result;
+import mcdonate.common.proto.Task;
+import mcdonate.common.proto.Welcome;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -135,7 +135,7 @@ final class CoordinatorServer {
 
     private void sendHeartbeats() {
         long now = System.currentTimeMillis();
-        workers.values().forEach(c -> c.send(new Heartbeat(now, -1)));
+        workers.values().forEach(c -> c.send(new Heartbeat(now, Heartbeat.NO_TASK)));
     }
 
     private void onResult(Connection c, Result r) {

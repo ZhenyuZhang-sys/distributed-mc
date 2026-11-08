@@ -2,9 +2,9 @@ package mcdonate.coordinator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import mcdonate.common.tempproto.Hello;
-import mcdonate.common.tempproto.Protocol;
-import mcdonate.common.tempproto.Welcome;
+import mcdonate.common.proto.Hello;
+import mcdonate.common.proto.Protocol;
+import mcdonate.common.proto.Welcome;
 import org.junit.jupiter.api.Test;
 
 class HandshakeTest {
