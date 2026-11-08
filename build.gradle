@@ -1,0 +1,72 @@
+// 五个模块都是 Loom 项目，公共配置写在这里。
+// 各模块自己的 build.gradle 只写依赖。
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version "${loom_version}" apply false
+}
+
+subprojects {
+    apply plugin: 'net.fabricmc.fabric-loom-remap'
+
+    group = project.maven_group
+    version = project.mod_version
+    base { archivesName = "mcdonate-${project.name}" }
+
+    repositories {
+        maven { name = 'ParchmentMC'; url = 'https://maven.parchmentmc.org' }
+    }
+
+    dependencies {
+        minecraft "com.mojang:minecraft:${project.minecraft_version}"
+        // Mojang 官方名字 + Parchment 参数名
+        mappings loom.layered {
+            officialMojangMappings()
+            parchment("org.parchmentmc.data:parchment-${project.minecraft_version}:${project.parchment_version}@zip")
+        }
+        modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+        testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    // Loom 1.19 要求用 Java 25 跑 Gradle；编译产物按 Java 21 出，服务器用 Java 21 照常能跑。
+    // 构建不限资源：反编译器给足内存，线程数用默认（所有核）。
+    loom {
+        decompilers {
+            vineflower {
+                memory = 16384
+            }
+        }
+    }
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        it.options.release = 21
+        it.options.encoding = 'UTF-8'
+    }
+
+    processResources {
+        inputs.property 'version', project.version
+        filesMatching('fabric.mod.json') {
+            expand 'version': project.version
+        }
+    }
+
+    test {
+        useJUnitPlatform()
+    }
+}
+
+// 把要装进服务器的 mod（remap 之后的 jar）复制到 build/mods/。
+// docker 会把这个目录挂进测试服务器。
+tasks.register('collectMods', Sync) {
+    group = 'mc-donate'
+    description = '把服务器要装的 mod 复制到 build/mods/'
+    from project(':coordinator').tasks.named('remapJar')
+    from project(':bench').tasks.named('remapJar')
+    into layout.buildDirectory.dir('mods')
+}

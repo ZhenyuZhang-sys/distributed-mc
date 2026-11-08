@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "mcdonate-client",
+  "version": "${version}",
+  "name": "mc-donate client",
+  "description": "客户端 mod：启动 worker、按帧率限速。",
+  "environment": "client",
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "mcdonate-common": "*"
+  },
+  "entrypoints": {
+    "client": [
+      "mcdonate.client.ClientMod"
+    ]
+  }
+}

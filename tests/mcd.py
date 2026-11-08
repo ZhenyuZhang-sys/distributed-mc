@@ -57,6 +57,18 @@ def wait_until(check, timeout: float, interval: float = 1.0, what: str = "条件
         time.sleep(interval)
 
 
+def chunky(server: "Server", x: int, z: int, radius: int, timeout: float = 900) -> int:
+    """用 Chunky 生成以 (x, z) 为中心、半径 radius 格的方形，返回 Chunky 报告的 chunk 数。"""
+    pattern = r"Task finished for minecraft:overworld\. Processed: (\d+) chunks"
+    # 同一轮里可能已经跑过 Chunky，等新增的那条完成记录
+    before = len(re.findall(pattern, server.logs()))
+    for cmd in ["chunky world minecraft:overworld", "chunky shape square",
+                f"chunky center {x} {z}", f"chunky radius {radius}", "chunky start"]:
+        server.rcon(cmd)
+    return wait_until(lambda: len(d := re.findall(pattern, server.logs())) > before and int(d[-1]),
+                      timeout=timeout, interval=1, what="Chunky 完成")
+
+
 @dataclass
 class Server:
     level: str

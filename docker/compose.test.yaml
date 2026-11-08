@@ -1,0 +1,8 @@
+# 只给测试服务器用，叠加在 compose.yaml 上（scripts/lib.sh 的 tc 会带上）。
+# 平时玩的服务器不用这个文件，不装我们的 mod。
+services:
+  minecraft:
+    volumes:
+      # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
+      # 镜像启动时把 /mods 同步进服务器的 mods 目录。
+      - ../build/mods:/mods:ro
