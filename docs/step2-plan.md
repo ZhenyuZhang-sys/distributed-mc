@@ -67,8 +67,8 @@
 
 验收：
 
-- [ ] `scripts/gradle.sh build` 在空项目上通过
-- [ ] `scripts/gradle.sh genSources` 能生成带 Mojang 名字的原版源码。后面写 Mixin 时，所有类名和方法名都以这份源码为准
+- [x] `scripts/gradle.sh build` 在空项目上通过
+- [x] `scripts/gradle.sh genSources` 能生成带 Mojang 名字的原版源码。后面写 Mixin 时，所有类名和方法名都以这份源码为准
 
 ## 2.2 多模块骨架
 
@@ -81,8 +81,8 @@
 
 验收：
 
-- [ ] `scripts/gradle.sh build` 生成 5 个 jar，`collectMods` 之后 `build/mods/` 里有 coordinator 和 bench
-- [ ] `scripts/gradle.sh test` 跑了那个 JUnit 测试，并报告通过
+- [x] `scripts/gradle.sh build` 生成 5 个 jar，`collectMods` 之后 `build/mods/` 里有 coordinator 和 bench
+- [x] `scripts/gradle.sh test` 跑了那个 JUnit 测试，并报告通过
 
 ## 2.3 测试服务器装上我们的 mod
 
@@ -95,9 +95,9 @@
 
 验收：
 
-- [ ] 测试服务器启动后，日志里有 `mcdonate-bench loaded` 和 `mcdonate-coordinator loaded`
-- [ ] 第 0 步的测试改成打测试服务器后，全部通过
-- [ ] 测试结束后 `docker compose -p mc-test down`，内存被释放
+- [x] 测试服务器启动后，日志里有 `mcdonate-bench loaded` 和 `mcdonate-coordinator loaded`
+- [x] 第 0 步的测试改成打测试服务器后，全部通过
+- [x] 测试结束后 `docker compose -p mc-test down`，内存被释放
 
 ## 2.4 bench mod：计数
 
@@ -115,9 +115,9 @@
 
 验收（pytest 端到端，在测试服务器上跑）：
 
-- [ ] 新世界，`/bench reset`，用 Chunky 在 (5000, 5000) 生成一块方形区域（远离出生点，避免出生点常驻区块干扰）：`full_generated` 正好等于 Chunky 报告的 chunk 数，`noise` 大于等于这个数
-- [ ] 区域要比假玩家的视野（21×21 chunk）大一圈。重启服务器，`/bench reset`，把假玩家传送到区域中心：`full_loaded` 增加，`full_generated` 为 0
-- [ ] 让假玩家往区域外走：`full_generated` 开始增加
+- [x] 新世界，`/bench reset`，用 Chunky 在 (5000, 5000) 生成一块方形区域（远离出生点，避免出生点常驻区块干扰）：`full_generated` 正好等于 Chunky 报告的 chunk 数，`noise` 大于等于这个数
+- [x] 区域要比假玩家的视野（21×21 chunk）大一圈。重启服务器，`/bench reset`，把假玩家传送到区域中心：`full_loaded` 增加，`full_generated` 为 0
+- [x] 让假玩家往区域外走：`full_generated` 开始增加
 - [ ] 用存档读取器核对：`full_generated` 等于存档里新增的、状态为 `minecraft:full` 的 chunk 数
 
 ## 2.5 bench mod：阶段计时
@@ -132,9 +132,9 @@
 
 验收：
 
-- [ ] Chunky 生成一块地之后，每个阶段的次数都大于 0，noise 阶段的次数等于 2.4 的 `noise` 计数
-- [ ] 各阶段 CPU 时间加起来，至少占这段时间容器总 CPU（从 cgroup 读）的 70%。剩下的是磁盘读写和主线程。达不到就先查漏了哪段，必要时调整这个目标
-- [ ] 同一块区域，计时打开和关闭各跑一次，生成速度相差不到 5%
+- [x] Chunky 生成一块地之后，每个阶段的次数都大于 0，noise 阶段的次数等于 2.4 的 `noise` 计数
+- [x] 各阶段 CPU 时间加起来，至少占这段时间容器总 CPU（从 cgroup 读）的 70%。剩下的是磁盘读写和主线程。达不到就先查漏了哪段，必要时调整这个目标（实测 80%：先预热 JVM，否则即时编译占 15% 以上会拉低到 69%）
+- [x] 同一块区域，计时打开和关闭各跑一次，生成速度相差不到 5%
 
 ## 2.6 GameTest
 

@@ -1,6 +1,6 @@
 # mc-donate 开发计划
 
-现在在第 0 步：把服务器装好，并把它变成 agent 能自己跑、自己判断对错的测试环境。之后每一步都先写测试再写功能，测试通过才进下一步；前面所有步骤的测试，在后面每一步都要重跑。这里不排时间，只排顺序。
+现在：第 0 步和第 2 步只差依赖存档读取器（`analysis/mca/`，kexu）的几项检查，其余已完成；第 1 步进行中。第 0 步的目标是把服务器装好，并把它变成 agent 能自己跑、自己判断对错的测试环境。之后每一步都先写测试再写功能，测试通过才进下一步；前面所有步骤的测试，在后面每一步都要重跑。这里不排时间，只排顺序。
 
 ## 步骤总览
 
@@ -55,13 +55,13 @@ flowchart LR
 
 验收：
 
-- [ ] 容器状态是 healthy；日志里 Fabric Loader 0.16.14、Fabric API、Carpet、Chunky、spark 都已加载
-- [ ] RCON 发 `seed` 返回 424242；`spark tps` 和 `chunky help` 都有正常输出
-- [ ] Carpet 假玩家：`player bot1 spawn` 后 `list` 里有 bot1，`player bot1 kill` 后消失
+- [x] 容器状态是 healthy；日志里 Fabric Loader 0.16.14、Fabric API、Carpet、Chunky、spark 都已加载
+- [x] RCON 发 `seed` 返回 424242；`spark tps` 和 `chunky help` 都有正常输出
+- [x] Carpet 假玩家：`player bot1 spawn` 后 `list` 里有 bot1，`player bot1 kill` 后消失
 - [ ] Chunky 生成出生点附近一小块方形区域；完成后，读取器能读到其中每个 chunk，状态都是 `minecraft:full`
 - [ ] 读取器自测：同一个 chunk 读两次 hash 相同；读不存在的 chunk 返回"不存在"，而不是报错
 - [ ] `new_world.sh` 换新世界后，新世界里只有出生点附近的 chunk
-- [ ] 停服再启动，世界还在，日志里没有 ERROR
+- [x] 停服再启动，世界还在，日志里没有 ERROR
 
 Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，所以测试不用给任何玩家开 OP。
 
@@ -83,7 +83,7 @@ Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，
 - [ ] 不确定率分三档给出：整块完全一样 / 只差几列 / 差很多；差的部分记下是什么方块、在哪一层
 - [ ] 把这些数写进 README 的研究假设，先定 X 的初始值
 
-各生成阶段的耗时占比要靠自己的 mod 计时，放到第 2 步补上。
+各生成阶段的耗时占比用第 2 步的 bench mod 测：生成前 `scripts/rcon.sh bench reset` 和 `bench timing on`，生成后 `scripts/bench_stages.py` 写出 `analysis/results/stages.csv`。计时前要先预热 JVM；计时本身不影响生成速度（实测差别小于 1%）。
 
 ## 第 2 步：仓库骨架和测量 mod
 
@@ -101,12 +101,12 @@ Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，
 
 验收：
 
-- [ ] Docker 里 `./gradlew build` 通过，单元测试通过
-- [ ] 装上我们的 mod 起服，第 0 步的测试全部仍然通过
-- [ ] 一个空的 GameTest 能跑并报告通过，证明测试框架本身可用
-- [ ] Chunky 生成 N 个新 chunk 后，"新生成"计数正好是 N
-- [ ] 重启后把假玩家传送到已生成的区域："从磁盘读"计数增加，"新生成"计数不变
-- [ ] 补上第 1 步缺的各阶段耗时占比
+- [x] Docker 里 `./gradlew build` 通过，单元测试通过
+- [x] 装上我们的 mod 起服，第 0 步的测试全部仍然通过
+- [x] 一个空的 GameTest 能跑并报告通过，证明测试框架本身可用
+- [x] Chunky 生成 N 个新 chunk 后，"新生成"计数正好是 N
+- [x] 重启后把假玩家传送到已生成的区域："从磁盘读"计数增加，"新生成"计数不变
+- [ ] 补上第 1 步缺的各阶段耗时占比（工具已就绪：`/bench stages` 和 `scripts/bench_stages.py`；数据等第 1 步的测试区域定下来再测）
 
 ## 第 3 步：手动打通导出 → 导入（关卡）
 
