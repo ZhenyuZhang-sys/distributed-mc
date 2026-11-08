@@ -30,3 +30,6 @@ artifacts/
 
 # 单元测试跑 Minecraft 类时生成的日志
 */logs/
+
+# 第 1 步原始实验与勘探归档
+analysis/results/runs/

@@ -76,14 +76,16 @@ Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，
 - 不确定率：同一区域在两个全新世界里各生成一次（包括 1 核和 4 核各一次），用读取器逐 chunk、逐列比较 hash。
 - 结果写到 `analysis/results/layer1.csv`。
 
-验收：
+验收（11-08 用户决定第 1 步只粗测，结果见 `analysis/results/baseline.md`）：
 
-- [ ] 3 个区域 × 3 种核数 × 5 次全部跑完，没有失败的
-- [ ] 同一配置 5 次的吞吐波动小于 10%；超过就先查噪声来源（别的容器、CPU 降频），再继续
-- [ ] 不确定率分三档给出：整块完全一样 / 只差几列 / 差很多；差的部分记下是什么方块、在哪一层
-- [ ] 把这些数写进 README 的研究假设，先定 X 的初始值
+- [ ] 3 个区域 × 3 种核数 × 5 次全部跑完，没有失败的。**粗测**：跑了 21 / 45 轮，每配置 2～3 轮，没有失败的；轮数在 `bench/protocol.json` 的 `repeats`，部署机器上重新 pilot 后可跑满
+- [x] 同一配置的吞吐波动小于 10%（粗测 n=2～3，9 个配置 CV 都 <6%）
+- [x] 不确定率分三档给出：整块完全一样 / 只差几列 / 差很多；差的部分记下是什么方块、在哪一层（粗测：每区域 4 对，不是 9 对）
+- [x] 把这些数写进 README 的研究假设，先定 X 的初始值（候选值，待第 4/6 步验证）
 
-各生成阶段的耗时占比用第 2 步的 bench mod 测：生成前 `scripts/rcon.sh bench reset` 和 `bench timing on`，生成后 `scripts/bench_stages.py` 写出 `analysis/results/stages.csv`。计时前要先预热 JVM；计时本身不影响生成速度（实测差别小于 1%）。
+粗测的重要发现：原版自己就有 25%～95% 的 chunk 不完全一样，差异全在装饰和结构阶段（树、藤蔓、矿团、sculk、海带）。第 3、5、8 步判对错不能整块比，见 README 的"研究假设"。
+
+各生成阶段的耗时占比（粗测只做了 ocean 4 核 1 轮）用第 2 步的 bench mod 测：生成前 `scripts/rcon.sh bench reset` 和 `bench timing on`，生成后 `scripts/bench_stages.py` 写出 `analysis/results/stages.csv`。计时前要先预热 JVM；计时本身不影响生成速度（实测差别小于 1%）。
 
 ## 第 2 步：仓库骨架和测量 mod
 

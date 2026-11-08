@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 现在有什么
 
-第 0 步已有 `scripts/`、`tests/`、`docker/` 和只读 `analysis/mca/`。原来的两个 skip 已替换为真实存档断言；完整验收记录见 `docs/step0-plan.md`。已同步上游第 2 步的仓库骨架和 bench mod；第 1 步的基线实验仍待实施。
+第 0 步已有 `scripts/`、`tests/`、`docker/` 和只读 `analysis/mca/`。原来的两个 skip 已替换为真实存档断言；完整验收记录见 `docs/step0-plan.md`。已同步上游第 2 步的仓库骨架和 bench mod。第 1 步按用户决定只做了粗测（`analysis/results/baseline.md`，验收 `tests/step1/test_90_matrix.py` 复核粗测产物）；完整矩阵换到部署机器后重新 pilot 再跑，轮数和预热量在 `bench/protocol.json`。
 
 ## 测试环境怎么串起来
 

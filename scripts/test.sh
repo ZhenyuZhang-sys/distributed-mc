@@ -71,19 +71,20 @@ trap cleanup EXIT
 
 cd "$REPO_ROOT"
 
-# 第 2 步起有 mod 要构建。先构建（含 JUnit），再起服务器：构建用满整机，会干扰测试。
-# 第 3 步起要 worker 服务器，第 6 步起再加第二个（按需启动的 compose profile）
+# 第 1 步起需要现有测量 mod。先构建（含 JUnit），再起服务器：构建用满整机，会干扰测试。
+# 第 3 步起要 worker 服务器，第 6 步起再加第二个（按需启动的 compose profile；--quick 不起第二个）
 if (( n >= 6 && quick == 0 )); then
   export COMPOSE_PROFILES=worker,worker2
 elif (( n >= 3 )); then
   export COMPOSE_PROFILES=worker
 fi
 
-if (( n >= 2 )); then
+if (( n >= 1 )); then
   info "构建 mod 并跑单元测试"
   "$REPO_ROOT/scripts/gradle.sh" build collectMods collectWorkerMods
-  # 服务器内测试（GameTest）：一台专门的服务器，跑完自己退出
-  "$REPO_ROOT/scripts/gametest.sh"
+  "$MCD_PYTHON" -m bench.cli stamp
+  # 服务器内测试（GameTest）从第 2 步开始：一台专门的服务器，跑完自己退出
+  if (( n >= 2 )); then "$REPO_ROOT/scripts/gametest.sh"; fi
 fi
 
 info "运行：${dirs[*]}"

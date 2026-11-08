@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from mcd import REPO_ROOT, SCRIPTS, Server, compose, limits, run, wait_until
+from bench.server import quarantine_chunky_tasks
 from analysis.mca import read_chunk, read_world_metadata
 
 DEFAULT_SEED = 424242
@@ -26,10 +27,9 @@ def pytest_addoption(parser):
     parser.addoption("--allow-skip", action="store_true", help="有测试被跳过也算通过")
 
 
-@pytest.fixture(scope="session")
-def server():
-    # 本目录的锁（普通测试）或全局锁（benchmark、--slow）至少拿了一个
-    if os.environ.get("MCD_CHECKOUT_LOCK_HELD") != "1" and os.environ.get("MCD_LOCK_HELD") != "1":
+def prepare_step0():
+    # benchmark（--slow）持独占锁（"1"），普通测试持共享锁（"shared"），见 scripts/lib.sh
+    if os.environ.get("MCD_LOCK_HELD") not in ("1", "shared"):
         pytest.fail("服务器测试请通过 scripts/test.sh 运行，保证整轮持锁。")
     profile_path = REPO_ROOT / "tests/fixtures/mca/spawn_profile.json"
     if not profile_path.exists():
@@ -50,6 +50,8 @@ def server():
             level = f"{prefix}{time.time_ns()}"
             started = datetime.now(timezone.utc).isoformat()
             active = Server(level, DEFAULT_SEED, started, artifact_dir=evidence / level)
+            if not compose("ps", "-q", "minecraft").strip():
+                quarantine_chunky_tasks(evidence / level)
             run(str(SCRIPTS / "new_world.sh"), level, str(DEFAULT_SEED), timeout=900)
             wait_until(lambda: "Done (" in active.logs(), timeout=30, what="启动完成")
             return active
@@ -74,39 +76,34 @@ def server():
         (evidence / "run.json").write_text(json.dumps(run_metadata, ensure_ascii=False, indent=2) + "\n")
         yield b
     finally:
-        if active is not None:
-            try:
-                compose("stop", timeout=180)
-            finally:
-                active.archive_logs(evidence / "final-logs")
-            bad = active.error_lines()
-            if bad:
-                pytest.fail("服务器日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+        if active is not None and not active.retired:
+            active.finish()
 
 
-@pytest.fixture(scope="session")
+def _donor(server, service: str):
+    """donor 服务器（第 3 步起 worker，第 6 步起 worker2）：和测试服务器一起起来，
+    同一个 seed、同名的全新世界，存档目录分开。跟着 server 走：每一步换世界时一起换。"""
+    w = Server(level=server.level, seed=server.seed, started_at=server.started_at,
+               artifact_dir=(server.artifact_dir / service) if server.artifact_dir else None, service=service)
+    yield w
+    # 在测试服务器收尾（停容器）之前：日志存进证据目录，再查错误
+    if server.retired:
+        return
+    if w.artifact_dir:
+        w.archive_logs(w.artifact_dir / "logs")
+    bad = w.error_lines()
+    if bad:
+        pytest.fail(f"{service} 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+
+
+@pytest.fixture(scope="module")
 def worker(server):
-    """worker 服务器：和 server 一起起来（同一个 seed、同名的全新世界，存档目录分开）。"""
-    w = Server(level=server.level, seed=server.seed, started_at=server.started_at, service="worker")
-    yield w
-    # worker 先于测试服务器收尾，这时容器还在：日志存进证据目录（查导出耗时等）
-    if server.artifact_dir:
-        w.archive_logs(server.artifact_dir / "worker-logs")
-    bad = w.error_lines()
-    if bad:
-        pytest.fail("worker 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+    yield from _donor(server, "worker")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def worker2(server, worker):
-    """第二个 donor（第 6 步）。和 worker 一样，只是存档目录和核不同。"""
-    w = Server(level=server.level, seed=server.seed, started_at=server.started_at, service="worker2")
-    yield w
-    if server.artifact_dir:
-        w.archive_logs(server.artifact_dir / "worker2-logs")
-    bad = w.error_lines()
-    if bad:
-        pytest.fail("worker2 日志里有错误：\n" + "\n".join(bad[:30]), pytrace=False)
+    yield from _donor(server, "worker2")
 
 
 _skipped: list[str] = []
@@ -125,3 +122,35 @@ def pytest_sessionfinish(session, exitstatus):
             for nodeid in _skipped:
                 tr.write_line(f"  {nodeid}")
         session.exitstatus = 1
+
+
+@pytest.fixture(scope="session")
+def server_manager():
+    from bench.session import ServerManager
+    manager = ServerManager(prepare_step0)
+    try:
+        yield manager
+    finally:
+        manager.finish()
+
+
+@pytest.fixture(scope="module")
+def server(request, server_manager):
+    import re
+    match = re.search(r"step(\d+)", str(request.node.path))
+    if not match:
+        pytest.fail("服务器 fixture 缺少测试阶段")
+    return server_manager.acquire(int(match.group(1)))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def managed_termination():
+    import signal
+    previous = signal.getsignal(signal.SIGTERM)
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt(f"收到信号 {signum}")
+    signal.signal(signal.SIGTERM, interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
