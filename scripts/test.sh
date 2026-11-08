@@ -22,22 +22,41 @@ done
 
 dirs=()
 for i in $(seq 0 "$n"); do
-  [[ -d "$REPO_ROOT/tests/step$i" ]] && dirs+=("tests/step$i")
+  [[ -d "$REPO_ROOT/tests/step$i" ]] || die "缺少 tests/step$i，不能验收 step$n"
+  dirs+=("tests/step$i")
 done
 [[ ${#dirs[@]} -gt 0 ]] || die "没有找到 tests/step0 到 tests/step$n"
 
 prepare_heavy
+export MCD_ARTIFACT_DIR="${MCD_ARTIFACT_DIR:-$REPO_ROOT/artifacts/step$n-$(date -u +%Y%m%dT%H%M%S)-$$}"
+mkdir -p "$MCD_ARTIFACT_DIR"
+if [[ -z "${MCD_PYTHON:-}" ]]; then
+  if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then MCD_PYTHON="$REPO_ROOT/.venv/bin/python"; else MCD_PYTHON=python3; fi
+fi
 
 cleanup() {
+  local status=$? level
+  trap - EXIT
   if [[ "${MCD_KEEP_SERVER:-}" == 1 ]]; then
     info "MCD_KEEP_SERVER=1，测试服务器保持运行"
   else
     info "关闭测试服务器"
-    tc down >/dev/null 2>&1 || true
+    if ! (assert_test_instance); then
+      status=1
+    elif ! tc down; then
+      info "测试容器关闭失败"
+      [[ "$status" != 0 ]] || status=1
+    elif [[ "$status" == 0 ]]; then
+      level="$(current_level)"
+      if [[ -n "$level" ]]; then (delete_test_world "$level") || status=1; fi
+    fi
   fi
+  printf '%s\n' "$status" >"$MCD_ARTIFACT_DIR/exit-code.txt"
+  info "测试证据：$MCD_ARTIFACT_DIR"
+  exit "$status"
 }
 trap cleanup EXIT
 
 cd "$REPO_ROOT"
 info "运行：${dirs[*]}"
-python3 -m pytest "${dirs[@]}" ${marker:+-m "$marker"} "${pytest_args[@]}"
+"$MCD_PYTHON" -m pytest "${dirs[@]}" ${marker:+-m "$marker"} --junitxml="$MCD_ARTIFACT_DIR/junit.xml" "${pytest_args[@]}"

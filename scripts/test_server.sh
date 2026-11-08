@@ -9,6 +9,7 @@ case "${1:-}" in
     tc up -d --wait --wait-timeout 600
     ;;
   down)
+    assert_test_instance
     tc down
     ;;
   status)

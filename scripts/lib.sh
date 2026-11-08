@@ -1,23 +1,28 @@
 # 所有脚本共用的函数。用法：source "$(dirname "$0")/lib.sh"
 #
-# 这里的函数只操作测试服务器（compose 项目 mc-test）。
+# 这里的函数只操作测试服务器（mc-test 或 mc-test-<名字>）。
 # 平时玩的服务器（项目 mc-donate、世界 world）从代码上碰不到。
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOCKER_DIR="$REPO_ROOT/docker"
-TEST_PROJECT="mc-test"
 TEST_ENV="$DOCKER_DIR/.env.test"
+TEST_PROJECT="${MCD_TEST_PROJECT:-}"
+if [[ -z "$TEST_PROJECT" && -f "$TEST_ENV" ]]; then
+  TEST_PROJECT="$(sed -n 's/^MCD_TEST_PROJECT=//p' "$TEST_ENV")"
+fi
+TEST_PROJECT="${TEST_PROJECT:-mc-test}"
 TEST_DATA="$DOCKER_DIR/test-data"
 WORLD_ENV="$TEST_DATA/world.env"
 LIMITS_ENV="$DOCKER_DIR/n100.env"
 PLAY_PROJECT="mc-donate"
-PLAY_DIR="/home/fish/mc/docker"
 HEAVY_LOCK="/tmp/mc-donate-heavy.lock"
 
 info() { echo "==> $*" >&2; }
 die() { echo "错误：$*" >&2; exit 1; }
+
+[[ "$TEST_PROJECT" =~ ^mc-test(-[a-z0-9][a-z0-9_-]*)?$ ]] || die "非法测试项目名：$TEST_PROJECT"
 
 # 第一次用时生成 docker/.env.test。EULA 默认 FALSE，由运行的人自己改。
 ensure_test_env() {
@@ -37,6 +42,7 @@ MC_BIND_ADDRESS=127.0.0.1
 MC_RESTART=no
 MC_SEED=424242
 MC_LEVEL=test
+MCD_TEST_PROJECT=$TEST_PROJECT
 EOF
     info "已生成 $TEST_ENV"
   fi
@@ -48,7 +54,7 @@ EOF
 
 # 对测试服务器执行 docker compose。
 # 后面的 env 文件覆盖前面的：.env.test < n100.env（资源限制）< world.env（new_world.sh 写的）。
-# shell 里的环境变量优先级最高，可以临时覆盖，比如 MC_CPUS=2 MC_CPUSET=8-9。
+# shell 里的环境变量优先级最高，可以临时覆盖，比如 MC_CPUS=2 MC_CPUSET=12-13。
 tc() {
   local args=(-p "$TEST_PROJECT" --project-directory "$DOCKER_DIR"
     -f "$DOCKER_DIR/compose.yaml" --env-file "$TEST_ENV" --env-file "$LIMITS_ENV")
@@ -64,7 +70,42 @@ assert_test_data_mount() {
 import json, sys
 vols = json.load(sys.stdin)["services"]["minecraft"]["volumes"]
 print(next(v["source"] for v in vols if v["target"] == "/data"))')"
-  [[ "$src" == "$TEST_DATA" ]] || die "存档目录是 $src，不是 $TEST_DATA，停止。"
+  [[ "$src" == "$TEST_DATA" && ! -L "$TEST_DATA" ]] || die "存档目录是 $src，不是独立的 $TEST_DATA，停止。"
+}
+
+# Compose 项目可能由其他 checkout 创建；先检查，再允许 stop/down。
+assert_test_instance() {
+  local cid src cids
+  cids="$(docker ps -aq --filter "label=com.docker.compose.project=$TEST_PROJECT")" || die "无法核验测试容器归属"
+  for cid in $cids; do
+    src="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' "$cid")"
+    [[ "$src" == "$TEST_DATA" ]] || die "项目 $TEST_PROJECT 的容器 $cid 属于 $src；不能接管。"
+  done
+}
+
+# 停服后、替换世界或容器前保存日志；归档失败就保留旧世界。
+archive_test_logs() {
+  local cid destination
+  cid="$(tc ps -aq minecraft)" || die "无法查询待归档容器"
+  [[ -n "$cid" ]] || return 0
+  destination="${MCD_ARTIFACT_DIR:-$REPO_ROOT/artifacts}/before-replace-${old_level:-unknown}-$(date -u +%Y%m%dT%H%M%S)-$$"
+  mkdir -p "$destination"
+  tc logs --no-color --no-log-prefix minecraft >"$destination/server.log" || die "无法归档旧世界日志：$destination"
+  [[ -s "$destination/server.log" ]] || die "旧世界日志为空：$destination"
+}
+
+validate_world_name() {
+  [[ "$1" =~ ^[a-z0-9_-]{1,32}$ && "$1" != world ]] || die "非法测试世界名：$1"
+  [[ ! -L "$TEST_DATA/$1" ]] || die "测试世界不能是符号链接：$1"
+}
+
+delete_test_world() {
+  validate_world_name "$1"
+  [[ ! -L "$TEST_DATA" ]] || die "测试数据目录不能是符号链接"
+  if [[ -e "$TEST_DATA/$1" ]]; then
+    [[ -d "$TEST_DATA/$1" ]] || die "测试世界不是目录：$1"
+    rm -rf -- "${TEST_DATA:?}/$1"
+  fi
 }
 
 # 平时玩的服务器在跑就退出。不自动帮人关。
@@ -72,7 +113,7 @@ require_play_server_stopped() {
   local running
   running="$(docker ps -q --filter "label=com.docker.compose.project=$PLAY_PROJECT" --filter status=running)"
   if [[ -n "$running" ]]; then
-    die "平时玩的服务器还在跑，两台同时开会互相干扰。先手动停：docker compose --project-directory $PLAY_DIR stop"
+    die "平时玩的服务器 $PLAY_PROJECT 还在跑，请先由管理者正常停服。"
   fi
 }
 
@@ -80,7 +121,12 @@ require_play_server_stopped() {
 # 子进程继承锁，通过 MCD_LOCK_HELD 避免重复加锁导致卡死。
 take_heavy_lock() {
   [[ "${MCD_LOCK_HELD:-}" == 1 ]] && return 0
-  exec 9>"$HEAVY_LOCK"
+  # Linux flock 可在只读 FD 上持排他锁；避免跨用户截断 /tmp 文件失败。
+  if [[ ! -e "$HEAVY_LOCK" ]]; then
+    (umask 000; set -o noclobber; : >"$HEAVY_LOCK") 2>/dev/null || true
+  fi
+  [[ -f "$HEAVY_LOCK" && ! -L "$HEAVY_LOCK" ]] || die "锁文件必须是普通文件：$HEAVY_LOCK"
+  exec 9<"$HEAVY_LOCK"
   if ! flock -n 9; then
     info "另一个重活正在跑，排队等待……"
     flock 9
@@ -119,4 +165,5 @@ prepare_heavy() {
   require_play_server_stopped
   ensure_test_env
   assert_test_data_mount
+  assert_test_instance
 }

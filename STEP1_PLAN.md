@@ -1,5 +1,7 @@
 **第 1 步：基线测量实施计划**
 
+> 本文件保留为早期草案。当前实施依据见 [docs/step1-plan.md](docs/step1-plan.md)，已对照当前代码、CPU 12–15 配置和第 0 步缺项更新。下文的 CPU 编号、环境路径和历史通过数量不代表当前状态。
+
 依据：[DEV_PLAN.md](DEV_PLAN.md) 的测试约定、第 0 步和第 1 步，[第 0 步详细计划](docs/step0-plan.md)，以及 `CLAUDE.md` 引用的开发、测试规则。脚本接口已对照当前 `scripts/`、`tests/` 和 `docker/compose.yaml` 核查。本文件区分现有能力与待实现扩展，不代表已经完成第 1 步测量。
 
 目标是得到可复查的三类结果：**生成吞吐、每个目标 chunk 的 CPU 成本、同 seed 下的方块生成不确定率**。本步骤使用 Chunky、Python 和 Docker，不开发 Java mod。

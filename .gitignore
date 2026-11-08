@@ -21,3 +21,4 @@ run/
 docker/.env.test
 docker/test-data/
 .pytest_cache/
+artifacts/

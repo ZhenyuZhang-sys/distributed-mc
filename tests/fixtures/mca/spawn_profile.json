@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "seed": 424242,
+  "data_version": 3955,
+  "spawn": [
+    0,
+    115,
+    0
+  ],
+  "spawn_chunk_radius": "Gamerule spawnChunkRadius is currently set to: 2",
+  "observed_relative_bounds": [
+    -14,
+    -14,
+    14,
+    14
+  ],
+  "allowed_relative_bounds": [
+    -14,
+    -14,
+    14,
+    14
+  ],
+  "margin_chunks": 0,
+  "observed_chunks": 841,
+  "source": "独立无玩家、无 Chunky 的 1.21.1/seed=424242 参考世界；正常停服后枚举包括生成依赖外圈的全部索引，不添加主观余量。",
+  "initial_observed_relative_bounds": [
+    -3,
+    -3,
+    3,
+    3
+  ],
+  "initial_observed_chunks": 49
+}

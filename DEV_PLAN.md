@@ -1,6 +1,6 @@
 # mc-donate 开发计划
 
-现在在第 0 步：把服务器装好，并把它变成 agent 能自己跑、自己判断对错的测试环境。之后每一步都先写测试再写功能，测试通过才进下一步；前面所有步骤的测试，在后面每一步都要重跑。这里不排时间，只排顺序。
+第 0 步的实现和运行验收已完成：2026-11-08，`scripts/test.sh step0` 87 项通过、无 skip，退出码 0。Git 提交、同步上游后复验及合入 main 仍待当前 checkout 的提交身份，详情见 [验收记录](docs/step0-plan.md)。之后每一步都先写测试再写功能，测试通过才进下一步；前面所有步骤的测试，在后面每一步都要重跑。这里不排时间，只排顺序。
 
 ## 步骤总览
 
@@ -55,13 +55,13 @@ flowchart LR
 
 验收：
 
-- [ ] 容器状态是 healthy；日志里 Fabric Loader 0.16.14、Fabric API、Carpet、Chunky、spark 都已加载
-- [ ] RCON 发 `seed` 返回 424242；`spark tps` 和 `chunky help` 都有正常输出
-- [ ] Carpet 假玩家：`player bot1 spawn` 后 `list` 里有 bot1，`player bot1 kill` 后消失
-- [ ] Chunky 生成出生点附近一小块方形区域；完成后，读取器能读到其中每个 chunk，状态都是 `minecraft:full`
-- [ ] 读取器自测：同一个 chunk 读两次 hash 相同；读不存在的 chunk 返回"不存在"，而不是报错
-- [ ] `new_world.sh` 换新世界后，新世界里只有出生点附近的 chunk
-- [ ] 停服再启动，世界还在，日志里没有 ERROR
+- [x] 容器状态是 healthy；日志里 Fabric Loader 0.16.14、Fabric API、Carpet、Chunky、spark 都已加载
+- [x] RCON 发 `seed` 返回 424242；`spark tps` 和 `chunky help` 都有正常输出
+- [x] Carpet 假玩家：`player bot1 spawn` 后 `list` 里有 bot1，`player bot1 kill` 后消失
+- [x] Chunky 生成出生点附近一小块方形区域；完成后，读取器能读到其中每个 chunk，状态都是 `minecraft:full`
+- [x] 读取器自测：同一个 chunk 读两次 hash 相同；读不存在的 chunk 返回"不存在"，而不是报错
+- [x] `new_world.sh` 换新世界后，新世界里只有出生点附近的 chunk
+- [x] 停服再启动，世界还在，日志里没有 ERROR
 
 Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，所以测试不用给任何玩家开 OP。
 
