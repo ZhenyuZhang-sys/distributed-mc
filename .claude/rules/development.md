@@ -46,7 +46,7 @@
     - benchmark（`bench.sh`、`test.sh --slow`）拿独占模式：它跑的时候，所有测试服务器和 Gradle 构建都排队等它；它开始前也要等手上的测试和构建结束。
     - 普通测试和 Gradle 拿共享模式：几个目录的测试之间不用互相等。同一个目录里的测试、构建另有本目录的锁，一个接一个跑（共用 compose 项目和存档目录）。
     - **为什么不按 NUMA 节点放行**：11-08 试过"核不在 benchmark 的节点上就不等它"。kexu 第 1 步测量时，fish 的测试启动、容器全停又重建的那几分钟，测量那轮在 `chunky start` 后停了 69.5 秒（平时 9～12 秒），吞吐 2.98 chunk/s（平时 9～10）；当时 fish 那个节点的 CPU 只用了 3～18%。分核只隔开了 CPU，隔不开共用的磁盘和 Docker 守护进程（容器创建删除、世界文件读写）。
-    - 每个目录用哪组核写在 `docker/.env.local`（不进 git）：`MC_CPUSET`、`WORKER_CPUSET`、`WORKER2_CPUSET`，几个目录的测试同时跑时各用各的核。现在的分配：benchmark 12-15（节点 0）；fish 目录测试服务器 32-35、worker 36-39、worker2 40-43（节点 2）。
+    - 每个目录用哪组核写在 `docker/.env.local`（不进 git）：`MC_CPUSET`、`WORKER_CPUSET`、`WORKER2_CPUSET`，几个目录的测试同时跑时各用各的核。现在的分配：benchmark 12-15（节点 0）；fish 目录测试服务器 32-35（节点 2），worker 48-51、worker2 52-55、慢 donor worker3 56（节点 3）。donor 和服务器不放在同一个 NUMA 节点上：共用内存带宽，donor 忙的时候会拖慢服务器、污染服务器 CPU 和 MSPT 的测量（真实部署里 donor 在别人的电脑上）。
     - Gradle 构建另外不碰 benchmark 所在的 NUMA 节点，其余的核照样用满。
 - **跑测试服务器前，先停平时玩的那台**：`docker compose --project-directory /home/fish/mc/docker stop`。脚本发现它还在跑就会退出，不会自动帮人关。要关它得问人。
 - 测试跑完，`scripts/test.sh` 会自动 `down` 测试服务器。手动开的记得 `scripts/test_server.sh down`。
