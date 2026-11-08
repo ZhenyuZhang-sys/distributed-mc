@@ -8,7 +8,7 @@
 - **验证**：作弊的 donor（比如往地里塞钻石、把地形压平）能被发现并回滚。
 - **不卡捐赠者**：按 donor 自己的帧率限速。
 
-> **状态**：本 checkout 第 0 步实现及运行验收完成，87 项通过、无 skip；Git 提交、同步上游后复验及合入 main 待提交身份。证据和当前 checkout 的范围见 [验收记录](docs/step0-plan.md)，开发顺序见 [DEV_PLAN.md](DEV_PLAN.md)。
+> **状态**：第 0 步已完成并合入 main；同步上游后的正式验收为 87 项通过、无 skip。证据和验证范围见 [验收记录](docs/step0-plan.md)，开发顺序见 [DEV_PLAN.md](DEV_PLAN.md)。
 
 ## 怎么工作
 

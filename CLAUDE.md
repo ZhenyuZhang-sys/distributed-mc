@@ -12,10 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 测试环境怎么串起来
 
-- `scripts/lib.sh` 的 `tc` 是 Compose 入口，使用 `docker/.env.test`、`docker/n100.env` 和 `docker/test-data/world.env`。项目由 `MCD_TEST_PROJECT` 指定，默认 `mc-test`，仅允许 `mc-test` 或 `mc-test-<名字>`；本 checkout 使用 `mc-test-kexu`、端口 25567。`prepare_heavy` 拿共享锁，确认游戏服已停、EULA 已同意、挂载及现有实例属于当前 checkout。
+- `scripts/lib.sh` 的 `tc` 是 Compose 入口，叠加 `docker/compose.test.yaml` 挂载本地 mod，使用 `docker/.env.test`、`docker/n100.env` 和 `docker/test-data/world.env`。项目由 `MCD_TEST_PROJECT` 指定，默认 `mc-test`，仅允许 `mc-test` 或 `mc-test-<名字>`；本 checkout 使用 `mc-test-kexu`、端口 25567。`prepare_heavy` 拿共享锁，确认游戏服已停、EULA 已同意、挂载及现有实例属于当前 checkout。
 - Python 侧（`tests/mcd.py`）不自己拼 docker 命令：`compose()` 通过 bash 调 `lib.sh` 的 `tc`，`rcon()` 调 `scripts/rcon.sh`。新加的工具函数也走这条路。
 - `tests/conftest.py` 的 session fixture 先在 A 世界生成远处哨兵，再换 B 世界并保存无玩家的初始快照，向测试 yield B。读取器只读一致快照；Chunky 通过 CSV 明确指定坐标。各阶段日志在删世界或重启前归档，最终停服后再检查。证据保存至 `artifacts/`；清理失败同样返回非零。
-- 正式服务器和测试服务器共用同一个 `docker/compose.yaml`，差别全在 env 文件里。改 compose 会同时影响两台。
+- 正式服务器和测试服务器共用 `docker/compose.yaml`；测试另加 mod 挂载覆盖文件和测试 env。改基础 compose 会同时影响两台。
 
 ## 技术栈
 

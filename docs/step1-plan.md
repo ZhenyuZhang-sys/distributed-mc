@@ -2,7 +2,7 @@
 
 依据：[开发总计划](../DEV_PLAN.md)、[第 0 步详细计划](step0-plan.md)，以及当前 `scripts/`、`tests/` 和 `docker/` 的实现。本文件是第 1 步的当前实施依据；根目录的 `STEP1_PLAN.md` 保留为早期草案。
 
-状态：**计划，尚未实现、尚未完成测量**。下面新增的模块、命令和测试均为待实现内容。第 0 步读取器与运行验收已完成（87 项通过、无 skip）；提交、同步上游后复验及合入 main 仍待办，记录见 [第 0 步](step0-plan.md)。
+状态：**计划，尚未实现、尚未完成测量**。下面新增的模块、命令和测试均为待实现内容。第 0 步已完成并合入 main，同步上游后的正式验收为 87 项通过、无 skip，记录见 [第 0 步](step0-plan.md)。
 
 ## 1. 目标、范围和最终产物
 
@@ -39,8 +39,8 @@
 
 | 现有能力 | 第 1 步的使用方式 |
 | --- | --- |
-| `scripts/lib.sh::tc` | 唯一 Compose 入口，固定 `mc-test`、测试 env 和测试数据目录 |
-| `prepare_heavy` | 复用共享锁、游戏服已停、EULA 和挂载检查；补充实际实例归属检查 |
+| `scripts/lib.sh::tc` | 唯一 Compose 入口，固定测试 env 和数据目录；项目为归属当前 checkout 的 `mc-test` 或 `mc-test-<名字>` |
+| `prepare_heavy` | 复用共享锁、游戏服已停、EULA、挂载和实际实例归属检查 |
 | `scripts/rcon.sh` | 所有游戏命令仍经此入口；Python 侧补超时和命令记录 |
 | `scripts/new_world.sh` | 保留 `<名字> [seed]` 接口；runner 保证旧结果已归档，再允许删旧世界 |
 | `scripts/test.sh` | 保留累计回归及 `--slow` 语义；补齐目标步骤存在性和 fixture 生命周期检查 |
