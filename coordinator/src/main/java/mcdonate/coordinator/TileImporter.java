@@ -105,6 +105,7 @@ final class TileImporter {
             chunkMap.write(pos, c.data());
             access.mcdonate$markPosition(pos, incoming.getChunkType());
             Ownership.record(pos.toLong(), file.worldId());
+            DemandScanner.diskChanged(pos.toLong(), incoming.getIndex());
             written++;
         }
         return new Result(label, file.chunks().size(), written, loaded, exists);
@@ -148,6 +149,7 @@ final class TileImporter {
             chunkMap.write(pos, c.data());
             access.mcdonate$markPosition(pos, ChunkStatus.byName(c.status()).getChunkType());
             Ownership.record(e.getKey(), file.worldId());
+            DemandScanner.diskChanged(e.getKey(), ChunkStatus.byName(c.status()).getIndex());
         }
         return new StrictResult(true, "", written, overwritten, skipped);
     }

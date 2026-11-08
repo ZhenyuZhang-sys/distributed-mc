@@ -82,7 +82,9 @@
 
 ### 1.3 统计和实时地图
 
-- `/donor status` 加上：每个 donor 的世界编号、做完了几个 tile；`discarded_conflict`；"donor 没赶上"的 tile 数（导入时区域里已有服务器的或在内存里的 chunk）。
+- `/donor status` 加上：每个 donor 的世界编号、做完了几个 tile；`discarded_conflict` 和 **`discard_ratio`（donor 白干的比例，第 7 步要压低的目标）**；"donor 没赶上"的 tile 数（导入时区域里已有服务器的或在内存里的 chunk）。
+- 找需求的范围是"视距 + margin"，**margin 默认 12**（系统属性 `mcdonate.demandMargin`；DEV_PLAN 原写 +4，只多看 4 圈几乎没有 tile 符合接缝规则，调度已同意改）。6.6 的报告写明用的值，第 7 步的消融表把它当参数之一。
+- 测试服务器默认关掉找需求（`-Dmcdonate.demand=off`），第 6 步自己的端到端测试和 6.6 的正式验收显式 `/donor demand on`，并断言扫描次数 > 0，免得关着空跑通过。
 - 写入成功时调 kexu 第 4 步加的 `mcdonate.common.Provenance.report(cx, cz, DONOR, workerId)`。第 4 步合进 main 之前先留一个调用点，合进来后接上。
 
 ## 2. 小步和验收
@@ -126,6 +128,7 @@
 - [ ] 实时地图上能看到 donor 生成的 chunk 走在玩家前面
 - 4 核：kexu 在第 4 步加跑 4 核鞘翅基线后，跑同样的对照，只记录不卡验收。
 - 报告里写清：kexu 第 1 步发现 1、2 核服务器都只有 1 个生成线程（`Util.makeExecutor` 用"核数 − 1"），2 核上 donor 的效果可能被放大，4 核的数更接近部署环境。
+- 报告里还要写：找需求用的 margin 值；`discard_ratio`；强制跨 donor 接缝的差异（6.2 实测约 20%，正常 2～4%），说明 0.3 的"跨 donor 整个丢弃"规则是必要的。
 
 ## 3. 依赖和顺序
 

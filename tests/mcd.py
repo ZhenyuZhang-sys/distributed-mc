@@ -106,6 +106,17 @@ def worker_id(server: "Server", svc: str = "worker", timeout: float = 180) -> in
     return wait_until(find, timeout=timeout, interval=2, what=f"{svc} 连上 coordinator")
 
 
+def donor_imports(server: "Server") -> list:
+    """coordinator 的全部导入记录（/donor imports 分页取，RCON 一次回复只有约 4096 字节）。"""
+    out, start = [], 0
+    while True:
+        page = json.loads(server.rcon(f"donor imports {start}"))
+        out += page["items"]
+        start += len(page["items"])
+        if not page["items"] or start >= page["total"]:
+            return out
+
+
 def wait_until(check, timeout: float, interval: float = 1.0, what: str = "条件"):
     """每隔 interval 秒调用一次 check()，直到返回真值。超时报错。"""
     deadline = time.monotonic() + timeout

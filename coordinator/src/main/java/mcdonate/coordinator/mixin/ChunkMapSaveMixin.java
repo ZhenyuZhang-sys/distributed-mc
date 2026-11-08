@@ -1,5 +1,6 @@
 package mcdonate.coordinator.mixin;
 
+import mcdonate.coordinator.DemandScanner;
 import mcdonate.coordinator.Ownership;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
@@ -23,6 +24,8 @@ abstract class ChunkMapSaveMixin {
     private void mcdonate$forgetOwner(ChunkAccess chunk, CallbackInfoReturnable<Boolean> cir) {
         if (level.dimension() == Level.OVERWORLD) {
             Ownership.forget(chunk.getPos().toLong());
+            // 存档里的状态可能变了，找需求时重新查
+            DemandScanner.diskUnknown(chunk.getPos().toLong());
         }
     }
 }

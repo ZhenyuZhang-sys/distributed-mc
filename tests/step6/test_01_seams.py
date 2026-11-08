@@ -11,7 +11,7 @@ import pytest
 
 from analysis.mca import read_chunk
 from analysis.mca.chunk import decode_chunk
-from mcd import EXCHANGE, compose, load_tile_file, run, wait_until, worker_id
+from mcd import donor_imports, EXCHANGE, compose, load_tile_file, run, wait_until, worker_id
 
 
 def status(server) -> dict:
@@ -19,7 +19,7 @@ def status(server) -> dict:
 
 
 def imports(server) -> list:
-    return json.loads(server.rcon("donor imports"))
+    return donor_imports(server)
 
 
 def peek(server, x, z) -> str:
@@ -167,7 +167,9 @@ def test_two_donors_no_cross_world_neighbours(server, worker, worker2):
     got = [r for r in imports(server)[before:] if tuple(r["tile"]) in set(area)]
     accepted = {tuple(r["tile"]): r["world"] for r in got if r["accepted"]}
     worlds = set(accepted.values())
-    print(f"导入 {len(accepted)} 个、整个丢弃 {len(got) - len(accepted)} 个，用到 {len(worlds)} 个 donor 世界")
+    print(f"导入 {len(accepted)} 个、整个丢弃 {len(got) - len(accepted)} 个，用到 {len(worlds)} 个 donor 世界，"
+          f"status 里的丢弃比例 {status(server)['discard_ratio']}")
+    assert 0 <= status(server)["discard_ratio"] <= 1
     bad = [(a, b) for a in accepted for b in accepted
            if a < b and abs(a[0] - b[0]) <= 1 and abs(a[1] - b[1]) <= 1 and accepted[a] != accepted[b]]
     assert not bad, f"相邻的 tile 来自不同的 donor 世界：{bad}"

@@ -54,15 +54,26 @@ final class CoordinatorServer {
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "mcdonate-coordinator-timer"));
     private ServerSocket listener;
     private volatile boolean running;
+    final DemandScanner demand;
+    /** 找需求的开关：正式运行默认开；测试服务器用 -Dmcdonate.demand=off 默认关，测试里按需打开。 */
+    volatile boolean demandOn = !"off".equals(System.getProperty("mcdonate.demand"));
     /** 严格导入（第 6 步的区域规则）；关掉就用第 3 步的旧规则（只给测试故意制造接缝用）。 */
     volatile boolean strict = true;
     final AtomicInteger discardedConflict = new AtomicInteger();
+    /** 严格导入里被接受的结果数（丢弃比例的分母之一）。 */
+    final AtomicInteger acceptedImports = new AtomicInteger();
     /** 每个导入的记录，测试用：tile、donor 世界、写了几个、是否整个丢弃。 */
     private final List<String> imports = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     CoordinatorServer(MinecraftServer server, int port) {
         this.server = server;
         this.port = port;
+        this.demand = new DemandScanner(server, tasks);
+    }
+
+    /** 找需求开着没有：没有 donor 连着就不扫，服务器和原版一样。 */
+    boolean shouldScan() {
+        return demandOn && !workers.isEmpty();
     }
 
     private static Thread daemon(Runnable r, String name) {
@@ -185,6 +196,7 @@ final class CoordinatorServer {
                     discardedConflict.incrementAndGet();
                     LOG.info("导入任务 {}（worker {}，tile {}）整个丢弃：{}", r.taskId(), workerId, tile, res.reason());
                 } else {
+                    acceptedImports.incrementAndGet();
                     LOG.info("导入任务 {}（worker {}，tile {}）：written={} overwritten={} skipped={}", r.taskId(), workerId,
                             tile, res.written(), res.overwritten(), res.skipped());
                 }
@@ -217,13 +229,25 @@ final class CoordinatorServer {
                     .append("\",\"task\":").append(c.currentTask).append(",\"idleMs\":").append(now - c.lastSeen)
                     .append('}');
         }
-        return sb.append("],\"tasks\":").append(tasks.countsJson())
-                .append(",\"discarded_conflict\":").append(discardedConflict.get()).append('}').toString();
+        return sb.append("],\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
+                .append(",\"discarded_conflict\":").append(discardedConflict.get())
+                .append(",\"discard_ratio\":").append(discardRatio()).append('}').toString();
     }
 
-    /** /donor imports：每个导入的记录（JSON 数组）。 */
-    String importsJson() {
-        return "[" + String.join(",", imports) + "]";
+    /** 跨 donor 冲突被整个丢弃的结果占所有严格导入结果的比例（donor 白干的比例）。第 7 步要压低它。 */
+    double discardRatio() {
+        int d = discardedConflict.get(), a = acceptedImports.get();
+        return d + a == 0 ? 0.0 : Math.round(1000.0 * d / (d + a)) / 1000.0;
+    }
+
+    /** 一页最多几条：RCON 一次回复只有约 4096 字节。 */
+    static final int IMPORTS_PAGE = 30;
+
+    /** /donor imports [from]：从第 from 条起最多 30 条导入记录，{"total": N, "items": [...]}。 */
+    String importsJson(int from) {
+        List<String> all = List.copyOf(imports);
+        int a = Math.min(Math.max(from, 0), all.size()), b = Math.min(a + IMPORTS_PAGE, all.size());
+        return "{\"total\":" + all.size() + ",\"items\":[" + String.join(",", all.subList(a, b)) + "]}";
     }
 
     /** 一个 worker 连接：读线程、写线程。 */

@@ -7,6 +7,7 @@ import net.fabricmc.api.ModInitializer;
 import java.io.IOException;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -25,10 +26,11 @@ public final class Coordinator implements ModInitializer {
         //   /donor peek <x> <z>     存档里这个 chunk 的状态（不加载）
         //   /donor enqueue <tx> <tz>  放一个任务（第 5 步）
         //   /donor status           worker 注册表和任务数，一行 JSON
-        //   /donor imports          每个导入的记录（tile、donor 世界、是否整个丢弃），测试用
+        //   /donor imports [from]   导入记录（tile、donor 世界、是否整个丢弃），每页 30 条，测试用
         //   /donor owner <x> <z>    这个 chunk 归哪个 donor 世界（none = 没有归属）
         //   /donor assign <tx> <tz> <worker>  测试用：放任务并指定给某个 worker
         //   /donor rules strict|legacy        测试用：导入规则（默认 strict；legacy 是第 3 步的旧规则）
+        //   /donor demand on|off    自动找需求的开关（正式默认开；测试服务器默认关）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
@@ -51,11 +53,19 @@ public final class Coordinator implements ModInitializer {
                                                                         IntegerArgumentType.getInteger(ctx, "tz"),
                                                                         IntegerArgumentType.getInteger(ctx, "worker"))
                                                                 ? "queued" : "already queued or done"))))))
+                        .then(Commands.literal("demand")
+                                .then(Commands.literal("on").executes(ctx -> setDemand(ctx.getSource(), true)))
+                                .then(Commands.literal("off").executes(ctx -> setDemand(ctx.getSource(), false))))
                         .then(Commands.literal("rules")
                                 .then(Commands.literal("strict").executes(ctx -> setStrict(ctx.getSource(), true)))
                                 .then(Commands.literal("legacy").executes(ctx -> setStrict(ctx.getSource(), false))))
-                        .then(Commands.literal("imports").executes(ctx ->
-                                reply(ctx.getSource(), network == null ? "[]" : network.importsJson())))
+                        .then(Commands.literal("imports")
+                                .executes(ctx -> reply(ctx.getSource(), network == null ? "{\"total\":0,\"items\":[]}"
+                                        : network.importsJson(0)))
+                                .then(Commands.argument("from", IntegerArgumentType.integer(0))
+                                        .executes(ctx -> reply(ctx.getSource(), network == null
+                                                ? "{\"total\":0,\"items\":[]}"
+                                                : network.importsJson(IntegerArgumentType.getInteger(ctx, "from"))))))
                         .then(Commands.literal("owner")
                                 .then(Commands.argument("x", IntegerArgumentType.integer())
                                         .then(Commands.argument("z", IntegerArgumentType.integer())
@@ -92,6 +102,13 @@ public final class Coordinator implements ModInitializer {
                     network = null;
                 }
             });
+            // 找需求：每秒（20 tick）在主线程上扫一次；没有 donor 连着就不扫
+            ServerTickEvents.END_SERVER_TICK.register(server -> {
+                CoordinatorServer n = network;
+                if (n != null && server.getTickCount() % 20 == 0 && n.shouldScan()) {
+                    n.demand.scan();
+                }
+            });
             ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
                 if (network != null) {
                     network.stop();
@@ -107,6 +124,13 @@ public final class Coordinator implements ModInitializer {
     private static int reply(CommandSourceStack source, String text) {
         source.sendSuccess(() -> Component.literal(text), false);
         return 1;
+    }
+
+    private static int setDemand(CommandSourceStack source, boolean on) {
+        if (network != null) {
+            network.demandOn = on;
+        }
+        return reply(source, "demand " + (on ? "on" : "off"));
     }
 
     private static int setStrict(CommandSourceStack source, boolean on) {
