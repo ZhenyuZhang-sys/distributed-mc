@@ -1,6 +1,21 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # mc-donate
 
-让在线玩家的电脑帮 Minecraft 服务器提前生成 chunk。项目介绍见 `README.md`，开发顺序和每一步的验收标准见 `DEV_PLAN.md`。动手前先看 `DEV_PLAN.md`，确认当前在哪一步。
+让在线玩家的电脑帮 Minecraft 服务器提前生成 chunk。项目介绍见 `README.md`，开发顺序和每一步的验收标准见 `DEV_PLAN.md`。动手前先看 `DEV_PLAN.md`，确认当前在哪一步；某一步有详细计划的，在 `docs/stepN-plan.md`。
+
+## 现在有什么
+
+目前只有第 0 步的测试环境：`scripts/`、`tests/`、`docker/`。`common/`、`coordinator/` 等 mod 目录和 `analysis/mca/` 还没建。`tests/step0` 里有两个测试在等存档读取器，现在会 `skip`，所以 `scripts/test.sh step0` 按规则是失败的，这是预期的。
+
+## 测试环境怎么串起来
+
+- `scripts/lib.sh` 是唯一碰 docker 的地方。`tc` 函数固定用 compose 项目 `mc-test` 和 `docker/.env.test`，再叠加 `docker/test-data/world.env`（`new_world.sh` 写的世界名和 seed）。`prepare_heavy` 负责拿锁、确认平时的服务器已停、EULA 已同意、存档目录是 `test-data`。
+- Python 侧（`tests/mcd.py`）不自己拼 docker 命令：`compose()` 通过 bash 调 `lib.sh` 的 `tc`，`rcon()` 调 `scripts/rcon.sh`。新加的工具函数也走这条路。
+- `tests/conftest.py` 的 `server` fixture 是整轮共用的：第一次用到时调 `new_world.sh t<时间戳> 424242`，结束时扫日志（`/ERROR]`、`Exception`、堆栈行），去掉 `tests/log_whitelist.txt` 里的再判失败。
+- 正式服务器和测试服务器共用同一个 `docker/compose.yaml`，差别全在 env 文件里。改 compose 会同时影响两台。
 
 ## 技术栈
 
