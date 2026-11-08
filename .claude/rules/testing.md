@@ -7,6 +7,7 @@ scripts/test_config.sh pin             # 先固定 CPU 频率（要 sudo），�
 scripts/test.sh step0                  # 跑第 0 步
 scripts/test.sh step2                  # 跑第 0、1、2 步
 scripts/test.sh step2 --slow           # 连性能测试一起跑
+scripts/test.sh step6 --quick          # 快速回归（约 10 分钟）：不跑标了 long 的长测试，改代码时自查用，验收不能用
 scripts/test.sh step0 -k carpet        # 只跑名字里有 carpet 的（排查用）
 MCD_KEEP_SERVER=1 scripts/test.sh step0  # 跑完不关服务器，方便看日志
 ```
@@ -44,5 +45,6 @@ tests/
 - **等待用 `wait_until`**，给一个超时，不要写死 `sleep`。
 - **每轮都用全新世界、同一个 seed**（默认 424242）。不在旧世界上重复测。
 - **性能测试**加 `@pytest.mark.slow`，不进日常回归。
+- 单个要半分钟以上的端到端测试加 `@pytest.mark.long`，`--quick` 时不跑。新功能至少留一条短测试进快速回归。
 - 还做不了的检查写成 `pytest.skip("等 xxx：要检查什么")`，不要删掉，也不要写成永远通过。
 - 改完代码，**之前所有步骤的测试都要重跑**。

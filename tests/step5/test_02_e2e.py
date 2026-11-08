@@ -11,6 +11,9 @@ import pytest
 from analysis.mca import read_chunk
 from mcd import SCRIPTS, compose, run, wait_until, worker_id
 
+# 跑一遍要几分钟，--quick 时不跑
+pytestmark = pytest.mark.long
+
 # 粗查：任何一类差异超过 10% 就算明显坏了
 SANITY = 0.10
 

@@ -48,6 +48,7 @@ scripts/       rcon.sh、new_world.sh、test.sh
 
 ```bash
 scripts/test.sh step0              # 跑测试，退出码 0 才算通过
+scripts/test.sh step6 --quick      # 快速回归，约 10 分钟，自查用（验收要跑完整的）
 .venv/bin/python -m pytest tests/step0/test_00_mca.py -q  # 无 Docker 的读取器自测
 scripts/new_world.sh <名字> [seed]  # 测试服务器换一个全新世界
 scripts/rcon.sh <命令>              # 给测试服务器发控制台命令

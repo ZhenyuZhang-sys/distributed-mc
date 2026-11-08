@@ -115,6 +115,7 @@ def test_boundary_not_worse_than_outside(gate):
     assert boundary <= max(outside * 1.5, 0.005), (boundary, outside)
 
 
+@pytest.mark.long
 def test_restart_keeps_imported(server, gate):
     # 重启后导入的 chunk 照常加载，方块不变
     result, base = gate

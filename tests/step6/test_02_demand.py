@@ -46,6 +46,7 @@ def filled(server, worker, worker2):
         server.rcon("player demandbot kill")
 
 
+@pytest.mark.long
 def test_tiles_are_around_player_outside_loaded_area(server, filled):
     got, s = filled
     cx, cz = SPOT[0] // 16, SPOT[1] // 16
@@ -57,6 +58,7 @@ def test_tiles_are_around_player_outside_loaded_area(server, filled):
         assert inner < dist <= outer, (r, dist, inner, outer)
 
 
+@pytest.mark.long
 def test_imported_tiles_in_save(server, filled):
     got, _ = filled
     for r in got:
@@ -64,6 +66,7 @@ def test_imported_tiles_in_save(server, filled):
         assert server.rcon(f"donor peek {tx * 4 + 1} {tz * 4 + 1}") != "none", r
 
 
+@pytest.mark.long
 def test_scan_is_cheap(filled):
     _, s = filled
     scan = s["scan"]
@@ -72,6 +75,7 @@ def test_scan_is_cheap(filled):
     assert scan["avgMicros"] < 1000, scan
 
 
+@pytest.mark.long
 def test_no_workers_no_scan(server, worker, worker2, filled):
     # 没有 donor 连着时不扫描：服务器和原版一样
     server.rcon("donor demand on")

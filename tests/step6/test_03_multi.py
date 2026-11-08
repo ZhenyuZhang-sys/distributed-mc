@@ -4,9 +4,13 @@ tile 之间隔开（间距 2 个 tile），外圈互不重叠，不触发接缝�
 /donor status 里每个 worker 有 done（被接受导入的 tile 数）。
 """
 
+import pytest
 import json
 
 from mcd import compose, donor_imports, wait_until, worker_id
+
+# 跑一遍要几分钟，--quick 时不跑
+pytestmark = pytest.mark.long
 
 # 远离其他测试：tile (300, -300) 一带
 TILES = [(300 + 2 * i, -300 + 2 * j) for i in range(4) for j in range(3)]

@@ -1,9 +1,11 @@
 """重启必须保留人为标记和未加载远处 chunk，不能只验证 seed。"""
 
+import pytest
 from analysis.mca import read_chunk, read_world_metadata
 from mcd import compose
 
 
+@pytest.mark.long
 def test_restart_keeps_world(server):
     meta = read_world_metadata(server.initial_snapshot)
     sx, _, sz = meta.spawn

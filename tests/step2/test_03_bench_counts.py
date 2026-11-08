@@ -70,6 +70,7 @@ def test_generated_matches_chunky(generated):
     assert s["noise"] >= count, (count, s)
 
 
+@pytest.mark.long
 def test_reload_counts_as_loaded(server, generated):
     # 重启后把假玩家放到区域中心：视野内都是存档里现成的 chunk
     server.restart()

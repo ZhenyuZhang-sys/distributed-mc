@@ -79,6 +79,7 @@ def test_import_twice_skips(server, imported):
     assert res["written"] == 0 and res["skipped"]["exists"] == 36, res
 
 
+@pytest.mark.long
 def test_import_into_loaded_chunks_refused(server, worker):
     x, z = tile_center(LOADED)
     server.rcon(f"player importbot spawn at {x} 200 {z} facing 0 0 in minecraft:overworld in spectator")

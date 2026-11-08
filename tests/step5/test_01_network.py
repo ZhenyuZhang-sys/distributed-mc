@@ -4,6 +4,7 @@
   {"workers": [{"id", "name", "task", "idleMs"}], "tasks": {"queued", "leased", "done", "failed"}}
 """
 
+import pytest
 import json
 
 from mcd import compose, wait_until, worker_id
@@ -25,6 +26,7 @@ def test_worker_seed_from_coordinator(worker):
     assert worker.rcon("seed") == "Seed: [424242]"
 
 
+@pytest.mark.long
 def test_main_thread_stall_keeps_connection(server, worker):
     # worker 主线程卡 20 秒（超过 15 秒的断线判定）：网络线程照常发心跳，连接不断
     before = worker_id(server, "worker")

@@ -47,6 +47,7 @@ def tile_chunks(tile):
 
 # ---- 世界编号 ----
 
+@pytest.mark.long
 def test_world_ids_differ_and_survive_restart(worker, worker2):
     a, b = worker.rcon("donor worldid"), worker2.rcon("donor worldid")
     assert a and b and a != b
@@ -60,6 +61,7 @@ def test_world_ids_differ_and_survive_restart(worker, worker2):
 SAME_A, SAME_B = (-200, -200), (-199, -200)
 
 
+@pytest.mark.long
 def test_same_donor_superset(server, worker, tmp_path_factory):
     assert_fresh(server, [SAME_A, SAME_B])
     wid = worker_id(server, "worker")
@@ -112,6 +114,7 @@ def test_export_is_superset(worker):
 
 # ---- 服务器重启后归属丢失：按服务器的处理 ----
 
+@pytest.mark.long
 def test_restart_forgets_ownership(server, worker):
     e, f = (-220, -200), (-219, -200)
     assert_fresh(server, [e, f])
@@ -131,6 +134,7 @@ def test_restart_forgets_ownership(server, worker):
 
 # ---- 换了世界（清掉存档重建）的 donor，结果不会覆盖旧世界导入的 chunk ----
 
+@pytest.mark.long
 def test_new_world_does_not_overwrite_old(server, worker2):
     g, h = (-230, -200), (-229, -200)
     assert_fresh(server, [g, h])
@@ -150,6 +154,7 @@ def test_new_world_does_not_overwrite_old(server, worker2):
 
 # ---- 两个 donor 跑一片连续区域：写进存档的相邻 tile 都来自同一个世界 ----
 
+@pytest.mark.long
 def test_two_donors_no_cross_world_neighbours(server, worker, worker2):
     area = [(-260 + i, -260 + j) for i in range(4) for j in range(4)]
     assert_fresh(server, area)
@@ -177,6 +182,7 @@ def test_two_donors_no_cross_world_neighbours(server, worker, worker2):
 
 # ---- 强制制造跨 donor 接缝：只量不判，记进证据目录 ----
 
+@pytest.mark.long
 def test_forced_cross_donor_seam_measured(server, worker, worker2, tmp_path_factory):
     g, h = (-280, -200), (-279, -200)
     assert_fresh(server, [g, h])
