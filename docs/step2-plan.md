@@ -51,6 +51,9 @@
 
 - `scripts/gradle.sh <任务>`：用 JDK 21 的 Gradle 镜像跑 `./gradlew <任务>`，仓库挂进容器。`~/.gradle` 缓存放在一个命名 volume 里，第二次构建不用重新下载。
 - 加 Gradle wrapper。Loom 和 Gradle 的版本，用 Fabric 官方模板生成器给 1.21.1 生成的那一对，固定写下来。
+  - 实际定下的：Loom 1.19.4（插件 `net.fabricmc.fabric-loom-remap`）+ Gradle 9.8.2，和 Fabric 官方模板 1.21 分支一致。wrapper jar 和 Gradle 发行包都核对了官方 sha256。
+  - Loom 1.19 要求用 **Java 25** 跑 Gradle，所以 `scripts/gradle.sh` 用 `eclipse-temurin:25-jdk`。mod 用 `release = 21` 编译，产物是 Java 21 的 class（版本 65），服务器照常用 Java 21。
+  - Gradle 缓存放在 `~/.cache/mc-donate-gradle`（两个 worktree 共用），不用命名 volume，省掉文件权限问题。
 - `gradle.properties` 固定这些版本：
 
   ```properties
@@ -146,8 +149,8 @@
 
 ## 2.7 收尾和合并
 
-- `scripts/test.sh step2` 依次跑：
-    - Gradle 单元测试
+- `scripts/test.sh step2` 依次跑（构建在起服务器之前，内存不够两个同时开）：
+    - Gradle 构建和单元测试（`gradle.sh build collectMods`）
     - GameTest
     - 2.4 的端到端测试
     - 第 0 步的测试

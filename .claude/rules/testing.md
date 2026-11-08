@@ -25,7 +25,8 @@ tests/
 ```
 
 - 文件名用 `test_NN_xxx.py`，按编号顺序跑。要放在最后的（比如重启）用大编号。
-- 单元测试（Gradle + JUnit）放在各模块的 `src/test/`，由 `test.sh` 调 Gradle 跑（第 2 步接上）。
+- 单元测试（Gradle + JUnit）放在各模块的 `src/test/`。`test.sh step2` 及以后，会先跑 `scripts/gradle.sh build collectMods`（构建 + JUnit），再起测试服务器。构建失败，整轮直接失败。
+- `tests/step2/` 里的 pytest 只检查构建产物（jar、`build/mods/`、JUnit 结果），不自己调 Gradle。
 
 ## 一轮测试怎么进行
 

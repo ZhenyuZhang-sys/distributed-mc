@@ -39,5 +39,12 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$REPO_ROOT"
+
+# 第 2 步起有 mod 要构建。先构建（含 JUnit），再起服务器：内存不够两个同时开。
+if (( n >= 2 )); then
+  info "构建 mod 并跑单元测试"
+  "$REPO_ROOT/scripts/gradle.sh" build collectMods
+fi
+
 info "运行：${dirs[*]}"
 python3 -m pytest "${dirs[@]}" ${marker:+-m "$marker"} "${pytest_args[@]}"
