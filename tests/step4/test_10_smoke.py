@@ -29,6 +29,7 @@ def test_walk_flight_writes_csv(server):
     summary = json.loads((result / 'summary.json').read_text())
     assert summary['initial_load_s'] > 0 and summary['visits'] > 0
     assert summary['view_distance'] == 10 and summary['available_processors'] >= 1
+    assert summary['scan_every_ticks'] == 1
     assert (result / 'raw' / 'done.json').is_file() and (result / 'raw' / 'chunks.jsonl').is_file()
     # 归档后服务器目录里的原始输出删掉，不在 test-data 里越积越多
     assert not (layer2.RUNS / summary['run']).exists()

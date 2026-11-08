@@ -23,7 +23,7 @@ def write_run(d, rows=3, done=None, events=None):
     base = dict(version=1, run=d.name, player='walkbot', mode='wall', speed=4.3, seconds=float(rows), y=200.0,
                 start_x=100.0, start_z=8.5, end_x=100 + 4.3 * rows, end_z=8.5, view_distance=10, requested_view_distance=2,
                 available_processors=2, ticks=20 * rows, rows=rows, end_ms=rows * 1000, t0_nanotime=T0,
-                events=dict(enter=2, ready=1, leave=0), initial=dict(view=453, not_ready=0), scan_ms_total=1.5,
+                events=dict(enter=2, ready=1, leave=0), initial=dict(view=453, not_ready=0), scan_ms_total=1.5, scan_every_ticks=1,
                 stopped=False, aborted=None, coordinator_features=None, demand_lookahead=None)
     base.update(done or {})
     (d / 'done.json').write_text(json.dumps(base))
@@ -59,6 +59,7 @@ def test_compose_writes_seconds_chunks_and_summary(tmp_path):
     assert math.isclose(summary['void_mean'], (0.1 + 0.05 + 0.1 / 3) / 3)
     assert summary['available_processors'] == 2 and summary['requested_view_distance'] == 2
     assert summary['coordinator_features'] is None and summary['scan_ms_total'] == 1.5
+    assert summary['scan_every_ticks'] == 1  # 扫视野的间隔必须记下，以后改成每 2 tick 扫时数才对得上
 
 
 def test_compose_latency_and_censoring(tmp_path):
