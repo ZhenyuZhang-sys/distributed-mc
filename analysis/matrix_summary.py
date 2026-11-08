@@ -105,6 +105,9 @@ def collect(campaign) -> list[dict]:
                 continue
             r = json.loads((a / 'result.json').read_text())
             out = {k: v for k, v in r['output'].items() if k != 'interference'}
+            clash = set(out) & (PARAM_KEYS | META_KEYS)
+            if clash:
+                raise ValueError(f'{cdir.name}：指标和参数同名 {sorted(clash)}，汇总会把它当成参数，驱动要改名')
             rows.append(dict(cell_id=r['cell_id'], experiment=r['experiment'], repeat=r['repeat'],
                              concurrent=m.get('concurrent', False), **r['params'], **out))
             break

@@ -15,7 +15,7 @@ def metrics(cell, out):
                     void_mean=0.3 / (1 + d), void_p95=0.5 / (1 + d), mspt_p95=40.0 - d, mspt_max=48.0,
                     cpu_cores_mean=1.8 - 0.2 * d, ring_overhead=0.1 * p.get('tile_size', 4), hedge_wasted_tiles=3)
     if e == 'capacity':
-        return dict(max_bots=1 + p['donors'] + (1 if p['features'] == 'all' else 0))
+        return dict(capacity_bots=1 + p['donors'] + (1 if p['features'] == 'all' else 0))
     return dict(detected=p['cheat'] != 'none', chunks_before_blacklist=40 if p['cheat'] != 'none' else None,
                 false_positives=0, y=0.05 + p['check_rate'], verify_cpu_ms=100 * p['check_rate'])
 

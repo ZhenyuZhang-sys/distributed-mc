@@ -121,3 +121,12 @@ def test_detection_and_y_verdicts():
     assert verdict(honest, 'Y') == '已定'
     assert verdict(honest[:3], 'Y') == '数据不足'
     assert verdict([], 'Z') == '数据不足'
+
+
+def test_metric_name_colliding_with_parameter_rejected(tmp_path):
+    # 指标和参数同名（比如 capacity 的搜索上限 max_bots）会被汇总当成参数，所以直接报错。
+    cfg = validate({'name': 'clash', 'seed': 1, 'repeats': 1, 'experiments': {
+        'capacity': [{'donors': [2], 'server_cpus': [2], 'max_bots': 8}]}})
+    run(cfg, {'capacity': lambda cell, out: dict(max_bots=3)}, tmp_path)
+    with pytest.raises(ValueError, match='max_bots'):
+        collect(tmp_path / 'matrix-clash')
