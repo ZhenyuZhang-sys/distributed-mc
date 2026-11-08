@@ -7,7 +7,8 @@
 
 判定（事先定死，调度 11-08）：边界一圈"导入组 > 原版组"的位置数做配对符号检验，另算跨位置合计比值的 bootstrap 区间。
 - 真问题：p < 0.01（12 个里 ≥11 个偏高）→ 测试失败，按截断/多出/错位分类给出证据。
-- 可疑：9～10 个偏高，或区域下限 > 1 → 测试通过，但打醒目警告，结果写进 log.md 的"待你决定"。
+- 可疑：9～10 个偏高，或区域下限 > 1，或导入组自己边界一圈比第 2 圈高的位置 ≥ 9 个 → 测试通过，
+  但打醒目警告，结果写进 log.md 的"待你决定"。
 - 其余：干净，只记录。
 明细写进证据目录 seam-trees.json。
 """
@@ -66,14 +67,21 @@ def test_seam_trees(server, worker, worker2, tmp_path_factory):
     pairs = [tuple(r["ring1_tree"]) for r in rows]
     sign = sign_test(pairs)
     boot = bootstrap_ratio(pairs)
+    # 另一个比法（只报告，可疑时警告）：导入组自己"边界一圈 vs 第 2 圈"的每 chunk 树差异。
+    # 导入组和参照共用 tile，边界上的树一部分是同一份数据，所以"导入组 vs 原版组"偏向导入组；
+    # 第 5 步当初看到的就是组内第 1 圈比第 2 圈高。
+    within = [(r["import"].get(1, {}).get("tree_per_chunk", 0), r["import"].get(2, {}).get("tree_per_chunk", 0))
+              for r in rows]
+    within_sign = sign_test(within)
     if sign["p"] < 0.01:
         verdict = "problem"
-    elif sign["higher"] >= 9 or boot["low"] > 1:
+    elif sign["higher"] >= 9 or boot["low"] > 1 or within_sign["higher"] >= 9:
         verdict = "suspicious"
     else:
         verdict = "clean"
-    report = {"verdict": verdict, "sign_test": sign, "bootstrap": boot, "sites": rows}
-    summary = {"verdict": verdict, "sign_test": sign, "bootstrap": boot,
+    report = {"verdict": verdict, "sign_test": sign, "bootstrap": boot, "within_import_ring1_vs_ring2": within_sign,
+              "sites": rows}
+    summary = {"verdict": verdict, "sign_test": sign, "bootstrap": boot, "within_import_ring1_vs_ring2": within_sign,
                "ring1_tree": pairs, "direction_import": [r["ring1_direction_import"] for r in rows]}
     print(json.dumps(summary, ensure_ascii=False))
     if server.artifact_dir:

@@ -79,10 +79,19 @@ public final class DemandScanner {
     private final java.util.ArrayDeque<String> recent = new java.util.ArrayDeque<>();
 
     DemandScanner(MinecraftServer server, TaskQueue tasks) {
+        this(server, tasks, new Features(""));
+    }
+
+    DemandScanner(MinecraftServer server, TaskQueue tasks, Features features) {
         this.server = server;
         this.tasks = tasks;
+        this.features = features;
         SERVER = server;
     }
+
+    private final Features features;
+    /** 7.2：每个玩家最近几秒的位置（估速度用）。 */
+    private final java.util.Map<java.util.UUID, Motion> motions = new java.util.HashMap<>();
 
     /** 主线程上的变化直接改 DISK，别的线程的排进 EVENTS（存盘每个 chunk 都会调，不能攒着）。 */
     private static volatile MinecraftServer SERVER;
@@ -132,6 +141,15 @@ public final class DemandScanner {
         int queued = tasks.count(TaskQueue.State.QUEUED);
         readsLeft = READS_PER_SCAN;
         drainEvents();
+        long now = System.currentTimeMillis();
+        boolean deadline = features.on(Features.DEADLINE);
+        int view = server.getPlayerList().getViewDistance();
+        java.util.Set<java.util.UUID> present = new java.util.HashSet<>();
+        for (ServerPlayer p : level.players()) {
+            present.add(p.getUUID());
+            motions.computeIfAbsent(p.getUUID(), k -> new Motion()).record(now, p.getX(), p.getZ());
+        }
+        motions.keySet().retainAll(present);
         for (ServerPlayer p : level.players()) {
             ChunkPos at = p.chunkPosition();
             // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再按离玩家远近排序。
@@ -170,12 +188,24 @@ public final class DemandScanner {
                 }
                 int x = tx[idx[k]], z = tz[idx[k]];
                 long tk = ChunkPos.asLong(x, z);
-                if (serverTiles.contains(tk) || tasks.find(x, z) >= 0) {
+                if (serverTiles.contains(tk)) {
                     continue;
                 }
-                RegionRules.Enqueue e = decide(new TilePos(x, z), tk, chunkMap, access);
-                if (e.enqueue() && tasks.enqueue(x, z, e.world())) {
-                    queued++;
+                boolean known = tasks.find(x, z) >= 0;
+                if (!known) {
+                    RegionRules.Enqueue e = decide(new TilePos(x, z), tk, chunkMap, access);
+                    if (e.enqueue() && tasks.enqueue(x, z, e.world())) {
+                        queued++;
+                        known = true;
+                    }
+                }
+                if (deadline && known) {
+                    // 7.2：玩家（取最快看到它的那个）什么时候看到这个 tile
+                    double best = Double.POSITIVE_INFINITY;
+                    for (Motion mo : motions.values()) {
+                        best = Math.min(best, mo.deadlineSecondsFast(new TilePos(x, z), view));
+                    }
+                    tasks.setDue(x, z, Double.isInfinite(best) ? Long.MAX_VALUE : now + (long) (best * 1000));
                 }
             }
         }

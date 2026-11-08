@@ -46,9 +46,11 @@ deepslate_brick_stairs deepslate_brick_slab deepslate_brick_wall deepslate_tile_
 cobblestone mossy_cobblestone
 magma_block
 rail oak_planks oak_fence dark_oak_planks dark_oak_fence wall_torch torch
+podzol coarse_dirt chain
 """.split())
 # 最后两行（11-08 fish 本地对照补的）：magma_block 是海底岩浆块地物；rail 以下是废弃矿井等地下结构的方块。
 # 结构件放不放、放在哪，要看邻居 chunk 当时的状态（比如有没有水），原版自己就不确定。
+# podzol、coarse_dirt：巨型云杉（老龄针叶林）在树根周围铺灰化土（树的装饰）；chain：地下结构（7.0b 本地对照，Y −26）。
 
 # 地形方块之间、原版自己会不一样的具体组合（kexu 第 1 步实测，见 tests/step3/data/vanilla-diff-pairs.json）。
 # 位置是 kexu 的逐块明细里看的（ocean、mountain；jungle 明细当时还没写完，只有汇总）。
@@ -69,6 +71,8 @@ TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     # 湖：LakeFeature 挖出上空气、下水的坑（fish 本地对照，没导入部分 Y 48～49）。放进地形互换而不是整类放过：
     # 受"每处 ≤ 66 方块"约束，导入真丢了一片海会是一大片空气对水，照样判严格。
     ("air", "water"),
+    ("deepslate", "dirt"),     # 地下泥土矿团（7.0b 本地对照，Y −4～7，19 个 chunk）
+    ("grass_block", "stone"),  # 7.0b 本地对照 1 处（Y 79），多半是熔岩湖的石头围挡
 ))
 # 两边分别是这两种时算装饰类：
 #   air/cave_air：古城等结构用 cave_air 填空，本来就都是空气；
@@ -82,6 +86,7 @@ EXCUSED_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("cave_air", "stone"),
     ("cave_air", "deepslate"),
     ("cave_air", "tuff"),
+    ("cave_air", "dirt"),       # 结构挖开泥土（7.0b 本地对照，Y 29～80）
     # 放树时把树干正下方那一格换成泥土（jungle 19180 处，mountain Y 99～124；雪坡上是雪块，Y 110～133）。
     # 属于装饰阶段，和树一起算装饰类；原来放在地形互换里，每棵不同的树都多算一"处"（调度 11-08 定）。
     ("dirt", "grass_block"),

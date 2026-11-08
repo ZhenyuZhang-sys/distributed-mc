@@ -5,6 +5,8 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -89,6 +91,7 @@ final class TileImporter {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         int written = 0, loaded = 0, exists = 0;
+        List<Long> recorded = new ArrayList<>();
         for (ExportedChunk c : file.chunks()) {
             ChunkPos pos = new ChunkPos(c.x(), c.z());
             if (access.mcdonate$getUpdatingChunkIfPresent(pos.toLong()) != null
@@ -105,10 +108,11 @@ final class TileImporter {
             }
             chunkMap.write(pos, c.data());
             access.mcdonate$markPosition(pos, incoming.getChunkType());
-            Ownership.record(pos.toLong(), file.worldId());
+            recorded.add(pos.toLong());
             DemandScanner.diskChanged(pos.toLong(), incoming.getIndex());
             written++;
         }
+        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), "", recorded, System.currentTimeMillis());
         return new Result(label, file.chunks().size(), written, loaded, exists);
     }
 
@@ -151,6 +155,7 @@ final class TileImporter {
             return new StrictResult(false, plan.reason(), 0, 0, 0, plan.discard());
         }
         int written = 0, overwritten = 0, skipped = 0;
+        List<Long> recorded = new ArrayList<>();
         for (Map.Entry<Long, RegionRules.Action> e : plan.actions().entrySet()) {
             ExportedChunk c = byPos.get(e.getKey());
             ChunkPos pos = new ChunkPos(c.x(), c.z());
@@ -164,9 +169,11 @@ final class TileImporter {
             }
             chunkMap.write(pos, c.data());
             access.mcdonate$markPosition(pos, ChunkStatus.byName(c.status()).getChunkType());
-            Ownership.record(e.getKey(), file.worldId());
+            recorded.add(e.getKey());
             DemandScanner.diskChanged(e.getKey(), ChunkStatus.byName(c.status()).getIndex());
         }
+        // 第 9 步有了 token 以后由调用方传进来；现在空串
+        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), "", recorded, System.currentTimeMillis());
         return new StrictResult(true, "", written, overwritten, skipped, RegionRules.Discard.NONE);
     }
 

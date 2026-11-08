@@ -50,7 +50,11 @@ final class CoordinatorServer {
 
     private final MinecraftServer server;
     private final int port;
-    final TaskQueue tasks = new TaskQueue(System::currentTimeMillis, LEASE_MS, MAX_ATTEMPTS);
+    /** 第 7 步的开关（docs/step7-plan.md 0.1），初值来自配置项 features，运行中用 /donor feature 切换。 */
+    final Features features = Features.fromSystemProperty();
+    /** 7.3：每个 worker 做一个 tile 的实测耗时。 */
+    final DonorThroughput throughput = new DonorThroughput();
+    final TaskQueue tasks = new TaskQueue(System::currentTimeMillis, LEASE_MS, MAX_ATTEMPTS, features);
     private final Map<Integer, Connection> workers = new ConcurrentHashMap<>();
     private final AtomicInteger nextWorkerId = new AtomicInteger(1);
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "mcdonate-coordinator-timer"));
@@ -77,7 +81,7 @@ final class CoordinatorServer {
     CoordinatorServer(MinecraftServer server, int port) {
         this.server = server;
         this.port = port;
-        this.demand = new DemandScanner(server, tasks);
+        this.demand = new DemandScanner(server, tasks, features);
     }
 
     /** 找需求开着没有：没有 donor 连着就不扫，服务器和原版一样。 */
@@ -150,19 +154,45 @@ final class CoordinatorServer {
                 LOG.info("任务 {} 认主的 donor 世界 60 秒不在，丢掉，交给服务器", id);
             }
             long now = System.currentTimeMillis();
+            if (features.on(Features.DEADLINE)) {
+                // 7.2：玩家已经看到了还没派出去的，交给服务器
+                List<Long> late = tasks.dropLate();
+                if (!late.isEmpty()) {
+                    LOG.info("任务 {} 玩家已经看到了还没派出去，丢掉，交给服务器", late);
+                }
+            }
+            if (features.on(Features.HEDGE)) {
+                // 7.4：预计做完时玩家已经看到了的，撤回，交给服务器
+                for (TaskQueue.Lease l : tasks.leasesWithDue()) {
+                    if (Hedge.shouldHedge(l.leasedAt(), throughput.averageMs(l.worker()), now, l.due())) {
+                        int w = tasks.hedgeToServer(l.taskId());
+                        Connection c = workers.get(w);
+                        if (c != null) {
+                            c.send(new Cancel(l.taskId()));
+                        }
+                        LOG.info("任务 {} 在 worker {} 上预计赶不上，撤回交给服务器", l.taskId(), w);
+                    }
+                }
+            }
+            boolean thr = features.on(Features.THROUGHPUT);
             for (Connection c : workers.values()) {
                 if (now - c.lastSeen > DEAD_MS) {
                     LOG.info("worker {} 15 秒没有消息，断开", c.workerId);
                     c.close();
                     continue;
                 }
-                Optional<TaskQueue.Assignment> a = tasks.assign(c.workerId);
-                a.ifPresent(x -> {
+                // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个
+                int max = thr ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
+                java.util.function.LongPredicate canMeet = thr
+                        ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
+                Optional<TaskQueue.Assignment> a;
+                while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
+                    TaskQueue.Assignment x = a.get();
                     LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
                     // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
                     c.currentTask = x.taskId();
                     c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
-                });
+                }
             }
         } catch (RuntimeException e) {
             LOG.warn("定时任务出错：{}", e.toString());
@@ -175,6 +205,11 @@ final class CoordinatorServer {
     }
 
     private void onResult(Connection c, Result r) {
+        long leasedAt = tasks.leasedAt(r.taskId());
+        if (r.ok() && leasedAt > 0) {
+            // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
+            throughput.record(c.workerId, System.currentTimeMillis() - leasedAt);
+        }
         if (r.ok()) {
             String world = r.tile().getString("worldId");
             if (!world.isEmpty()) {
@@ -266,15 +301,19 @@ final class CoordinatorServer {
                     .append("\",\"world\":\"").append(c.world == null ? "" : c.world)
                     .append("\",\"task\":").append(c.currentTask).append(",\"done\":").append(c.doneTiles.get())
                     .append(",\"idleMs\":").append(now - c.lastSeen)
+                    .append(",\"inFlight\":").append(tasks.inFlight(c.workerId))
+                    .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
                     .append('}');
         }
-        return sb.append("],\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
+        return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
                 .append(",\"discarded_conflict\":").append(discardedConflict.get())
                 .append(",\"discard_ratio\":").append(discardRatio())
                 .append(",\"discarded\":{\"late\":").append(discardedBy.get(RegionRules.Discard.LOADED).get())
                 .append(",\"other_world\":").append(discardedBy.get(RegionRules.Discard.OTHER_WORLD).get())
                 .append(",\"server\":").append(discardedBy.get(RegionRules.Discard.SERVER).get())
-                .append("},\"accepted\":").append(acceptedImports.get()).append('}').toString();
+                .append("},\"accepted\":").append(acceptedImports.get())
+                .append(",\"hedge\":{\"cancelled\":").append(tasks.hedgeCancelled()).append(",\"wasted\":").append(tasks.hedgeWasted())
+                .append("},\"ledger\":").append(Ownership.LEDGER.size()).append('}').toString();
     }
 
     /** 跨 donor 冲突被整个丢弃的结果占所有严格导入结果的比例（donor 白干的比例）。第 7 步要压低它。 */
@@ -415,6 +454,7 @@ final class CoordinatorServer {
             }
             if (workerId >= 0 && workers.remove(workerId, this)) {
                 List<Long> back = tasks.workerGone(workerId);
+                throughput.forget(workerId);
                 LOG.info("worker {} 断开{}", workerId, back.isEmpty() ? "" : "，任务 " + back + " 回到队首");
             }
         }

@@ -35,6 +35,7 @@ public final class Coordinator implements ModInitializer {
         //   /donor assign <tx> <tz> <worker>  测试用：放任务并指定给某个 worker
         //   /donor rules strict|legacy        测试用：导入规则（默认 strict；legacy 是第 3 步的旧规则）
         //   /donor demand on|off    自动找需求的开关（正式默认开；测试服务器默认关）
+        //   /donor feature <名字> on|off  第 7 步的开关（territory、deadline、throughput、hedge、waitdonor）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
@@ -60,6 +61,12 @@ public final class Coordinator implements ModInitializer {
                         .then(Commands.literal("demand")
                                 .then(Commands.literal("on").executes(ctx -> setDemand(ctx.getSource(), true)))
                                 .then(Commands.literal("off").executes(ctx -> setDemand(ctx.getSource(), false))))
+                        .then(Commands.literal("feature")
+                                .then(Commands.argument("name", StringArgumentType.word())
+                                        .then(Commands.literal("on").executes(ctx -> setFeature(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "name"), true)))
+                                        .then(Commands.literal("off").executes(ctx -> setFeature(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "name"), false)))))
                         .then(Commands.literal("rules")
                                 .then(Commands.literal("strict").executes(ctx -> setStrict(ctx.getSource(), true)))
                                 .then(Commands.literal("legacy").executes(ctx -> setStrict(ctx.getSource(), false))))
@@ -94,6 +101,21 @@ public final class Coordinator implements ModInitializer {
                                                     ctx.getSource().sendSuccess(() -> Component.literal(s), false);
                                                     return 1;
                                                 }))))));
+        // 导入账本（7.7）：启动时从世界目录读回来，每 5 秒把改过的 region 写盘，关服时（存完世界以后）再写一次
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            try {
+                int n = Ownership.LEDGER.load(ledgerDir(server));
+                LOG.info("导入账本：读回 {} 个 chunk", n);
+            } catch (IOException e) {
+                LOG.warn("导入账本读不了，按空的处理：{}", e.toString());
+            }
+        });
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (server.getTickCount() % 100 == 0) {
+                flushLedger(server);
+            }
+        });
+        ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
         // 网络：服务器起来后监听，关服时停。端口 0 表示不开（系统属性 mcdonate.port，默认 25580）
         int port = Config.getInt("port", 25580);
         if (port > 0) {
@@ -125,9 +147,34 @@ public final class Coordinator implements ModInitializer {
 
     private static volatile CoordinatorServer network;
 
+    static java.nio.file.Path ledgerDir(net.minecraft.server.MinecraftServer server) {
+        return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("mcdonate").resolve("ledger");
+    }
+
+    private static void flushLedger(net.minecraft.server.MinecraftServer server) {
+        try {
+            Ownership.LEDGER.flush(ledgerDir(server));
+        } catch (IOException e) {
+            LOG.warn("导入账本写盘失败：{}", e.toString());
+        }
+    }
+
     private static int reply(CommandSourceStack source, String text) {
         source.sendSuccess(() -> Component.literal(text), false);
         return 1;
+    }
+
+    private static int setFeature(CommandSourceStack source, String name, boolean on) {
+        if (network == null) {
+            return reply(source, "not running");
+        }
+        try {
+            network.features.set(name, on);
+        } catch (IllegalArgumentException e) {
+            source.sendFailure(Component.literal(e.getMessage()));
+            return 0;
+        }
+        return reply(source, "features " + network.features.json());
     }
 
     private static int setDemand(CommandSourceStack source, boolean on) {

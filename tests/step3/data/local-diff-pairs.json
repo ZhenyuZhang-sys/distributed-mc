@@ -13,5 +13,13 @@
   {"a": "minecraft:magma_block", "b": "minecraft:stone", "count": 2},
   {"a": "minecraft:deepslate", "b": "minecraft:wall_torch", "count": 1},
   {"a": "minecraft:gravel", "b": "minecraft:stone", "count": 9, "note": "第二轮，第 5 步边界一圈"},
-  {"a": "minecraft:air", "b": "minecraft:water", "count": 2, "note": "第三轮，第 5 步没导入部分（原版互比），湖"}
+  {"a": "minecraft:air", "b": "minecraft:water", "count": 2, "note": "第三轮，第 5 步没导入部分（原版互比），湖"},
+  {"a": "minecraft:coarse_dirt", "b": "minecraft:podzol", "count": 2071, "note": "7.0b 12 个森林位置，原版组"},
+  {"a": "minecraft:grass_block", "b": "minecraft:podzol", "count": 1613, "note": "7.0b"},
+  {"a": "minecraft:deepslate", "b": "minecraft:dirt", "count": 490, "note": "7.0b"},
+  {"a": "minecraft:dirt", "b": "minecraft:podzol", "count": 135, "note": "7.0b"},
+  {"a": "minecraft:air", "b": "minecraft:podzol", "count": 31, "note": "7.0b"},
+  {"a": "minecraft:cave_air", "b": "minecraft:dirt", "count": 15, "note": "7.0b"},
+  {"a": "minecraft:air", "b": "minecraft:chain", "count": 10, "note": "7.0b"},
+  {"a": "minecraft:grass_block", "b": "minecraft:stone", "count": 1, "note": "7.0b"}
  ]}
