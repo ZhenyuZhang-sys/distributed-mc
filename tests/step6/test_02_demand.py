@@ -1,7 +1,7 @@
 """第 6 步（6.3）：自动找需求。
 
 测试服务器默认关着找需求（-Dmcdonate.demand=off），这里用 /donor demand on 临时打开。
-/donor status 里的 scan：扫描次数、平均和最长耗时（微秒）、往外多看几圈（margin）。
+/donor status 里的 scan：扫描次数、平均和最长耗时（微秒）、inner（离玩家这么多圈以内不交给 donor）、outer。
 """
 
 import json
@@ -49,15 +49,12 @@ def filled(server, worker, worker2):
 def test_tiles_are_around_player_outside_loaded_area(server, filled):
     got, s = filled
     cx, cz = SPOT[0] // 16, SPOT[1] // 16
-    radius = 10 + s["scan"]["margin"]
+    inner, outer = s["scan"]["inner"], s["scan"]["outer"]
     for r in got:
         tx, tz = r["tile"]
-        # tile 在"视距 + margin"范围里
-        assert tx * 4 + 3 >= cx - radius and tx * 4 <= cx + radius, r
-        assert tz * 4 + 3 >= cz - radius and tz * 4 <= cz + radius, r
-        # tile 的区域不碰服务器自己加载的范围（视距 10 再加 1～2 圈半成品）：离玩家至少 12 个 chunk
         dist = max(max(tx * 4 - cx, cx - (tx * 4 + 3)), max(tz * 4 - cz, cz - (tz * 4 + 3)))
-        assert dist >= 12, (r, dist)
+        # 在 inner 以外（服务器自己会占在内存里的范围以外）、outer 以内
+        assert inner < dist <= outer, (r, dist, inner, outer)
 
 
 def test_imported_tiles_in_save(server, filled):

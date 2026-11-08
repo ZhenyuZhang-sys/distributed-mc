@@ -27,6 +27,14 @@ class DemandTest {
     }
 
     @Test
+    void minChunkDistance() {
+        TilePos t = new TilePos(2, 0); // chunk 8..11, 0..3
+        assertEquals(0, Demand.minChunkDistance(t, 9, 1));
+        assertEquals(8, Demand.minChunkDistance(t, 0, 0));
+        assertEquals(5, Demand.minChunkDistance(t, 9, -5));
+    }
+
+    @Test
     void orderNearestFirst() {
         // 离玩家近的 tile 先入队
         List<TilePos> order = Demand.nearestFirst(Set.of(new TilePos(3, 3), new TilePos(0, 0), new TilePos(-2, 0)), 1, 1);

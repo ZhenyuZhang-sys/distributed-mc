@@ -177,7 +177,7 @@ final class CoordinatorServer {
         switch (d.action()) {
             case IMPORT -> {
                 d.cancelWorker().map(workers::get).ifPresent(other -> other.send(new Cancel(r.taskId())));
-                server.execute(() -> importResult(c.workerId, r));
+                server.execute(() -> importResult(c, r));
             }
             case REQUEUE -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
             case FAIL -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
@@ -186,7 +186,8 @@ final class CoordinatorServer {
     }
 
     /** 主线程上：校验 tile 并导入。出错就让任务回到队列。 */
-    private void importResult(int workerId, Result r) {
+    private void importResult(Connection c, Result r) {
+        int workerId = c.workerId;
         try {
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
             String tile = "[" + file.tile().x() + "," + file.tile().z() + "]";
@@ -197,6 +198,8 @@ final class CoordinatorServer {
                     LOG.info("导入任务 {}（worker {}，tile {}）整个丢弃：{}", r.taskId(), workerId, tile, res.reason());
                 } else {
                     acceptedImports.incrementAndGet();
+                    c.doneTiles.incrementAndGet();
+                    tasks.markImported(r.taskId(), file.worldId());
                     LOG.info("导入任务 {}（worker {}，tile {}）：written={} overwritten={} skipped={}", r.taskId(), workerId,
                             tile, res.written(), res.overwritten(), res.skipped());
                 }
@@ -226,7 +229,8 @@ final class CoordinatorServer {
             }
             sb.append("{\"id\":").append(c.workerId).append(",\"name\":\"").append(c.name.replace("\"", ""))
                     .append("\",\"world\":\"").append(c.world == null ? "" : c.world)
-                    .append("\",\"task\":").append(c.currentTask).append(",\"idleMs\":").append(now - c.lastSeen)
+                    .append("\",\"task\":").append(c.currentTask).append(",\"done\":").append(c.doneTiles.get())
+                    .append(",\"idleMs\":").append(now - c.lastSeen)
                     .append('}');
         }
         return sb.append("],\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
@@ -259,6 +263,8 @@ final class CoordinatorServer {
         volatile String name = "";
         /** 这个 worker 的 donor 世界（从它交的第一个结果里知道）。 */
         volatile String world;
+        /** 被接受导入的 tile 数。 */
+        final AtomicInteger doneTiles = new AtomicInteger();
         volatile long currentTask = -1;
         private volatile boolean closed;
 

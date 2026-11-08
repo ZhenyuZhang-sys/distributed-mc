@@ -12,7 +12,7 @@
 
 | 参数 | 值 | 说明 |
 | --- | --- | --- |
-| 找需求 margin | 12 圈（`mcdonate.demandMargin`） | DEV_PLAN 原写 +4；只多看 4 圈几乎没有 tile 符合接缝规则（服务器自己会占掉视距外 1～2 圈）。调度已同意改，第 7 步消融表当参数 |
+| 找需求范围 | inner = 视距 + `RADIUS_AROUND_FULL_CHUNK` + 1（视距 10 时约 22），outer = inner + 8（`mcdonate.demandLookahead`） | DEV_PLAN 原写"视距 + 4"。原版会把视距内 chunk 的依赖占在内存里，约往外 11 圈；区域碰到内存里的 chunk 就不能交给 donor。第 7 步消融表把提前量当参数 |
 | 队列上限 | 256 个 tile | |
 | 租约 | 30 秒，心跳续租 | 第 5 步 |
 | tile 大小 | 4×4 chunk（导出连外圈 6×6） | 第 7 步消融 |

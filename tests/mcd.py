@@ -262,6 +262,30 @@ class Server:
         # Chunky 会持久化 CSV selection；保留输入，后续配置和重启仍可能读取它。
         return result
 
+    def chunky_list(self, chunks: list[tuple[int, int]], timeout: float = 900) -> int:
+        """用 Chunky 生成给定的 chunk（CSV 模式，可以是散的），返回 Chunky 报告的个数。"""
+        name = f"list-{time.time_ns()}"
+        data_root = {"worker": WORKER_DATA, "worker2": WORKER2_DATA}.get(self.service, TEST_DATA)
+        csv_path = data_root / "config/chunky" / f"{name}.csv"
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        csv_path.write_text("".join(f"{x},{z}\n" for x, z in chunks))
+        xs, zs = [c[0] for c in chunks], [c[1] for c in chunks]
+        for command in ["chunky world minecraft:overworld", "chunky shape square",
+                        f"chunky corners {16 * min(xs)} {16 * min(zs)} {16 * max(xs) + 15} {16 * max(zs) + 15}",
+                        f"chunky pattern csv {name}"]:
+            self.rcon(command)
+        cursor = len(self.logs().splitlines())
+        self.rcon("chunky start")
+
+        def finished():
+            lines = self.logs().splitlines()
+            m = re.search(r"Task finished for minecraft:overworld\. Processed: ([\d,]+) chunks", "\n".join(lines[cursor:]))
+            return int(m.group(1).replace(",", "")) if m else None
+
+        count = wait_until(finished, timeout=timeout, interval=2, what="Chunky 生成给定的 chunk")
+        self.rcon("chunky pattern loop")
+        return count
+
     def error_lines(self) -> list[str]:
         """日志里的 ERROR 和异常堆栈，去掉白名单里的。"""
         text = "\n".join(path.read_text() for path in self.archives)

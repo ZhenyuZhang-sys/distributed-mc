@@ -33,6 +33,13 @@ final class Demand {
         return out;
     }
 
+    /** tile 里离 chunk (cx, cz) 最近的 chunk 有多远（切比雪夫距离，tile 里面是 0）。 */
+    static int minChunkDistance(TilePos tile, int cx, int cz) {
+        int dx = Math.max(0, Math.max(tile.minChunkX() - cx, cx - tile.maxChunkX()));
+        int dz = Math.max(0, Math.max(tile.minChunkZ() - cz, cz - tile.maxChunkZ()));
+        return Math.max(dx, dz);
+    }
+
     /** 按 tile 中心到玩家所在 chunk 的距离排序，近的在前。 */
     static List<TilePos> nearestFirst(Set<TilePos> tiles, int cx, int cz) {
         List<TilePos> out = new ArrayList<>(tiles);
