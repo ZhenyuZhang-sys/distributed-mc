@@ -16,5 +16,8 @@
     "main": [
       "mcdonate.coordinator.Coordinator"
     ]
-  }
+  },
+  "mixins": [
+    "mcdonate-coordinator.mixins.json"
+  ]
 }
