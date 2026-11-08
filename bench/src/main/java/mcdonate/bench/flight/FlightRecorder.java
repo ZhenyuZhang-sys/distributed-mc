@@ -123,6 +123,8 @@ public final class FlightRecorder {
         done.addProperty("ticks", ticks);
         done.addProperty("rows", rows.written());
         done.addProperty("end_ms", endMs);
+        // 第一个 tick 开始时的 System.nanoTime。Linux 上它就是 CLOCK_MONOTONIC，容器和宿主机共用，宿主机的 cgroup 采样靠它对齐
+        done.addProperty("t0_nanotime", t0);
         JsonObject ev = new JsonObject();
         ev.addProperty("enter", enters);
         ev.addProperty("ready", readies);

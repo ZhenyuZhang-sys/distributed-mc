@@ -17,8 +17,8 @@ def write_run(d, rows=3, done=None, events=None):
             f.write(json.dumps(dict(t_s=t, x=100.0 + 4.3 * t, z=8.5, view_chunks=453, void_rate=0.1 / t, void_rate_max=0.2 / t,
                                     mspt_mean=12.0, mspt_max=20.0, ticks=20)) + '\n')
     with (d / 'chunks.jsonl').open('w') as f:
-        for e in events if events is not None else [dict(t_ms=100, cx=7, cz=0, ev='enter'), dict(t_ms=600, cx=7, cz=0, ev='ready'),
-                                                    dict(t_ms=200, cx=8, cz=0, ev='enter')]:
+        for e in events if events is not None else [dict(t_ms=100, cx=7, cz=0, ev='enter'), dict(t_ms=200, cx=8, cz=0, ev='enter'),
+                                                    dict(t_ms=600, cx=7, cz=0, ev='ready')]:
             f.write(json.dumps(e) + '\n')
     base = dict(version=1, run=d.name, player='walkbot', mode='wall', speed=4.3, seconds=float(rows), y=200.0,
                 start_x=100.0, start_z=8.5, end_x=100 + 4.3 * rows, end_z=8.5, view_distance=10, requested_view_distance=2,
@@ -51,9 +51,8 @@ def test_compose_writes_seconds_chunks_and_summary(tmp_path):
     assert list(rows[0]) == list(layer2.SECOND_COLUMNS)
     assert [int(r['t_s']) for r in rows] == [1, 2, 3]
     assert all(abs(float(r['cpu_cores']) - 2.0) < 1e-6 for r in rows)  # 按 t0_nanotime 和宿主机采样对齐
-    chunks = read_csv(out / 'layer2-chunks.csv')
-    assert list(chunks[0]) == list(layer2.CHUNK_COLUMNS)
-    # tail_exclude 是 10 秒，3 秒的合成数据要传 0 才留得下；默认值照协议
+    # 默认 tail_exclude 10 秒（协议值），3 秒的合成数据一条也留不下，只有表头
+    assert (out / 'layer2-chunks.csv').read_text().splitlines() == [','.join(layer2.CHUNK_COLUMNS)]
     summary = json.loads((out / 'summary.json').read_text())
     assert summary['run'] == 'run-a' and summary['speed'] == 4.3 and summary['mode'] == 'wall'
     assert summary['seconds'] == 3 and summary['initial_load_s'] == 4.2
