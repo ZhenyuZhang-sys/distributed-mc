@@ -14,6 +14,10 @@
 
 **当前生效的值**：`/donor status` 输出里的 `config`。
 
+**测试环境里临时改**：环境变量 `MCD_JVM_EXTRA` 会加进测试服务器和两个 donor 的 JVM 参数（`docker/compose.test.yaml`），
+比如 `MCD_JVM_EXTRA="-Dmcdonate.tileSize=8 -Dmcdonate.demandLookahead=16" scripts/test.sh step7 ...`。
+tile 大小这类两边必须一样的配置，用它保证服务器和 donor 拿到同一个值。
+
 ## 服务器（coordinator）
 
 | 名字 | 默认 | 含义 | 部署时怎么调 |

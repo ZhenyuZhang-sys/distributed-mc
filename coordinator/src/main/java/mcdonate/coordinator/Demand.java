@@ -45,7 +45,7 @@ final class Demand {
     static List<TilePos> nearestFirst(Collection<TilePos> tiles, int cx, int cz) {
         List<TilePos> out = new ArrayList<>(tiles);
         out.sort(Comparator.comparingDouble((TilePos t) -> {
-            double dx = t.minChunkX() + 1.5 - cx, dz = t.minChunkZ() + 1.5 - cz;
+            double dx = TilePos.center(t.x(), TilePos.SIZE) - cx, dz = TilePos.center(t.z(), TilePos.SIZE) - cz;
             return dx * dx + dz * dz;
         }).thenComparingInt(TilePos::x).thenComparingInt(TilePos::z));
         return out;

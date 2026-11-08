@@ -4,7 +4,7 @@ services:
   minecraft:
     environment:
       # 自动找需求默认关：别的测试的假玩家周围不要自动放任务。第 6 步的找需求测试用 /donor demand on 打开
-      JVM_OPTS: "-Dmcdonate.demand=off"
+      JVM_OPTS: "-Dmcdonate.demand=off ${MCD_JVM_EXTRA:-}"
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。
@@ -27,7 +27,7 @@ services:
     environment:
       MOTD: "mc-donate worker"
       # 第 5 步：建世界前向 coordinator 要 seed，起来后连上去领任务
-      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580"
+      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580 ${MCD_JVM_EXTRA:-}"
       # 故意和 MC_SEED 不一样：证明 worker 用的是 coordinator 给的 seed
       SEED: "1"
     volumes: !override
