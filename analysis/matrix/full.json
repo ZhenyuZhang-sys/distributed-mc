@@ -1,0 +1,23 @@
+{
+ "name": "full",
+ "seed": 424242,
+ "repeats": 5,
+ "server_cpuset": "0-3",
+ "donor_cpuset": "remote",
+ "rerun_on_interference": true,
+ "frametime_import": "analysis/results/frametimes",
+ "experiments": {
+  "flight": [
+   {"donors": [0, 1, 2, 4], "speed": ["walk", "horse", "elytra"], "server_cpus": [2, 4], "latency_ms": [0],
+    "features": ["v0", "all"], "bots": [1], "duration_s": 120},
+   {"donors": [2], "speed": ["elytra"], "server_cpus": [2], "latency_ms": [50, 150], "features": ["all"], "bots": [1], "duration_s": 120}
+  ],
+  "capacity": [
+   {"donors": [2, 4], "features": ["v0", "all"], "server_cpus": [2], "repeats": 1, "max_bots": 16}
+  ],
+  "verify": [
+   {"cheat": ["ore", "flatten", "random", "flat", "collude"], "check_rate": [0.02, 0.05, 0.2], "donors": [2], "duration_s": 300},
+   {"cheat": ["none"], "check_rate": [0.05], "donors": [2], "duration_s": 1800}
+  ]
+ }
+}
