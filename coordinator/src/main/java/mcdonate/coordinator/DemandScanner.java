@@ -1,6 +1,8 @@
 package mcdonate.coordinator;
 
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import net.minecraft.Util;
 
 import java.util.List;
 
@@ -44,6 +46,7 @@ public final class DemandScanner {
     /** 每次扫描最多发起几次读存档：刚开始时玩家周围几千个 chunk 都不知道状态，一次全发会让那一次扫描很慢。 */
     static final int READS_PER_SCAN = Config.getInt("demandReadsPerScan", 256);
     private int readsLeft;
+    private final LongArrayList toRead = new LongArrayList();
     static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
     private static final int PENDING = Integer.MIN_VALUE;
     private static final int ABSENT = -1;
@@ -57,6 +60,10 @@ public final class DemandScanner {
     long scans;
     long totalNanos;
     long maxNanos;
+    long totalCpuNanos;
+    private static final java.lang.management.ThreadMXBean THREADS = java.lang.management.ManagementFactory.getThreadMXBean();
+    /** 最近 32 次扫描：[墙钟微秒, 主线程 CPU 微秒, 发起的读存档次数]，排查耗时尖峰用。 */
+    private final java.util.ArrayDeque<String> recent = new java.util.ArrayDeque<>();
 
     DemandScanner(MinecraftServer server, TaskQueue tasks) {
         this.server = server;
@@ -76,6 +83,7 @@ public final class DemandScanner {
     /** 在主线程上调用，每秒一次。 */
     void scan() {
         long t0 = System.nanoTime();
+        long c0 = THREADS.getCurrentThreadCpuTime();
         ServerLevel level = server.overworld();
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
@@ -105,10 +113,28 @@ public final class DemandScanner {
                 }
             }
         }
+        if (!toRead.isEmpty()) {
+            long[] keys = toRead.toLongArray();
+            toRead.clear();
+            // 发起读存档放到后台线程：在主线程上调 chunkMap.read 每次要几十微秒（实测 256 次 1～14 ms）。
+            // ChunkMap.read → IOWorker.loadAsync 只是往读盘线程的队列里提交任务，哪个线程调都安全。
+            Util.ioPool().execute(() -> {
+                for (long k : keys) {
+                    chunkMap.read(new ChunkPos(k)).thenAccept(tag -> DISK.replace(k, PENDING,
+                            tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT)));
+                }
+            });
+        }
         long dt = System.nanoTime() - t0;
         scans++;
         totalNanos += dt;
         maxNanos = Math.max(maxNanos, dt);
+        if (recent.size() == 32) {
+            recent.removeFirst();
+        }
+        long cpu = THREADS.getCurrentThreadCpuTime() - c0;
+        totalCpuNanos += cpu;
+        recent.addLast("[" + dt / 1000 + "," + cpu / 1000 + "," + (READS_PER_SCAN - readsLeft) + "]");
     }
 
     /**
@@ -127,16 +153,17 @@ public final class DemandScanner {
                     return RegionRules.Enqueue.no("在内存里");
                 }
                 Integer s = DISK.get(key);
-                if (s == null) {
-                    if (readsLeft > 0) {
+                if (s == null || s == PENDING) {
+                    if (s == null && readsLeft > 0) {
                         readsLeft--;
                         DISK.put(key, PENDING);
-                        chunkMap.read(new ChunkPos(key)).thenAccept(tag -> DISK.replace(key, PENDING,
-                                tag.map(t -> ChunkStatus.byName(t.getString("Status")).getIndex()).orElse(ABSENT)));
+                        toRead.add(key);
                     }
                     unknown = true;
-                } else if (s == PENDING) {
-                    unknown = true;
+                    if (readsLeft == 0) {
+                        // 这次扫描的读存档名额用完了：这个 tile 这次反正不入队，剩下的不用再查
+                        return RegionRules.Enqueue.no("存档状态还在读");
+                    }
                 } else if (s == ABSENT) {
                     region.add(ChunkInfo.empty());
                 } else {
@@ -161,6 +188,8 @@ public final class DemandScanner {
         long avgMicros = scans == 0 ? 0 : totalNanos / scans / 1000;
         int inner = innerRadius();
         return "{\"count\":" + scans + ",\"avgMicros\":" + avgMicros + ",\"maxMicros\":" + maxNanos / 1000
+                + ",\"avgCpuMicros\":" + (scans == 0 ? 0 : totalCpuNanos / scans / 1000)
+                + ",\"recent\":[" + String.join(",", recent) + "]"
                 + ",\"inner\":" + inner + ",\"outer\":" + (inner + lookahead) + ",\"lookahead\":" + lookahead + "}";
     }
 }
