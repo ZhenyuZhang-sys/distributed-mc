@@ -15,6 +15,9 @@
   "entrypoints": {
     "main": [
       "mcdonate.bench.Bench"
+    ],
+    "fabric-gametest": [
+      "mcdonate.bench.gametest.BenchGameTest"
     ]
   },
   "mixins": [

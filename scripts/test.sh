@@ -44,6 +44,8 @@ cd "$REPO_ROOT"
 if (( n >= 2 )); then
   info "构建 mod 并跑单元测试"
   "$REPO_ROOT/scripts/gradle.sh" build collectMods
+  # 服务器内测试（GameTest）：一台专门的服务器，跑完自己退出
+  "$REPO_ROOT/scripts/gametest.sh"
 fi
 
 info "运行：${dirs[*]}"

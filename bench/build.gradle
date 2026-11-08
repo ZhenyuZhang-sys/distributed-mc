@@ -4,3 +4,9 @@ dependencies {
     include project(':common')
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
+
+// GameTest：Modrinth 上的 Fabric API 整合包不带这个模块，打包进 bench。
+// 不加 -Dfabric-api.gametest 时它什么都不做。
+dependencies {
+    include(modImplementation(fabricApi.module("fabric-gametest-api-v1", project.fabric_api_version)))
+}
