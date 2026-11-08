@@ -69,11 +69,19 @@ final class TileImporter {
         }
         TileFile file;
         try {
-            file = TileFile.read(path, SharedConstants.getCurrentVersion().getDataVersion().getVersion(), level.getSeed());
+            file = TileFile.read(path, dataVersion(), level.getSeed());
         } catch (TileFile.InvalidTileFile | NoSuchFileException e) {
             throw new Refused("refused: " + e.getMessage());
         }
+        return importTile(level, file, name);
+    }
 
+    static int dataVersion() {
+        return SharedConstants.getCurrentVersion().getDataVersion().getVersion();
+    }
+
+    /** 把内存里的 tile 写进存档（第 5 步的 result 走这里）。在主线程上调用。label 只用来写进结果。 */
+    static Result importTile(ServerLevel level, TileFile file, String label) {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         int written = 0, loaded = 0, exists = 0;
@@ -95,7 +103,7 @@ final class TileImporter {
             access.mcdonate$markPosition(pos, incoming.getChunkType());
             written++;
         }
-        return new Result(name, file.chunks().size(), written, loaded, exists);
+        return new Result(label, file.chunks().size(), written, loaded, exists);
     }
 
     /** 存档里这个 chunk 的状态，没有就是 "none"。不加载 chunk。 */

@@ -65,8 +65,21 @@ final class TileExporter {
         return Path.of(System.getProperty("mcdonate.exchange", "/exchange"));
     }
 
+    /** 生成并写进交换目录（第 3 步的 /donor export）。 */
     static Result export(ServerLevel level, TilePos tile) throws IOException {
         long t0 = System.nanoTime();
+        Generated g = generate(level, tile);
+        Path dir = exchangeDir();
+        Files.createDirectories(dir);
+        Path out = dir.resolve("tile_" + tile.x() + "_" + tile.z() + ".nbt");
+        g.file().write(out);
+        return new Result(tile, out, g.file().chunks().size(), g.rings(), (System.nanoTime() - t0) / 1_000_000);
+    }
+
+    record Generated(TileFile file, List<Map<String, Integer>> rings) {}
+
+    /** 生成 tile 并序列化成内存里的 TileFile，不写文件（第 5 步的 result 用）。在主线程上调用。 */
+    static Generated generate(ServerLevel level, TilePos tile) {
         ServerChunkCache cache = level.getChunkSource();
 
         // tile 的 16 个 chunk 要到 initialize_light。已经更靠后的也会直接返回，下面统一检查
@@ -101,10 +114,6 @@ final class TileExporter {
 
         TileFile file = new TileFile(SharedConstants.getCurrentVersion().getDataVersion().getVersion(),
                 level.getSeed(), tile, chunks);
-        Path dir = exchangeDir();
-        Files.createDirectories(dir);
-        Path out = dir.resolve("tile_" + tile.x() + "_" + tile.z() + ".nbt");
-        file.write(out);
-        return new Result(tile, out, chunks.size(), rings, (System.nanoTime() - t0) / 1_000_000);
+        return new Generated(file, rings);
     }
 }

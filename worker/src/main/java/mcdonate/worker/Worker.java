@@ -5,6 +5,7 @@ import mcdonate.common.ModIds;
 import mcdonate.common.TilePos;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -18,18 +19,49 @@ public final class Worker implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        // /donor export <tx> <tz>：调试命令，只给 OP 和控制台（RCON）用
+        // 调试命令，只给 OP 和控制台（RCON）用：
+        //   /donor export <tx> <tz>  第 3 步：生成 tile 写进交换目录
+        //   /donor sleep <秒>        测试用：让主线程卡住，验证网络线程照常发心跳
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("sleep")
+                                .requires(source -> source.hasPermission(4))
+                                .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 60))
+                                        .executes(ctx -> {
+                                            int sec = IntegerArgumentType.getInteger(ctx, "seconds");
+                                            LOG.info("主线程按要求卡 {} 秒（测试用）", sec);
+                                            try {
+                                                Thread.sleep(sec * 1000L);
+                                            } catch (InterruptedException e) {
+                                                Thread.currentThread().interrupt();
+                                            }
+                                            ctx.getSource().sendSuccess(() -> Component.literal("slept " + sec), false);
+                                            return 1;
+                                        })))
                         .then(Commands.literal("export")
                                 .then(Commands.argument("tx", IntegerArgumentType.integer())
                                         .then(Commands.argument("tz", IntegerArgumentType.integer())
                                                 .executes(ctx -> export(ctx.getSource(),
                                                         new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
                                                                 IntegerArgumentType.getInteger(ctx, "tz")))))))));
+        // 第 5 步：配了 coordinator（系统属性 mcdonate.coordinator=host:port）就连上去领任务
+        String address = SeedHandshake.address();
+        if (address != null) {
+            ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+                client = new WorkerClient(server, address);
+                client.start();
+            });
+            ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+                if (client != null) {
+                    client.stop();
+                }
+            });
+        }
         LOG.info("{} loaded", MOD_ID);
     }
+
+    private static volatile WorkerClient client;
 
     private static int export(CommandSourceStack source, TilePos tile) {
         try {

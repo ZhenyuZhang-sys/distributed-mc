@@ -23,6 +23,10 @@ services:
     cpus: ${WORKER_CPUS:-4}
     environment:
       MOTD: "mc-donate worker"
+      # 第 5 步：建世界前向 coordinator 要 seed，起来后连上去领任务
+      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580"
+      # 故意和 MC_SEED 不一样：证明 worker 用的是 coordinator 给的 seed
+      SEED: "1"
     volumes: !override
       - ./test-data-worker:/data
       - ../build/mods-worker:/mods:ro
