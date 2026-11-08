@@ -224,15 +224,16 @@ fish 加的占位 `tests/step4/test_00_pending.py` 在 4.5 时删掉。
 
 | 预留项 | 怎么做 |
 | --- | --- |
-| coordinator 配置 | 场景入口（`bench/layer2.py`、`layer2-protocol.json`）可传：功能开关列表（`/donor feature <名字> on\|off` 和系统属性 `mcdonate.features=a,b,c`）、找需求范围 `mcdonate.demandMargin`、tile 大小、donor 个数、每个 donor 的核数和资源限制。原版基线时这些都为空，协议照样记录"未启用" |
+| coordinator 配置 | 场景入口（`bench/layer2.py`、`layer2-protocol.json`）可传：功能开关列表（`/donor feature <名字> on\|off` 和系统属性 `mcdonate.features=a,b,c`）、往外多看的提前量 `mcdonate.demandLookahead`（chunk 圈数）、tile 大小、donor 个数、每个 donor 的核数和资源限制。原版基线时这些都为空，协议照样记录"未启用" |
 | 结果里带配置和 coordinator 指标 | `seconds.jsonl` 和每轮 summary 带上上面的配置字段；每轮结束读 `/donor status`，记下 `discard_ratio`、对冲浪费量、外圈重复计算比例。没有 coordinator 时这些字段写 null 和原因，不填 0 |
 | 多个鞘翅假玩家 | `/bench fly` 支持一次起多架，平行航线，间距由协议给（默认 z 方向相隔 1024 格，见下）。每架单独一套 `ViewTracker` 和输出，summary 另给合计，给第 7 步测"可持续探索容量" |
 | 有效性规则 | 见 5.1a：测量期间其他容器有 docker 事件就判无效重跑，事件记录归档 |
 
 fish 的字段表（`fish` 分支 `89abb9f`，`docs/step7-plan.md` 0.3）已对齐，照它实现：
 
-- 场景入口能设、结果文件要带：`coordinator_features`、`demand_margin`、`tile_size`、`donors`、`server_cpus` / `server_cpuset`、`bots`、`speed`。
-- 每轮结束从 `/donor status` 读、结果文件要带：`discard_ratio`、`imports_accepted` / `imports_discarded`、`hedge_cancelled`、`hedge_wasted_tiles`、`ring_overhead`、`donor_tiles`、`waitdonor_hits` / `waitdonor_timeouts`。
+- 场景入口能设、结果文件要带：`coordinator_features`、`demand_lookahead`、`tile_size`、`donors`、`server_cpus` / `server_cpuset`、`bots`、`speed`。
+- 每轮结束从 `/donor status` 读、结果文件要带：`discard_ratio`、`imports_accepted` / `imports_discarded`、`hedge_cancelled`、`hedge_wasted_tiles`、`ring_overhead`、`donor_tiles`、`waitdonor_hits` / `waitdonor_timeouts`，以及按原因分开的丢弃计数 `discarded.late`（来晚了，区域已在服务器内存里）、`discarded.other_world`、`discarded.server` 和 `accepted`。
+- 字段表第 2 版（`fish` `57be353`）：`demand_margin` 作废，换成 `demand_lookahead`（系统属性 `mcdonate.demandLookahead`，单位 chunk 圈数）。原因：离玩家"视距 + RADIUS_AROUND_FULL_CHUNK + 1"圈以内的 tile 被服务器占在内存里，donor 结果写不进去，内圈是固定值，只有往外的提前量能调。
 - 容量测试：`bots` 个鞘翅假玩家沿 +x 平行飞，z 方向相隔 1024 格（64 个 chunk，视野直径约 23 个 chunk，不重叠）；每轮取所有玩家虚空率的均值，同时保留每架的值。上面"默认间距"以这里为准。
 - **服务器 cpuset 不写死**：第 1 步的 12-15 只是默认值。场景入口从协议 / 参数取 `server_cpuset`，同样核验同一 L3 / NUMA、没有 SMT 兄弟、频率已固定；fish 第 7 步的服务器在节点 2、donor 在节点 3。CPU 固定频率检查也按实际 cpuset 做。
 
