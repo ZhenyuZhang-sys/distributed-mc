@@ -3,7 +3,10 @@
   "package": "mcdonate.bench.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "ChunkStatusTasksMixin"
+    "ChunkStatusTasksMixin",
+    "StageTimingMixin",
+    "NoiseBasedChunkGeneratorMixin",
+    "ThreadedLevelLightEngineMixin"
   ],
   "injectors": {
     "defaultRequire": 1
