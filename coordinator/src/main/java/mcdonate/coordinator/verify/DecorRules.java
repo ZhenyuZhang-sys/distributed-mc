@@ -21,6 +21,8 @@ public final class DecorRules {
 
     private final Set<String> decor, terrainProps;
     private final Set<String> terrainPairs, excusedPairs;
+    private final int terrainClusterMax;
+    private final double terrainAlpha;
 
     DecorRules(JsonObject o) {
         if (o.get("schema").getAsInt() != 1) throw new IllegalArgumentException("decor.json schema 不是 1");
@@ -28,6 +30,20 @@ public final class DecorRules {
         terrainProps = names(o.getAsJsonArray("terrain_props"));
         terrainPairs = pairs(o.getAsJsonArray("terrain_pairs"));
         excusedPairs = pairs(o.getAsJsonArray("excused_pairs"));
+        terrainClusterMax = o.get("terrain_cluster_max").getAsInt();
+        terrainAlpha = o.get("terrain_alpha").getAsDouble();
+        if (terrainClusterMax < 1 || !(terrainAlpha > 0 && terrainAlpha < 1))
+            throw new IllegalArgumentException("地形互换判法参数不合法");
+    }
+
+    /** 地形互换 6 邻接连成一处，每处最多这么多方块；超过整处算严格（丢一大片海不能当成湖）。 */
+    public int terrainClusterMax() {
+        return terrainClusterMax;
+    }
+
+    /** 导入部分地形互换处数的单侧二项检验阈值（fish 的导入验收用；donor 抽查只用上面的每处上限）。 */
+    public double terrainAlpha() {
+        return terrainAlpha;
     }
 
     public static DecorRules load() {

@@ -126,19 +126,38 @@ class VerifyTest {
         assertEquals(Verdict.Outcome.STRICT_MISMATCH, Verdict.of(c, Thresholds.defaults()).outcome());
     }
 
-    /** donor 在 y0 起、边长 size 的立方体里把参考里的空气换成水（湖或海被导入弄丢的反方向也一样）。 */
+    /** 参考里找一块地下的空气（洞穴，每列上方都有实心方块，地表高度不变），donor 把它换成水。 */
     static ChunkComparison airWaterCube(int size) throws IOException {
         CompoundTag donor = chunk("mountain-c1-r1");
         ChunkBlocks b = new ChunkBlocks(donor);
-        int y0 = b.maxY() - 20;
-        for (int y = y0; y < y0 + size; y++)
-            for (int z = 0; z < size; z++)
-                for (int x = 0; x < size; x++) {
-                    assertEquals("minecraft:air", b.name(x, y, z));
-                    b.set(x, y, z, SectionBlocks.block("minecraft:water"));
-                }
+        int[] at = undergroundAir(b, size);
+        assertNotNull(at, "fixture 里找不到边长 " + size + " 的地下空气");
+        for (int y = at[1]; y < at[1] + size; y++)
+            for (int z = at[2]; z < at[2] + size; z++)
+                for (int x = at[0]; x < at[0] + size; x++) b.set(x, y, z, SectionBlocks.block("minecraft:water"));
         b.write();
         return CMP.compare(donor, chunk("mountain-c1-r1"));
+    }
+
+    static int[] undergroundAir(ChunkBlocks b, int size) {
+        for (int y = b.minY(); y + size < b.maxY(); y++)
+            for (int z = 0; z + size <= 16; z++)
+                for (int x = 0; x + size <= 16; x++)
+                    if (cubeIsCaveAir(b, x, y, z, size)) return new int[] {x, y, z};
+        return null;
+    }
+
+    static boolean cubeIsCaveAir(ChunkBlocks b, int x0, int y0, int z0, int size) {
+        for (int z = z0; z < z0 + size; z++)
+            for (int x = x0; x < x0 + size; x++) {
+                for (int y = y0; y < y0 + size; y++)
+                    if (!b.name(x, y, z).equals("minecraft:air")) return false;
+                boolean covered = false;
+                for (int y = y0 + size; y < b.maxY() && !covered; y++)
+                    covered = !b.name(x, y, z).equals("minecraft:air") && !b.name(x, y, z).equals("minecraft:cave_air");
+                if (!covered) return false;
+            }
+        return true;
     }
 
     @Test
@@ -156,7 +175,8 @@ class VerifyTest {
         ChunkComparison c = airWaterCube(3);
         assertEquals(0, c.strict());
         assertEquals(27, c.terrain());
-        assertEquals(Verdict.Outcome.CLEAN, Verdict.of(c, Thresholds.defaults()).outcome());
+        Verdict v = Verdict.of(c, Thresholds.defaults());
+        assertEquals(Verdict.Outcome.CLEAN, v.outcome(), v.reasons().toString() + " h=" + c.heightDiffColumns() + "/" + c.heightMaxAbs());
     }
 
     @Test

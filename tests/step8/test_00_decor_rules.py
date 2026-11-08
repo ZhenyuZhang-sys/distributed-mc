@@ -74,3 +74,15 @@ def test_cases_agree_with_fish_classify():
     assert pairs[frozenset(('minecraft:air', 'minecraft:water'))] == 'terrain'  # 湖（fish d81a7ad）
     assert pairs[frozenset(('minecraft:dirt', 'minecraft:grass_block'))] == 'decor'  # 树干正下方（fish 66fa803）
     assert pairs[frozenset(('minecraft:dirt', 'minecraft:snow_block'))] == 'decor'
+
+
+@pytest.mark.parametrize('name', ['vanilla-diff-pairs.json', 'local-diff-pairs.json'])
+def test_step3_vanilla_pairs_never_strict(name):
+    # fish 的回归数据：原版自己互比出现过的组合，严格层必须保持 0。也要在样例里，Java 那边一起核对。
+    pairs = json.loads((Path(__file__).parents[1] / 'step3/data' / name).read_text())['pairs']
+    rules = load()
+    strict = [(p['a'], p['b']) for p in pairs if rules.classify_names(p['a'], p['b']) == 'strict']
+    assert not strict, strict
+    in_cases = {frozenset((c['a'], c['b'])) for c in CASES}
+    missing = {(p['a'], p['b']) for p in pairs if frozenset((p['a'], p['b'])) not in in_cases}
+    assert not missing, sorted(missing)

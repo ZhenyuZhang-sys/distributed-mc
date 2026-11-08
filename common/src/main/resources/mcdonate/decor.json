@@ -46,8 +46,10 @@
   "minecraft:cracked_deepslate_bricks",
   "minecraft:cracked_deepslate_tiles",
   "minecraft:dandelion",
+  "minecraft:dark_oak_fence",
   "minecraft:dark_oak_leaves",
   "minecraft:dark_oak_log",
+  "minecraft:dark_oak_planks",
   "minecraft:dead_bush",
   "minecraft:deepslate_brick_slab",
   "minecraft:deepslate_brick_stairs",
@@ -97,6 +99,7 @@
   "minecraft:large_fern",
   "minecraft:lilac",
   "minecraft:lily_of_the_valley",
+  "minecraft:magma_block",
   "minecraft:mangrove_leaves",
   "minecraft:mangrove_log",
   "minecraft:mangrove_roots",
@@ -107,8 +110,10 @@
   "minecraft:mossy_cobblestone",
   "minecraft:muddy_mangrove_roots",
   "minecraft:mushroom_stem",
+  "minecraft:oak_fence",
   "minecraft:oak_leaves",
   "minecraft:oak_log",
+  "minecraft:oak_planks",
   "minecraft:orange_tulip",
   "minecraft:oxeye_daisy",
   "minecraft:packed_ice",
@@ -119,6 +124,7 @@
   "minecraft:polished_deepslate",
   "minecraft:poppy",
   "minecraft:pumpkin",
+  "minecraft:rail",
   "minecraft:raw_copper_block",
   "minecraft:raw_iron_block",
   "minecraft:red_mushroom",
@@ -148,12 +154,14 @@
   "minecraft:sweet_berry_bush",
   "minecraft:tall_grass",
   "minecraft:tall_seagrass",
+  "minecraft:torch",
   "minecraft:tube_coral",
   "minecraft:tube_coral_block",
   "minecraft:tube_coral_fan",
   "minecraft:tube_coral_wall_fan",
   "minecraft:tuff",
   "minecraft:vine",
+  "minecraft:wall_torch",
   "minecraft:white_tulip"
  ],
  "excused_pairs": [
@@ -164,11 +172,37 @@
   [
    "minecraft:air",
    "minecraft:dirt"
+  ],
+  [
+   "minecraft:cave_air",
+   "minecraft:deepslate"
+  ],
+  [
+   "minecraft:cave_air",
+   "minecraft:stone"
+  ],
+  [
+   "minecraft:cave_air",
+   "minecraft:tuff"
+  ],
+  [
+   "minecraft:dirt",
+   "minecraft:grass_block"
+  ],
+  [
+   "minecraft:dirt",
+   "minecraft:snow_block"
   ]
  ],
  "schema": 1,
- "source": "fish e0169c2 的 analysis/mca/decor.py，用 kexu 第 1 步原版互比补全；判定顺序见 docs/step8-plan.md 第 7 节",
+ "source": "fish 的 analysis/mca/decor.py 导出（analysis/export_decor.py）；判定顺序见 docs/step8-plan.md 第 7 节",
+ "terrain_alpha": 0.01,
+ "terrain_cluster_max": 66,
  "terrain_pairs": [
+  [
+   "minecraft:air",
+   "minecraft:water"
+  ],
   [
    "minecraft:deepslate",
    "minecraft:gravel"
@@ -179,10 +213,6 @@
   ],
   [
    "minecraft:dirt",
-   "minecraft:grass_block"
-  ],
-  [
-   "minecraft:dirt",
    "minecraft:gravel"
   ],
   [
@@ -191,15 +221,23 @@
   ],
   [
    "minecraft:dirt",
-   "minecraft:snow_block"
+   "minecraft:stone"
   ],
   [
    "minecraft:dirt",
-   "minecraft:stone"
+   "minecraft:water"
+  ],
+  [
+   "minecraft:grass_block",
+   "minecraft:water"
   ],
   [
    "minecraft:gravel",
    "minecraft:sand"
+  ],
+  [
+   "minecraft:gravel",
+   "minecraft:stone"
   ],
   [
    "minecraft:gravel",

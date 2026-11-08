@@ -163,6 +163,9 @@ fish 的导入已经做了：DataVersion、坐标、状态是 full、tile 大小
 4. **删 chunk**：一个"确认不在内存里就从存档删掉这个 chunk"的主线程方法，规则和导入的冲突规则一致。
 5. **派重算任务**：任务队列能给受信任的本地 worker 派"重算 tile"任务，结果走验证器、不走导入。
 6. **规则清单共用**（调度 11-08 定，kexu 负责）：`decor.py` 的清单抽成 common 里的一份数据文件，Python 和 Java 都读它；fish 的 `decor.py` 和对应的 Java 改成读这份文件，不再各写一份。
+   - **合并 main 后的做法（11-08，待调度确认）**：反过来，`decor.py` 仍是唯一手改的源头（每一对都带出处注释，JSON 放不下），`analysis/export_decor.py` 把它导出成 `decor.json`；pytest 检查 JSON 和导出结果一模一样，`decor.py` 改了没重新导出就失败。这样 fish 不用改 `decor.py`，也不会出现两份不一致。调度仍要 `decor.py` 改读 JSON 的话再改。
+   - 地形互换的判法参数一起导出：`terrain_cluster_max`（66，原版矿团 size 33 的 2 倍）、`terrain_alpha`（0.01，导入部分处数的单侧二项检验）。
+   - Java 比较器也按 6 邻接把地形互换连成"处"，一处超过 66 个方块整处改算严格：空气对水（湖）进了地形互换以后，donor 丢一大片海不能当成湖放过。只看单个 chunk，跨 chunk 的一处被切开只会更难超过上限。donor 抽查不用二项检验（那是导入部分对没导入部分的比较，fish 的导入验收用）。
    - 路径：`common/src/main/resources/mcdonate/decor.json`。Java 从 classpath 读 `/mcdonate/decor.json`，Python 从仓库路径读。
    - 格式（JSON，键排好序）：
 
@@ -192,7 +195,7 @@ fish 的导入已经做了：DataVersion、坐标、状态是 full、tile 大小
 | 小步 | 内容 | 先写的测试 | 完成条件 |
 | --- | --- | --- | --- |
 | 8.0 | 数据验证 | pytest（离线，第 1 步快照）：生物群系两次一样；地表高度两次一样；`extra`/`missing` 方向对称 | **已做**：生物群系 0 差异、方向对称成立；地表高度不成立，移到统计层（`tests/step8/test_01_vanilla_checks.py`） |
-| 8.0a | 共用清单 | pytest：`decor.json` 的判定和 fish 的 `decor.py` 在第 1 步全部差异上一致；JUnit 读同一文件得到同样结论 | 通过；然后请 fish 把 `decor.py` 改成读这份文件 |
+| 8.0a | 共用清单 | pytest：`decor.json` 的判定和 fish 的 `decor.py` 在第 1 步全部差异上一致；JUnit 读同一文件得到同样结论 | 通过。合并 main（df5385f）后从 `decor.py` 重新导出（`analysis/export_decor.py`，带地形互换判法参数），样例 365 条（含 `tests/step3/data` 两份原版差异对，严格层 0）；JUnit 加"一大片空气对水判严格、27 格小水坑算地形互换"，先提交失败的测试，变异检查（不封顶、去掉上下邻接）都被抓到 |
 | 8.1 | 作弊开关 | JUnit：每种模式改的位置和个数对；`collude` 两个 donor 结果逐字节一样 | **已做**：`worker/.../cheat/`（只新增文件），改 chunk 的 NBT，11 项 JUnit（真实数据用第 1 步快照里的一个 mountain chunk）。测试和功能是一起写的，没有先看到失败；补做了一次变异检查（故意少塞一个矿、深板岩不换变种），测试会失败 |
 | 8.1b | 接进导出 | fish 第 3/5/6 步进 main、merge main 之后，在 worker 导出 tile 前约好的调用点加一行；配置项写进 `docs/config.md` | 端到端：开 `ore` 的 worker 导出的 tile 里多了钻石 |
 | 8.2 | 严格层和统计层（Java） | JUnit：和 `decor.py` 在同一批样例上结论一致；塞 20 个钻石被统计层抓到；原版对不报 | **已做**（纯逻辑，`coordinator/.../verify/`，只新增文件）：比较器、阈值（原版每 chunk 最大值 × 1.5 + 2，事先定的）、按 donor 累积的符号检验（m = 20、alpha = 1e-4，临界值 19、实际 alpha 2.0e-5）、自适应抽查状态机（两次重算一致才拉黑）。解码器从 worker 挪到 `common/.../chunk/` 共用。18 项 JUnit，测试和功能一起写，补做了变异检查（第二次重算先看 donor、符号检验临界值减 1，各有测试失败）。接进 coordinator 等 merge main |

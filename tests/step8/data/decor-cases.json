@@ -1,5 +1,5 @@
 {
-"source": "fish e0169c2 decor.classify 在 kexu 第 1 步全部差异组合（含同名只差属性）及清单里每一对上的结论",
+"source": "fish 的 analysis/mca/decor.py（main df5385f，含 66fa803）decor.classify 在 kexu 第 1 步全部差异组合（含同名只差属性）及清单里每一对上的结论，加 tests/step3/data 两份原版差异对（fish 的回归数据）",
 "cases": [
 {
 "a": "minecraft:air",
@@ -190,6 +190,11 @@
 "a": "minecraft:air",
 "b": "minecraft:vine",
 "expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:water",
+"expected": "terrain"
 },
 {
 "a": "minecraft:andesite",
@@ -463,7 +468,27 @@
 },
 {
 "a": "minecraft:cave_air",
+"b": "minecraft:deepslate",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
 "b": "minecraft:glow_lichen",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:oak_fence",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:oak_planks",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:rail",
 "expected": "decor"
 },
 {
@@ -479,6 +504,21 @@
 {
 "a": "minecraft:cave_air",
 "b": "minecraft:spawner",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:stone",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:wall_torch",
 "expected": "decor"
 },
 {
@@ -848,7 +888,17 @@
 },
 {
 "a": "minecraft:deepslate",
+"b": "minecraft:magma_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
 "b": "minecraft:moss_block",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:oak_planks",
 "expected": "decor"
 },
 {
@@ -869,6 +919,11 @@
 {
 "a": "minecraft:deepslate",
 "b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:wall_torch",
 "expected": "decor"
 },
 {
@@ -1054,7 +1109,7 @@
 {
 "a": "minecraft:dirt",
 "b": "minecraft:grass_block",
-"expected": "terrain"
+"expected": "decor"
 },
 {
 "a": "minecraft:dirt",
@@ -1119,7 +1174,7 @@
 {
 "a": "minecraft:dirt",
 "b": "minecraft:snow_block",
-"expected": "terrain"
+"expected": "decor"
 },
 {
 "a": "minecraft:dirt",
@@ -1130,6 +1185,11 @@
 "a": "minecraft:dirt",
 "b": "minecraft:vine",
 "expected": "decor"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:water",
+"expected": "terrain"
 },
 {
 "a": "minecraft:emerald_ore",
@@ -1277,6 +1337,11 @@
 "expected": "decor"
 },
 {
+"a": "minecraft:grass_block",
+"b": "minecraft:water",
+"expected": "terrain"
+},
+{
 "a": "minecraft:gravel",
 "b": "minecraft:infested_deepslate",
 "expected": "decor"
@@ -1315,6 +1380,11 @@
 "a": "minecraft:gravel",
 "b": "minecraft:sculk",
 "expected": "decor"
+},
+{
+"a": "minecraft:gravel",
+"b": "minecraft:stone",
+"expected": "terrain"
 },
 {
 "a": "minecraft:gravel",
@@ -1459,6 +1529,11 @@
 {
 "a": "minecraft:lava",
 "b": "minecraft:tuff",
+"expected": "decor"
+},
+{
+"a": "minecraft:magma_block",
+"b": "minecraft:stone",
 "expected": "decor"
 },
 {

@@ -24,6 +24,10 @@ class Rules:
             raise ValueError('每对必须是两个不同的方块')
         self.vanilla_decor_rate = dict(data['vanilla_decor_rate'])
         self.vanilla_terrain_floor = data['vanilla_terrain_floor']
+        self.terrain_cluster_max = int(data['terrain_cluster_max'])
+        self.terrain_alpha = float(data['terrain_alpha'])
+        if self.terrain_cluster_max < 1 or not 0 < self.terrain_alpha < 1:
+            raise ValueError('地形互换判法参数不合法')
 
     def classify_names(self, a: str, b: str, same_name_props_differ: bool = False) -> str:
         """a、b 是同一位置上两边不同的方块名；名字相同时表示只有属性不同。"""
