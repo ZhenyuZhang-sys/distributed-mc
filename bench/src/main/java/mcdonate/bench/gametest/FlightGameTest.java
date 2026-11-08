@@ -151,6 +151,8 @@ public class FlightGameTest implements FabricGameTest {
                     "done.json 不对：" + done);
             check(done.get("view_distance").getAsInt() == h.getLevel().getServer().getPlayerList().getViewDistance(), "视距：" + done);
             check(done.has("requested_view_distance") && done.has("available_processors") && done.has("initial"), "done.json 缺字段：" + done);
+            // 第一个 tick 的 System.nanoTime：宿主机用同一个单调时钟采 cgroup，靠它对齐每秒 CPU
+            check(done.has("t0_nanotime") && done.get("t0_nanotime").getAsLong() > 0, "done.json 缺 t0_nanotime：" + done);
             List<JsonObject> events = lines(h, run, "chunks.jsonl");
             long enters = events.stream().filter(e -> e.get("ev").getAsString().equals("enter")).count();
             check(enters > 0, "跨过 chunk 边界却没有 enter 事件");
