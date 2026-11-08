@@ -62,6 +62,8 @@ public final class TaskQueue {
         int softWorker = -1;
         /** 硬认主的世界从什么时候起没有 donor 连着。 */
         long orphanSince;
+        /** 导入被接受时记下来自哪个 donor 世界（按领地派任务用）；整个丢弃的是 null。 */
+        String doneWorld;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -88,9 +90,46 @@ public final class TaskQueue {
      * @param maxAttempts ok=false 最多几次，到了就标 FAILED
      */
     public TaskQueue(LongSupplier clock, long leaseMs, int maxAttempts) {
+        this(clock, leaseMs, maxAttempts, new Features(""));
+    }
+
+    private final Features features;
+
+    public TaskQueue(LongSupplier clock, long leaseMs, int maxAttempts, Features features) {
         this.clock = clock;
         this.leaseMs = leaseMs;
         this.maxAttempts = maxAttempts;
+        this.features = features;
+    }
+
+    /** 导入被接受：记下这个 tile 归哪个 donor 世界（按领地派任务用）。 */
+    public synchronized void markImported(long taskId, String world) {
+        Task t = tasks.get(taskId);
+        if (t != null) {
+            t.doneWorld = world;
+        }
+    }
+
+    /** 一个 worker 在领地上的名字：知道它的世界就用世界，否则用它的编号。 */
+    private String ownerKey(int worker) {
+        String w = workerWorlds.get(worker);
+        return w != null ? "world:" + w : "worker:" + worker;
+    }
+
+    /** 7.1：和 t 相邻的 tile 现在归谁（正租着的 worker、导入过的 donor 世界）。 */
+    private Set<String> territoryOwners(Task t) {
+        Set<String> owners = new java.util.HashSet<>();
+        for (Task a : tasks.values()) {
+            if (!adjacent(a, t)) {
+                continue;
+            }
+            if (a.state == State.LEASED) {
+                owners.add(ownerKey(a.worker));
+            } else if (a.state == State.DONE && a.doneWorld != null) {
+                owners.add("world:" + a.doneWorld);
+            }
+        }
+        return owners;
     }
 
     private static long tileKey(int tx, int tz) {
@@ -166,6 +205,18 @@ public final class TaskQueue {
         Task t = null;
         for (var it = queue.iterator(); it.hasNext(); ) {
             Task c = tasks.get(it.next());
+            if (features.on(Features.TERRITORY) && c.hardWorld == null) {
+                // 7.1 按领地派任务：挨着某个 donor 的只派给它；挨着两个 donor 的不派，交给服务器
+                Set<String> owners = territoryOwners(c);
+                if (owners.size() >= 2) {
+                    c.state = State.DROPPED;
+                    it.remove();
+                    continue;
+                }
+                if (owners.size() == 1 && !owners.contains(ownerKey(worker))) {
+                    continue;
+                }
+            }
             if (eligible(c, worker)) {
                 t = c;
                 it.remove();
