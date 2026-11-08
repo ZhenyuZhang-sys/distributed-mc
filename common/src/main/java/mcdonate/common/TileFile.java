@@ -15,7 +15,7 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
 
 /**
- * 一个 tile 的导出文件：tile 本身和外面两圈的 chunk，压缩 NBT。
+ * 一个 tile 的导出文件：tile 本身和外面一圈的 chunk，压缩 NBT。
  *
  * <pre>{format: 1, dataVersion, seed, tile: [tx, tz], chunks: [{x, z, status, data}]}</pre>
  *
@@ -23,8 +23,8 @@ import net.minecraft.nbt.Tag;
  */
 public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedChunk> chunks) {
     public static final int FORMAT = 1;
-    /** 最多导出到第几圈。 */
-    public static final int MAX_RING = 2;
+    /** 最多导出到第几圈：tile 放地物时会写进紧挨着的一圈。 */
+    public static final int MAX_RING = 1;
     /** 读文件时解压后最多 256 MiB，防止坏文件撑爆内存。 */
     private static final long READ_QUOTA = 256L * 1024 * 1024;
 
@@ -46,7 +46,7 @@ public record TileFile(int dataVersion, long seed, TilePos tile, List<ExportedCh
         Set<Long> seen = new HashSet<>();
         for (ExportedChunk c : chunks) {
             if (tile.ring(c.x(), c.z()) > MAX_RING) {
-                throw new InvalidTileFile("chunk (" + c.x() + ", " + c.z() + ") 不在 tile " + tile + " 和外面两圈之内");
+                throw new InvalidTileFile("chunk (" + c.x() + ", " + c.z() + ") 不在 tile " + tile + " 和外面一圈之内");
             }
             if (!seen.add(((long) c.x() << 32) ^ (c.z() & 0xffffffffL))) {
                 throw new InvalidTileFile("chunk (" + c.x() + ", " + c.z() + ") 重复");

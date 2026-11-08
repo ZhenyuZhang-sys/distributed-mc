@@ -33,12 +33,12 @@ class TileFileTest {
         return new ExportedChunk(x, z, status, data);
     }
 
-    /** 一个 tile 加两圈，共 64 个 chunk。 */
+    /** 一个 tile 加一圈，共 36 个 chunk。 */
     private static TileFile fullTile(TilePos tile) {
         List<ExportedChunk> chunks = new ArrayList<>();
-        for (int x = tile.minChunkX() - 2; x <= tile.maxChunkX() + 2; x++) {
-            for (int z = tile.minChunkZ() - 2; z <= tile.maxChunkZ() + 2; z++) {
-                chunks.add(chunk(x, z, tile.ring(x, z) == 0 ? "minecraft:spawn" : "minecraft:carvers"));
+        for (int x = tile.minChunkX() - 1; x <= tile.maxChunkX() + 1; x++) {
+            for (int z = tile.minChunkZ() - 1; z <= tile.maxChunkZ() + 1; z++) {
+                chunks.add(chunk(x, z, tile.ring(x, z) == 0 ? "minecraft:initialize_light" : "minecraft:carvers"));
             }
         }
         return new TileFile(DATA_VERSION, SEED, tile, chunks);
@@ -76,7 +76,7 @@ class TileFileTest {
         tf.write(file);
         TileFile back = TileFile.read(file, DATA_VERSION, SEED);
         assertEquals(tf.tile(), back.tile());
-        assertEquals(64, back.chunks().size());
+        assertEquals(36, back.chunks().size());
         assertEquals(tf.chunks(), back.chunks());
     }
 
@@ -114,10 +114,10 @@ class TileFileTest {
     }
 
     @Test
-    void rejectsChunkOutsideTwoRings() {
+    void rejectsChunkOutsideOneRing() {
         TilePos t = new TilePos(0, 0);
         List<ExportedChunk> chunks = new ArrayList<>(fullTile(t).chunks());
-        chunks.add(chunk(6, 0, "minecraft:carvers"));
+        chunks.add(chunk(5, 0, "minecraft:carvers"));
         assertThrows(TileFile.InvalidTileFile.class, () -> new TileFile(DATA_VERSION, SEED, t, chunks));
     }
 
@@ -125,7 +125,7 @@ class TileFileTest {
     void rejectsDuplicateChunk() {
         TilePos t = new TilePos(0, 0);
         List<ExportedChunk> chunks = new ArrayList<>(fullTile(t).chunks());
-        chunks.add(chunk(0, 0, "minecraft:spawn"));
+        chunks.add(chunk(0, 0, "minecraft:initialize_light"));
         assertThrows(TileFile.InvalidTileFile.class, () -> new TileFile(DATA_VERSION, SEED, t, chunks));
     }
 
@@ -152,7 +152,7 @@ class TileFileTest {
         Path file = dir.resolve("t.nbt");
         fullTile(new TilePos(0, 0)).write(file);
         CompoundTag tag = NbtIo.readCompressed(file, net.minecraft.nbt.NbtAccounter.unlimitedHeap());
-        tag.getList("chunks", 10).getCompound(63).putInt("x", 100);
+        tag.getList("chunks", 10).getCompound(35).putInt("x", 100);
         NbtIo.writeCompressed(tag, file);
         assertThrows(TileFile.InvalidTileFile.class, () -> TileFile.read(file, DATA_VERSION, SEED));
         assertFalse(Files.exists(dir.resolve("t.nbt.tmp")));

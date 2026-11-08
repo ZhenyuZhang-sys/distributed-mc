@@ -15,16 +15,19 @@
 | light | 半径 1 的邻居到 initialize_light | 不写 |
 | spawn | 半径 1 的邻居到 biomes | 不写 |
 
-所以 worker 把一个 4×4 tile 生成到 `spawn` 后：
+**导出目标是 `initialize_light`**（做 3.3 时改的，原计划是 `spawn`）：
 
-- **tile**：状态 `spawn`，只差最后一步 `full`。
-- **第 1 圈**：状态 `initialize_light`，自己的地物已经放好，还带着 tile 写过来的方块。
-- **第 2 圈**：状态 `carvers`，带着第 1 圈写过来的方块（比如树冠）。
+- 原版的票等级只能让 chunk 停在 `initialize_light`，再往上就直接做成 `full` 了（`ChunkLevel.byStatus`：`spawn` 和 `full` 是同一级）。要停在 `spawn` 得用 Mixin 拦原版的"自动做成成品"，不值得。
+- 不导出成品：成品 chunk 的生物存在另一个目录（`entities/`），半成品的生物、方块实体、光照、待处理的方块更新都在同一份 NBT 里。
+- 服务器拿到后只剩光照、生怪、`full` 三步，按 2.5 实测约占生成 CPU 的 2%。地形噪声、表面、洞穴、地物都在 worker 上做完。
+
+worker 把一个 4×4 tile 生成到 `initialize_light` 后：
+
+- **tile**：16 个，状态 `initialize_light`，自己的地物已经放好。
+- **紧挨着的一圈**：20 个，状态 `carvers`，带着 tile 写过来的方块（树冠、矿脉）。
 - 更外圈：只有结构起点和生物群系，便宜、每次算都一样，不导出。
 
-导出 tile 和这两圈，一共 8×8 = 64 个 chunk。只有 16 个是成品，其余 48 个是半成品；服务器之后会接着把它们生成完。
-
-**为什么导出到 `spawn` 而不是 `full`**：`spawn` 之前的 chunk 是"半成品"格式（`ProtoChunk`），生物、方块实体、光照、待处理的方块更新都在同一份 NBT 里。成品 chunk 的生物存在另一个目录（`entities/`），处理起来麻烦得多。服务器读到 `spawn` 状态的 chunk，只需要跑 `full` 这一步，2.5 实测它几乎不花 CPU。
+导出 6×6 = 36 个 chunk。服务器要把 tile 做成成品时，光照阶段要求这一圈也放完地物，所以这一圈的地物由服务器自己做（或者由相邻 tile 的导入提供）。
 
 ## 3.1 worker 服务器
 
@@ -39,31 +42,33 @@
 
 验收：
 
-- [ ] 两台一起起来，worker 日志里有 `mcdonate-worker loaded`，没有 `mcdonate-coordinator`
-- [ ] 两台的 `seed` 都是 424242；服务器的 25566 端口不受影响
-- [ ] 第 0、2 步的测试全部仍然通过
+- [x] 两台一起起来，worker 日志里有 `mcdonate-worker loaded`，没有 `mcdonate-coordinator`
+- [x] 两台的 `seed` 都是 424242；服务器的 25566 端口不受影响
+- [x] 第 0、2 步的测试全部仍然通过
 
 ## 3.2 导出文件格式（common）
 
-- 一个 tile 一个文件，压缩 NBT：`{format: 1, dataVersion, seed, tile: [tx, tz], chunks: [{x, z, status, data}]}`，`data` 就是原版 `ChunkSerializer.write` 的结果。
+- 一个 tile 一个文件，压缩 NBT：`{format: 1, dataVersion, seed, tile: [tx, tz], chunks: [{x, z, status, data}]}`，`data` 就是原版 `ChunkSerializer.write` 的结果。最多一圈（`TileFile.MAX_RING = 1`）。
 - tile 坐标：tile (tx, tz) 包含 chunk x ∈ [4tx, 4tx+3]、z ∈ [4tz, 4tz+3]；负数向下取整。
-- 读文件时拒绝：格式版本不对、`dataVersion` 和服务器不同、seed 不同、chunk 不在 tile 和两圈之内。
+- 读文件时拒绝：格式版本不对、`dataVersion` 和服务器不同、seed 不同、chunk 不在 tile 和一圈之内、坐标或状态和数据里的对不上、重复。
 
 验收（JUnit）：
 
-- [ ] 写入再读出，内容不变
-- [ ] 上面每一种拒绝情况都会报错，不会读进半个文件
-- [ ] 负数 tile 坐标换算正确
+- [x] 写入再读出，内容不变
+- [x] 上面每一种拒绝情况都会报错，不会读进半个文件
+- [x] 负数 tile 坐标换算正确
 
 ## 3.3 worker mod：`/donor export <tx> <tz>`
 
-- 在主线程上把 tile 的 16 个 chunk 生成到 `spawn`（`ServerChunkCache.getChunk(x, z, SPAWN, true)`）。
-- 生成完立刻在主线程上用 `ChunkSerializer.write` 把 tile 和两圈序列化，写到交换目录（先写临时文件再改名，避免服务器读到半个文件）。
+- 在主线程上把 tile 的 16 个 chunk 生成到 `initialize_light`（`ServerChunkCache.getChunk(x, z, INITIALIZE_LIGHT, true)`）。
+- 生成完立刻在主线程上用 `ChunkSerializer.write` 把 tile 和一圈序列化，写到交换目录（先写临时文件再改名，避免服务器读到半个文件）。
+- 有成品 chunk（玩家附近、出生点）就拒绝。
 - 记录每个 chunk 的状态，日志打一行汇总。
 
 验收：
 
-- [ ] 导出文件里正好 64 个 chunk：16 个 `spawn`，第 1 圈 20 个状态至少是 `initialize_light`，第 2 圈 28 个状态至少是 `carvers`
+- [x] 导出文件里正好 36 个 chunk：16 个 `initialize_light`，一圈 20 个状态至少是 `carvers`、不是成品
+- [x] tile 里有成品 chunk 时拒绝导出，不留文件
 - [ ] 同一个 tile 在两个全新的 worker 世界里各导出一次，tile 内的方块逐列 hash 一致（扣除第 1 步测出的不确定率）
 
 ## 3.4 coordinator mod：`/donor import <文件名>`
@@ -77,16 +82,16 @@
 
 验收：
 
-- [ ] 导入后存档里 tile 内的 chunk 和导出文件逐列 hash 完全一致，状态是 `spawn`
+- [ ] 导入后存档里 tile 内的 chunk 和导出文件逐列 hash 完全一致，状态是 `initialize_light`
 - [ ] 对已加载的 chunk 导入：被拒绝，记一条日志，存档不变
 - [ ] 同一个文件导入两次：第二次全部跳过，存档不变
 - [ ] 文件名带 `../`、文件格式不对、seed 不对：拒绝，不写任何东西
 
 ## 3.5 计数口径
 
-2.4 的 `full_generated` 只看 chunk 进入 `full` 时是不是成品。导入的 chunk 是 `spawn` 状态的半成品，进入 `full` 时会被算成"新生成"，但服务器其实只做了最后一步。
+2.4 的 `full_generated` 只看 chunk 进入 `full` 时是不是成品。导入的 chunk 是 `initialize_light` 状态的半成品，进入 `full` 时会被算成"新生成"，但服务器其实只做了光照、生怪和最后一步。
 
-- 改法：bench 记下哪些半成品是从存档读进来的（读的时候打个标记）。从存档读进来的 `spawn` 状态 chunk 完成 `full` 时，算 `full_loaded`。
+- 改法：bench 记下哪些半成品是从存档读进来的（读的时候打个标记），完成 `full` 时单独算 `full_imported`。
 - 另外 `/bench stats` 加 `features` 计数：服务器自己跑了多少次地物阶段。验收靠它和 `noise` 判断服务器有没有重复生成。
 
 验收：
@@ -109,7 +114,7 @@
 
 - **存档读取器**：3.3、3.4、3.6 的比较都要用 kexu 的 `analysis/mca/`（读 `.mca`，算逐列 hash）。读取器到之前，这几项会 `skip`。
 - **原版不确定率**：3.6 的阈值来自第 1 步。拿到之前先用"完全一致"当目标，不一致的地方记下来，等第 1 步的数出来再判断。
-- **相邻 tile 的半成品冲突（留到第 5、6 步）**：两个相邻 tile 的外圈会重叠，同一个半成品 chunk 里带着不同邻居写过来的方块。现在的规则"状态更靠后才覆盖"会丢掉一边写过来的方块。第 3 步只导单个 tile，不碰这个问题；第 5 步调度时要么让相邻 tile 不同时生成，要么按方块合并。
+- **相邻 tile 的半成品冲突（留到第 5、6 步）**：两个相邻 tile 的那一圈会和对方的 tile 重叠，同一个半成品 chunk 里带着不同邻居写过来的方块。现在的规则"状态更靠后才覆盖"会丢掉一边写过来的方块。第 3 步只导单个 tile，不碰这个问题；第 5 步调度时要么让相邻 tile 不同时生成，要么按方块合并。
 - **主线程阻塞**：导入时要先读存档看已有状态，第 3 步先在主线程上等读取结果。这只是调试命令，第 5 步再改成异步。
 
 ## 顺序
