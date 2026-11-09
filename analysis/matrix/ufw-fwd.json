@@ -1,0 +1,68 @@
+{
+ "name": "ufw-fwd",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09：fish-fwd 295dcb2 的前方优先扫描 demandForwardFirst 0 对 1（+kexu 实验工具）。用户同款 2 核，扫描预算 2000，1×8 donor，lookahead 24（直线参数扫描里最好的），corridor 默认 6，烟花直线 33.5 格/秒，k3 同槽位交替各 3 轮。主指标前方已就绪距离、前方空白时长。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "fwd",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     24
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "forward_first": [
+     0,
+     1
+    ]
+   }
+  ]
+ }
+}
