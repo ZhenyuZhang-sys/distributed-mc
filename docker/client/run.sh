@@ -23,6 +23,16 @@ if [[ ! -f "$P/$PROFILE.json" ]]; then
   curl -fsSL "https://meta.fabricmc.net/v2/versions/loader/$MC_VERSION/$LOADER/profile/json" -o "$P/$PROFILE.json"
 fi
 cp /mods/*.jar "$GAME/mods/"
+# 第一次启动会先弹无障碍引导和多人游戏警告，quickPlay 就停在那里不连（11-09 实测：等了 20 分钟没开始连）。这里直接跳过
+cat > "$GAME/options.txt" <<'OPT'
+onboardAccessibility:false
+skipMultiplayerWarning:true
+joinedFirstServer:true
+renderDistance:2
+simulationDistance:5
+maxFps:30
+soundCategory_master:0.0
+OPT
 ls -la "$GAME/mods" > /out/mods.txt
 
 # 3. 启动，挂 SECONDS_TO_STAY 秒；期间每 5 秒记一次进程（看有没有 worker 子进程）
