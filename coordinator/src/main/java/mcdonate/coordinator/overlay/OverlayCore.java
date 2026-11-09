@@ -49,7 +49,6 @@ public final class OverlayCore {
     private static final class Sub {
         int flags;
         boolean needFull = true;
-        final Set<Integer> sentDonors = new HashSet<>();
         int lastCx, lastCz, lastRadius = -1;
         long packets;
     }
@@ -144,6 +143,14 @@ public final class OverlayCore {
         subs.remove(player);
         if (subs.isEmpty()) {
             active = false;
+        }
+    }
+
+    /** 玩家去了别的维度（来源只记主世界）：不在 tick 的 views 里，回来以后从整片快照重来（codex-audit A14）。 */
+    public void away(UUID player) {
+        Sub sub = subs.get(player);
+        if (sub != null) {
+            sub.needFull = true;
         }
     }
 
@@ -245,11 +252,17 @@ public final class OverlayCore {
                 sub.lastCz = v.cz();
                 sub.lastRadius = r;
             }
-            List<Donor> newDonors = new ArrayList<>();
+            // 每包附上它引用的所有 donor（codex-audit A12、A13：原来每个 donor 只发一次，客户端已知 A、新包有 A 和 B 时
+            // 只附 B，valid 拒绝整包；客户端关 overlay 时清了 donor 表，再开也拿不回名字）。donor 少，几十字节
+            java.util.TreeSet<Integer> referenced = new java.util.TreeSet<>();
             for (Entry en : entries) {
-                if (en.source() == Source.DONOR && sub.sentDonors.add(en.donor())) {
-                    newDonors.add(donors.get(en.donor()));
+                if (en.source() == Source.DONOR) {
+                    referenced.add(en.donor());
                 }
+            }
+            List<Donor> newDonors = new ArrayList<>();
+            for (int d : referenced) {
+                newDonors.add(donors.get(d));
             }
             Summary summary = (sub.flags & OverlaySubscribe.HUD) != 0
                     ? new Summary(Math.max(0, donorsOnline.getAsInt()), importedTotal, importedBy.getOrDefault("player:" + v.player(), 0L))

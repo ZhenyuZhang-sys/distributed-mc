@@ -74,6 +74,10 @@ public final class OverlaySender {
         int radius = server.getPlayerList().getViewDistance();
         List<OverlayCore.View> views = new ArrayList<>();
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            if (p.level().dimension() != net.minecraft.world.level.Level.OVERWORLD) {
+                c.away(p.getUUID());   // 来源只记主世界：在别的维度不发，回来从整片快照重来
+                continue;
+            }
             views.add(new OverlayCore.View(p.getUUID(), p.chunkPosition().x, p.chunkPosition().z, radius));
         }
         for (Map.Entry<UUID, List<ProvenanceUpdate>> e : c.tick(views).entrySet()) {
