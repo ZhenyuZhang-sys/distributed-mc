@@ -146,6 +146,9 @@ public final class Coordinator implements ModInitializer {
             }
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
+        // 游戏内来源上色（docs/overlay-plan.md，kexu）：订阅了的客户端收玩家附近 chunk 的来源。
+        // TODO(fish)：名字换成 Coordinator.workerName（fish-ov 分支），在线 donor 数换成 worker 注册表的大小；现在先用占位
+        mcdonate.coordinator.overlay.OverlaySender.install(id -> java.util.Optional.empty(), () -> 0);
         // 第 9 步：玩家进服时，装了客户端 mod 的（注册了 mcdonate:invite 频道）收到 coordinator 地址、一次性 token、seed；
         // 原版客户端不注册这个频道，canSend 为假，不发。没配公开地址（mcdonate.publicHost）就不发。玩家退出：作废没用过的 token，断开他的 worker。
         // 客户端可以再要一次（mcdonate:invite_request）：token 60 秒过期、邀请只在进服时发一次，玩家晚同意或 coordinator 重启后
