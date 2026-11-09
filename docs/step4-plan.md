@@ -108,6 +108,7 @@
 - 一个静态网页（canvas，一格一个 chunk）加一个 Python 小服务器（标准库 `http.server`，不加依赖），只绑 127.0.0.1。
 - 服务器读 `provenance.jsonl` 和 `chunks.jsonl`，提供 `/events?since=N`；网页每 0.5 秒拉一次新事件。
 - 颜色三类：**原版**（服务器自己生成）、**donor**（按编号分色）、**被验证打回**。另外用描边标出玩家当前视野和位置。
+- **11-09 加一类（fish 口径）**：**导入后服务器接着做完**（`resumed`，灰紫）。donor 导入的 tile 是半成品，服务器把它做完时报 `resumed`，不算进原版——原版只算服务器从头生成。地图按最后一条事件上色：导入了还没做完的是 donor 的颜色，做完了是灰紫；donor 编号在 `layer2-chunks.csv` 的 `donor` 列。读盘的成品是浅灰。
 - 回放：选一个已归档的 run，按事件时间重放，可调速、可拖进度条。
 - 第 4 步只有原版来源的真实数据。donor 和打回两类，先用调试命令 `/bench mark <cx> <cz> donor <id>|rejected` 造事件来验证上色。
 
@@ -148,7 +149,7 @@ bench 注册监听写文件；coordinator 写入成功时报 `DONOR`，验证打
 | --- | --- | --- | --- |
 | 4.1 | `Flight`、`ViewTracker` 纯逻辑 | JUnit：位置随时间；进入 / 就绪 / 删失；进出再进算两次；初始视野不计入；视野集合和 `ChunkTrackingView` 一致 | JUnit 通过 |
 | 4.2 | `FlightRecorder`、命令、文件输出 | GameTest：在测试结构里放一个 ServerPlayer，`fly start` 后位置按速度变化，`seconds.jsonl` 行数和时长对得上 | GameTest 通过。**已做**（11-08，先提交失败的测试 `8e6ad94`）：`SecondRows` 7 项 JUnit，`FlightGameTest` 4 项（墙钟 3 秒正好 3 行、位置按速度走、视野 453、tick 模式按 tick 走、中途 stop、同名 run 拒绝、初始视野全部就绪），连跑 3 次稳定；变异检查（去掉最后一秒的封顶、去掉飞完放到终点）都被抓到。实现记录见 4.2a |
-| 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated`；跨 mod 检查（3.3 的 1～4 条） | 通过。**已做**（11-09，先提交失败的测试 `b678b80`）：`Generation` 让计数和来源事件在同一把读锁里发，飞行开始 / 结束拿写锁读计数快照，所以 `done.json` 里原版事件数严格等于 `full_generated + full_resumed` 的增量（JUnit 4 线程并发验证）。GameTest 改用 `getChunk` 强制生成 3 个新 chunk（不用 Chunky，GameTest 并发跑时计数不好对），每个正好一条 vanilla；跨 mod 1～4 条都过。读盘的成品记 `loaded`，读盘的半成品做完记 `vanilla`。变异检查（不加锁、不发事件）都被抓到。飞行的 t0 改成起飞命令执行时，起飞前一刻的来源事件也有 t_ms |
+| 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated`；跨 mod 检查（3.3 的 1～4 条） | 通过。**已做**（11-09，先提交失败的测试 `b678b80`）：`Generation` 让计数和来源事件在同一把读锁里发，飞行开始 / 结束拿写锁读计数快照，所以 `done.json` 里原版事件数严格等于 `full_generated + full_resumed` 的增量（JUnit 4 线程并发验证）。GameTest 改用 `getChunk` 强制生成 3 个新 chunk（不用 Chunky，GameTest 并发跑时计数不好对），每个正好一条 vanilla；跨 mod 1～4 条都过。读盘的成品记 `loaded`，读盘的半成品做完记 `vanilla`（**11-09 改**：按 fish 的口径单独记 `resumed`，原版事件数严格等于 `full_generated` 的增量，`resumed` 等于 `full_resumed`；`layer2-chunks.csv` 加 `source`、`donor` 两列，汇总带三类计数。原版飞行里 `full_resumed` 都是 0，已发布的第 4 步结果不受影响）。变异检查（不加锁、不发事件）都被抓到。飞行的 t0 改成起飞命令执行时，起飞前一刻的来源事件也有 t_ms |
 | 4.4 | Python 离线合成和统计 | pytest：已知事件算出的虚空率、分位数（含删失）、CSV 列；时间对齐 | 通过 |
 | 4.5 | 单轮端到端 | pytest 冒烟（非 slow）：新世界里走路速度飞 15 秒，CSV 有 15 行左右，每行视野数等于 453，日志无 ERROR | 通过 |
 | 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过。**已做**（11-09）：真实回放放在 `tests/step4/test_10_smoke.py` 里，和 4.5 共用同一次飞行（模块级 fixture），不另开 test_11。原版事件数对照 `done.json` 里飞行期间的计数增量，不用全局 `bench stats`：后者还含起飞前生成初始视野的那些。实测一轮：100 条 vanilla，计数增量 100 |

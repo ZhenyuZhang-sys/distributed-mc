@@ -1,7 +1,7 @@
 """实时地图的小服务器：读 bench mod 写的 provenance.jsonl，按"谁生成的"给 chunk 上色。
 
 只绑 127.0.0.1，只用标准库。用法：python -m bench.map.server <bench-runs 目录> [端口]
-provenance.jsonl 每行：{"t_ms": 起飞后毫秒, "cx", "cz", "kind": vanilla|donor|rejected|loaded, "donor": 编号或 -1}
+provenance.jsonl 每行：{"t_ms": 起飞后毫秒, "cx", "cz", "kind": vanilla|resumed|donor|rejected|loaded, "donor": 编号或 -1}
 """
 import colorsys
 import json
@@ -11,15 +11,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-KINDS = ('vanilla', 'donor', 'rejected', 'loaded')
+KINDS = ('vanilla', 'resumed', 'donor', 'rejected', 'loaded')
+RESUMED_COLOR = '#7d6b9e'  # 灰紫：donor 的颜色都是高饱和的，这个和它们、和原版灰绿都分得开
 RUN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
 PAGE = Path(__file__).with_name('index.html')
 
 
 def color(kind, donor):
-    """原版灰绿、打回红、读盘浅灰；donor 按编号用黄金角分色，同一编号颜色固定。"""
+    """原版灰绿、接着做完灰紫、打回红、读盘浅灰；donor 按编号用黄金角分色，同一编号颜色固定。
+
+    导入的 tile 先有一条 donor（导入时），服务器把它做完时再有一条 resumed；地图按最后一条上色，
+    所以导入了还没做完的是 donor 的颜色，做完了是 resumed 的颜色（fish 11-09：三类各一种颜色）。donor 编号在 layer2-chunks.csv 的 donor 列。
+    """
     if kind == 'vanilla':
         return '#5b8c5a'
+    if kind == 'resumed':
+        return RESUMED_COLOR
     if kind == 'rejected':
         return '#d62728'
     if kind == 'loaded':

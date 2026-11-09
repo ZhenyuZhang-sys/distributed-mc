@@ -111,7 +111,7 @@ def test_chunks_carry_source_three_kinds(tmp_path):
                   dict(t_ms=300, cx=8, cz=0, kind='donor', donor=4), dict(t_ms=650, cx=8, cz=0, kind='resumed', donor=-1),
                   dict(t_ms=790, cx=9, cz=0, kind='loaded', donor=-1),
                   dict(t_ms=2500, cx=7, cz=0, kind='loaded', donor=-1)]  # 就绪以后的事件不算
-    run = write_run(tmp_path / 'run-s', events=events, provenance=sorted(provenance, key=lambda e: e['t_ms']))
+    run = write_run(tmp_path / 'run-s', events=events, provenance=provenance)  # 故意不按时间排：真实文件几个线程并发写
     out = layer2.compose(run, samples(), tmp_path / 'out', tail_exclude_ms=0)
     rows = read_csv(out / 'layer2-chunks.csv')
     assert list(rows[0]) == list(layer2.CHUNK_COLUMNS) and {'source', 'donor'} <= set(layer2.CHUNK_COLUMNS)

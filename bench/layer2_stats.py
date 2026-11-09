@@ -70,6 +70,37 @@ def visits(events, end_ms, tail_exclude_ms=10_000):
     return result
 
 
+FULL_KINDS = ('vanilla', 'resumed', 'loaded')
+
+
+def sources(visits, provenance, end_ms):
+    """给每次进视野标上这个 chunk 是谁做完的（fish 11-09 的三类）。
+
+    source：就绪时刻（删失的按飞行结束）之前最后一条完整状态事件的 kind——vanilla 服务器从头生成、
+    resumed 读出来的半成品被接着做完（donor 导入的 tile 就是这种）、loaded 读盘的成品；飞行期间没有这类事件（起飞前就完整了）记空。
+    donor：同一时刻之前最后一次导入它的 donor 编号，没有是 -1。
+    几个生成线程并发写，文件里的时间不一定单调：每个 chunk 的事件先按时间排（稳定排序，同一时刻保持文件顺序）。
+    """
+    by_chunk = {}
+    for e in provenance:
+        by_chunk.setdefault((e['cx'], e['cz']), []).append(e)
+    for events in by_chunk.values():
+        events.sort(key=lambda e: e['t_ms'])
+    out = []
+    for v in visits:
+        cutoff = end_ms if v['censored'] else v['enter_ms'] + v['latency_ms']
+        source, donor = '', -1
+        for e in by_chunk.get((v['cx'], v['cz']), ()):
+            if e['t_ms'] > cutoff:
+                break
+            if e['kind'] in FULL_KINDS:
+                source = e['kind']
+            elif e['kind'] == 'donor':
+                donor = e['donor']
+        out.append(dict(v, source=source, donor=donor))
+    return out
+
+
 def _usage_at(samples, t_ns):
     for (ta, ua), (tb, ub) in zip(samples, samples[1:]):
         if ta <= t_ns <= tb:

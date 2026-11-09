@@ -73,6 +73,8 @@
 | 实验 | 驱动 | 用到的东西 |
 | --- | --- | --- |
 | `flight` | 第 4 步 `bench/layer2.py` 的单轮飞行 | 第 6 步的 donor（compose 里的 worker 服务，个数 = `donors`）、第 7 步的开关、网络延迟代理（2.5） |
+
+**chunk 来源按三类算（fish 11-09）**：服务器从头生成（`vanilla` / `full_generated`）、donor 导入后服务器接着做完（`resumed` / `full_resumed`）、读盘（`loaded` / `full_loaded`）。flight 驱动的结果里三类计数分开记，`layer2-chunks.csv` 的 `source` 列给每个进视野的 chunk 标是哪一类；图 1、2 和报告里的"donor 分担了多少"按 resumed 占三类之和算，不把 resumed 当成服务器自己生成的。报告里 X（就绪 p95 之比）旁边同时列卡住时长（第 4 步的 `stall_s`）。
 | `capacity` | 第 7 步的容量测试（fish `step7-plan.md` 第 2 节）：逐个加鞘翅假玩家，直到虚空率 > 5% | 第 4 步多架飞行（z 方向隔 1024 格） |
 | `verify` | 第 8 步：诚实 donor + 各种作弊 donor 跑一段时间 | 第 8 步作弊开关、验证器、回滚报告 |
 | `frametime` | 不跑，只**导入**第 9 步在真实电脑上采的 `frametimes.csv` | fish `step9-plan.md` 9.7（需要人和显卡） |
