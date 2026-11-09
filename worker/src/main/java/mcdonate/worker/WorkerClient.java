@@ -47,6 +47,7 @@ final class WorkerClient {
 
     WorkerClient(MinecraftServer server, String address) {
         this.server = server;
+        this.generating = new OneAtATime<>(server::execute);
         String[] hp = address.split(":");
         this.host = hp[0];
         this.port = Integer.parseInt(hp[1]);
@@ -147,22 +148,32 @@ final class WorkerClient {
             return;
         }
         currentTask = t.taskId();
-        server.execute(() -> {
-            Result r;
-            try {
-                TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
-                r = Result.success(t.taskId(), g.file().toTag());
-            } catch (RuntimeException e) {
-                LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
-                r = Result.failure(t.taskId(), truncate(e.toString()));
-            }
-            currentTask = Heartbeat.NO_TASK;
-            if (cancelled.remove(t.taskId())) {
-                LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
-                return;
-            }
-            deliver(r);
-        });
+        // 一次只生成一个：主线程等 chunk 时会执行排着的任务，直接 server.execute 会让下一个 tile 嵌套在上一个里面跑（OneAtATime）
+        generating.submit(t, this::generate);
+    }
+
+    private final OneAtATime<Task> generating;
+
+    private void generate(Task t) {
+        if (cancelled.remove(t.taskId())) {
+            LOG.info("任务 {} 还没开始就被撤掉，不做", t.taskId());
+            return;
+        }
+        currentTask = t.taskId();
+        Result r;
+        try {
+            TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
+            r = Result.success(t.taskId(), g.file().toTag());
+        } catch (RuntimeException e) {
+            LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
+            r = Result.failure(t.taskId(), truncate(e.toString()));
+        }
+        currentTask = Heartbeat.NO_TASK;
+        if (cancelled.remove(t.taskId())) {
+            LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
+            return;
+        }
+        deliver(r);
     }
 
     /** Welcome 里的 seed 和自己建世界用的一样才领任务（第 5 步；第 9 步建世界的 seed 来自邀请，这里是唯一的核对）。 */
