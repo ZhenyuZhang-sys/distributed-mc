@@ -26,8 +26,9 @@ def test_reconnected_worker_gets_tasks_bound_to_its_world(server, worker):
     assert server.rcon(f"donor assign {tile[0]} {tile[1]} {wid}") == "queued"
     wait_until(lambda: status(server)["tasks"]["done"] > done0, timeout=180, interval=2, what="第一个 tile 导入")
     compose("restart", "worker", timeout=600)
-    wait_until(lambda: any(w["id"] != wid for w in status(server)["workers"]), timeout=300, interval=2, what="worker 重新连上")
-    new = next(w["id"] for w in status(server)["workers"] if w["id"] != wid)
+    # 同一个 worker 容器的新连接（按名字认，不能用"编号不一样的"：worker2 也连着）
+    new = wait_until(lambda: (lambda i: i if i != wid else None)(worker_id(server, "worker")), timeout=300, interval=2,
+                     what="worker 重新连上")
     logs_before = len(server.logs())
     # 旁边的 tile：区域碰到上一个 tile 的外圈（这个世界导入的），认主给这个世界
     r = server.rcon(f"donor enqueue {tile[0] + 1} {tile[1]} rules")
