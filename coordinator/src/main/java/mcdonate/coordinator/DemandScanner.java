@@ -264,13 +264,16 @@ public final class DemandScanner {
         }
         scanQueued = queued;
         if (FORWARD_FIRST) {
-            // 第一遍：每个玩家先扫自己的前方组，时间片和读盘额度按玩家平分（一共一半），一个玩家用不完的留给后面的
+            // 第一遍：每个玩家先扫自己的前方组，时间片和读盘额度按玩家平分（一共一半），一个玩家用不完的留给后面的。
+            // 时间片从第一遍开始时算：前面准备（前沿、候选）偶尔就超过半个预算，从扫描开始算前方组会一个都轮不到
+            // （f3 直飞实测：开着时前方组也只看完 83%）。第二遍仍按整次扫描的预算
+            long p0 = System.nanoTime();
             for (int i = 0; i < np; i++) {
                 long sliceEnd = forwardSliceEnd(BUDGET_NANOS, i, np);
                 int share = Math.min(readsLeft, forwardReadShare(READS_PER_SCAN, np));
                 int rest = readsLeft - share;
                 readsLeft = share;
-                while (pos[i] < pfc[i] && System.nanoTime() - t0 <= sliceEnd) {
+                while (pos[i] < pfc[i] && System.nanoTime() - p0 <= sliceEnd) {
                     visit(ptx[i][pidx[i][pos[i]]], ptz[i][pidx[i][pos[i]]], deadline, now, view, fronts, chunkMap, access);
                     fwdVisited++;
                     pos[i]++;
@@ -359,7 +362,7 @@ public final class DemandScanner {
         }
     }
 
-    /** 第一遍（前方组）第 i 个玩家的时间片到哪里为止（从扫描开始算的纳秒）：一共给前方组一半，按玩家平分、依次排开。 */
+    /** 第一遍（前方组）第 i 个玩家的时间片到哪里为止（从第一遍开始算的纳秒）：一共给前方组半个预算，按玩家平分、依次排开。 */
     static long forwardSliceEnd(long budget, int i, int players) {
         return budget * (i + 1) / (2L * players);
     }
