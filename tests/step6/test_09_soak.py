@@ -15,6 +15,7 @@
 """
 
 import json
+import os
 import random
 import shutil
 import time
@@ -93,17 +94,20 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     server_pool = [p for p in full if p not in imported]
     sample = imported_sample + rng.sample(server_pool, max(1, len(server_pool) // 100))
     level = f"soak{int(time.time())}"
-    run(str(SCRIPTS / "new_world.sh"), level, str(server.seed), timeout=900)
+    # 对照世界：这台服务器关看门狗（只生成对照、不测性能）。11-09 f3 两次：抽样的几千个分散 chunk 存盘时一个 tick 超过 60 秒，
+    # 原版看门狗杀了服务器；改成 save-off 再停服，停服时的存盘又超过 docker 的 2 分钟宽限期，对照缺 chunk
+    saved = os.environ.get("MC_MAX_TICK_TIME")
+    os.environ["MC_MAX_TICK_TIME"] = "-1"
+    try:
+        run(str(SCRIPTS / "new_world.sh"), level, str(server.seed), timeout=900)
+    finally:
+        if saved is None:
+            os.environ.pop("MC_MAX_TICK_TIME", None)
+        else:
+            os.environ["MC_MAX_TICK_TIME"] = saved
     server.level = level
-    # 对照世界：先关自动存盘再生成（11-09 f3：抽样的几千个分散 chunk 生成完，原版每 5 分钟的自动存盘在一个 tick 里
-    # 把它们全编码，整机忙时用了 60 秒，看门狗把服务器杀了）。生成完停服再拷，和上面浸泡的存档一样一致；拷完再起来，后面的测试照常用
-    server.rcon("save-off")
     server.chunky_list(sample)
-    # 停服前打开存盘：save-off 时停服不存（11-09 f3 重跑：对照的 chunk 一个都没写进存档）。停服时的存盘不在 tick 里，看门狗管不到
-    server.rcon("save-on")
-    compose("stop", "minecraft", timeout=300)
-    control = server._copy_world(base / "control")
-    compose("up", "-d", "--wait", "--wait-timeout", "600", "minecraft", timeout=660)
+    control = server.snapshot(base / "control")
     acc = {"imported": Diff(examples=[]), "server": Diff(examples=[])}
     missing = [p for p in sample if read_chunk(control, *p) is None]
     assert not missing, f"对照世界里缺 {len(missing)} 个抽样的 chunk（没存盘？），比不了：{missing[:10]}"

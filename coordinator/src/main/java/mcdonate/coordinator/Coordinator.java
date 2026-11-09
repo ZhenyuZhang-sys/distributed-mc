@@ -92,6 +92,11 @@ public final class Coordinator implements ModInitializer {
                         .then(Commands.literal("waitimport")
                                 .then(Commands.literal("chunkcache").executes(ctx -> setWaitImport(ctx.getSource(), true)))
                                 .then(Commands.literal("server").executes(ctx -> setWaitImport(ctx.getSource(), false))))
+                        // 测试用：踢掉一个 worker（它用过的 token 不能再用，要经游戏再要一个；第 9 步重连测试）
+                        .then(Commands.literal("kick").requires(source -> source.hasPermission(4))
+                                .then(Commands.argument("worker", IntegerArgumentType.integer(0))
+                                        .executes(ctx -> reply(ctx.getSource(), network == null ? "not running"
+                                                : network.kick(IntegerArgumentType.getInteger(ctx, "worker")) ? "kicked" : "no such worker"))))
                         .then(Commands.literal("reset").executes(ctx -> reply(ctx.getSource(),
                                 network == null ? "not running" : "reset cancelled=" + network.reset())))
                         .then(Commands.literal("waitsync")

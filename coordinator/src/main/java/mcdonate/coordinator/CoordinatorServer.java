@@ -421,6 +421,16 @@ final class CoordinatorServer {
      * worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；不在线返回空。玩家名从在线玩家列表里找（玩家下线了用主机名）。
      * 在主线程上调（玩家列表是主线程的）。
      */
+    /** 测试用：断开一个 worker。不在线返回 false。 */
+    boolean kick(int workerId) {
+        Connection c = workers.get(workerId);
+        if (c == null) {
+            return false;
+        }
+        c.close("被 /donor kick 踢掉（测试用）");
+        return true;
+    }
+
     /** 现在连着的 worker 个数。 */
     public int workerCount() {
         return workers.size();
