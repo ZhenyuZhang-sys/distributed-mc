@@ -62,6 +62,10 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     # 拍快照正好拷到写了一半的文件——两次截断都在航线末端，正是飞完以后卸载的地方。停服以后存档是一致的；
     # 这时还读不出来，就是存档真坏了。后面要换新世界做对照，用不着这台服务器了。
     imported_tiles = {tuple(r["tile"]) for r in donor_imports(server)[before:] if r["accepted"]}  # 停服前取
+    if server.artifact_dir:
+        # 存下来：快照还在、判法改了时能离线重算（11-09 那次没存，世界目录又被下一轮删了，只能重跑）
+        server.artifact_dir.mkdir(parents=True, exist_ok=True)
+        (server.artifact_dir / "soak-imported-tiles.json").write_text(json.dumps(sorted(imported_tiles)) + "\n")
     compose("stop", "minecraft", timeout=300)
     snap = server._copy_world(base / "soak")
     # 1. 每个 chunk 都读得出来（读不出会抛异常）
