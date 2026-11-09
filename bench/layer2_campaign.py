@@ -115,13 +115,14 @@ def _num(v):
     return math.inf if v == 'inf' or v is None else float(v)
 
 
-def selfcheck_verdict(results: dict, crit: dict) -> dict:
-    """计划 5.3 的两条判据（看数据之前定的）。有并发的那条只算参考；第 2 条要和第 1 条比，第 1 条是参考时它也只是参考。"""
+def selfcheck_verdict(results: dict, crit: dict, concurrency_counts: bool = False) -> dict:
+    """计划 5.3 的两条判据（看数据之前定的）。默认有并发的那条只算参考；第 2 条要和第 1 条比，第 1 条是参考时它也只是参考。
+    concurrency_counts=True（用户 11-09：粗测，允许并行）时有并发也照常判，并发照样列出来。"""
     pre, one = results['pregen'], results['one_core']
     pre_ok = _num(pre['void_mean']) < crit['pregen_void_mean_lt'] and _num(pre['latency_p95_ms']) < crit['pregen_latency_p95_ms_lt']
     one_ok = _num(one['void_mean']) >= _num(pre['void_mean']) + crit['one_core_void_mean_above_pregen']
-    pre_ref = bool(pre.get('concurrent'))
-    one_ref = pre_ref or bool(one.get('concurrent'))
+    pre_ref = bool(pre.get('concurrent')) and not concurrency_counts
+    one_ref = (pre_ref or bool(one.get('concurrent'))) and not concurrency_counts
 
     def entry(r, ok, ref):
         return dict(status='reference' if ref else ('passed' if ok else 'failed'), criteria_met=ok,
@@ -162,13 +163,21 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+# 只记录决定、不改变怎么飞的协议字段：变了照样能续跑和重新发布
+DOC_KEYS = ('note', 'user_decision', 'selfcheck_concurrency_counts')
+
+
+def _measurement(p: dict) -> dict:
+    return {k: v for k, v in p.items() if k not in DOC_KEYS}
+
+
 def run_campaign(p: dict, root, fly_slot) -> dict:
     """按槽位跑，返回 {campaign, passed, failed, concurrent, results}。root 已存在时按断点续跑处理，协议必须一样。"""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     saved = root / 'protocol.json'
     if saved.exists():
-        if json.loads(saved.read_text()) != p:
+        if _measurement(json.loads(saved.read_text())) != _measurement(p):
             raise ValueError('这个 campaign 的协议和现在的不一样，不能续跑')
     else:
         _write(saved, p)
@@ -407,6 +416,8 @@ def report(p, result, ordered, summary, verdict) -> str:
         '**冒烟，在这台 EPYC 上限核测得，部署机器 N100 上要重测。** 降级（调度 11-08）：每种速度 1～2 次，只能看量级；'
         '部署机器上把 `bench/layer2-protocol.json` 的 repeats 改成 5、rerun_on_interference 改成 true 跑满。',
         '',
+        f"用户决定（11-09）：{p['user_decision']}" if p.get('user_decision') else '',
+        '',
         f"campaign `{result['campaign']}`。速度 {', '.join(f'{k} {v} 格/秒' for k, v in p['speeds'].items())}；"
         f"视距 {p['view_distance']}，模拟距离 {p['simulation_distance']}；每轮 {p['seconds']} 秒，{p['mode']} 模式，"
         f"高度 {p['y']}，沿 +x；seed {p['seed']}，每轮全新世界。定义见 docs/step4-plan.md 第 2 节。",
@@ -475,7 +486,8 @@ def publish(root, p, result, out) -> dict:
     if result['failed']:
         raise ValueError(f"有 {result['failed']} 个槽位失败，不发布")
     res = result['results']
-    verdict = selfcheck_verdict({s: res[f'selfcheck-{s}'] for s in SELFCHECKS}, p['selfcheck_criteria'])
+    verdict = selfcheck_verdict({s: res[f'selfcheck-{s}'] for s in SELFCHECKS}, p['selfcheck_criteria'],
+                                p.get('selfcheck_concurrency_counts', False))
     if any(v['status'] == 'failed' for v in verdict.values()):
         raise ValueError('自检没过：先重跑那一条再下结论（调度 11-08），不发布')
     ordered = [res[s['slot']] for s in slots(p)]

@@ -24,8 +24,8 @@ def fake_flight(d, void, p95):
     return d
 
 
-def campaign(tmp_path, concurrent_slot=None, pregen_void=.002):
-    p = lc.load_protocol(PROTOCOL)
+def campaign(tmp_path, concurrent_slot=None, pregen_void=.002, **over):
+    p = lc.validate({**lc.load_protocol(PROTOCOL), **over})
 
     def fly_slot(slot, directory):
         void = {'pregen': pregen_void, 'one_core': .3}.get(slot['name'], .05)
@@ -73,7 +73,8 @@ def test_publish_writes_tables_report_and_digests(tmp_path):
 
 
 def test_publish_lists_concurrency_and_reference_selfchecks(tmp_path):
-    p, result, root = campaign(tmp_path, concurrent_slot='selfcheck-pregen')
+    # 部署机器上跑满时的规则（selfcheck_concurrency_counts=false）：自检有并发只算参考
+    p, result, root = campaign(tmp_path, concurrent_slot='selfcheck-pregen', selfcheck_concurrency_counts=False)
     out = tmp_path / 'results'
     lc.publish(root, p, result, out)
     check = json.loads((out / 'selfcheck.json').read_text())
@@ -107,3 +108,14 @@ def test_readme_block_rendered_from_published_results(tmp_path):
     lc.update_readme(readme, out)
     text = readme.read_text()
     assert text.startswith('前面\n') and text.endswith('后面\n') and '旧的' not in text and lc.readme_block(out) in text
+
+
+def test_publish_counts_concurrent_selfcheck_under_user_decision(tmp_path):
+    # 用户 11-09：粗测、允许并行。自检有并发照常判，报告里照样列出并发，并写明用户决定
+    p, result, root = campaign(tmp_path, concurrent_slot='selfcheck-pregen')
+    out = tmp_path / 'results'
+    lc.publish(root, p, result, out)
+    check = json.loads((out / 'selfcheck.json').read_text())
+    assert check['pregen']['status'] == 'passed' and check['pregen']['concurrent'] == ['mc-test-fish start']
+    report = (out / 'baseline-layer2.md').read_text()
+    assert '允许并行' in report and 'mc-test-fish start' in report
