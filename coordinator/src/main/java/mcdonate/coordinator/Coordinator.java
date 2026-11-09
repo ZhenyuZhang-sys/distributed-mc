@@ -203,6 +203,12 @@ public final class Coordinator implements ModInitializer {
 
     private static volatile CoordinatorServer network;
 
+    /** worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；coordinator 没开或 worker 不在线返回空。在主线程上调。 */
+    public static java.util.Optional<WorkerName> workerName(int workerId) {
+        CoordinatorServer n = network;
+        return n == null ? java.util.Optional.empty() : n.workerName(workerId);
+    }
+
     static final long INVITE_REQUEST_MIN_MS = Config.getLong("inviteRequestMinMs", 10_000);
     private static final InviteLimiter INVITE_LIMITER = new InviteLimiter(INVITE_REQUEST_MIN_MS);
 
