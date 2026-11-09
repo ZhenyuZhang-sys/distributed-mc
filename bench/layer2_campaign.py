@@ -407,6 +407,19 @@ def _fmt(v, digits=3):
     return str(v)
 
 
+def _by_container(events):
+    """['c1 stop', 'c1 die', 'c2 create'] → 'c1（stop、die）, c2（create）'：同一个容器的事件归在一起，按第一次出现的顺序。"""
+    grouped = {}
+    for e in events:
+        name, _, action = e.rpartition(' ')
+        grouped.setdefault(name or action, []).append(action if name else '')
+    return ', '.join(f"{n}（{'、'.join(a for a in acts if a)}）" for n, acts in grouped.items())
+
+
+def _conc_cell(events):
+    return f'有（{len(events)} 个事件）' if events else '无'
+
+
 def report(p, result, ordered, summary, verdict) -> str:
     smoke = [r for r in ordered if r['kind'] == 'smoke']
     conc = [r for r in ordered if r.get('concurrent')]
@@ -442,7 +455,7 @@ def report(p, result, ordered, summary, verdict) -> str:
                      f"| {_fmt(r.get('distance_ratio'))} | {_fmt(r['void_mean'])} | {_fmt(r['void_p95'])} "
                      f"| {_fmt(r['latency_p50_ms'])} / {_fmt(r['latency_p95_ms'])} / {_fmt(r['latency_p99_ms'])} "
                      f"| {_fmt(r['censored_fraction'])} | {_fmt(r['mspt_mean'])} / {_fmt(r['mspt_max'])} | {_fmt(r['cpu_cores_mean'])} | {r.get('sync_loads')} "
-                     f"| {'; '.join(r.get('concurrent') or []) or '无'} |")
+                     f"| {_conc_cell(r.get('concurrent'))} |")
     lines += ['', '## 每个配置（只算冒烟矩阵，不含自检）', '',
               '1 次的配置不报波动；2 次的报两次之差。差值能不能算显著（> 5 次标准差的 2 倍，计划 5.2）要等部署机器上的完整矩阵。', '',
               '| 速度 | 核数 | 次数 | 卡住时长均值（秒） | 两次之差 | 实际 / 理想距离 | 虚空率均值 | 两次之差 | 就绪 p95 均值（毫秒） | 两次之差 |',
@@ -453,8 +466,9 @@ def report(p, result, ordered, summary, verdict) -> str:
                      f"| {_fmt(s['latency_p95_ms_mean'])} | {_fmt(s['latency_p95_ms_diff'])} |")
     every = ', '.join(sorted({str(r.get('scan_every_ticks')) for r in ordered}))
     # 每 tick 扫视野的平均耗时占 MSPT 均值的比例（扫描本身不计进 MSPT，但占服务器时间）
-    share = [r['scan_ms_total'] / r['ticks_total'] / r['mspt_mean'] for r in ordered
-             if r.get('ticks_total') and r.get('mspt_mean')]
+    timed = [r for r in ordered if r.get('ticks_total') and r.get('mspt_mean')]
+    per_tick = [r['scan_ms_total'] / r['ticks_total'] for r in timed]
+    share = [t / r['mspt_mean'] for t, r in zip(per_tick, timed)]
     lines += ['', '## 背景和局限', '',
               '- 1.21.1 的后台生成线程数是 `clamp(可用核数 − 1, 1, 上限)`：1 核和 2 核都只有 1 个生成线程，4 核有 3 个（第 1 步发现，计划 5.5）。'
               '2 核基线上原版生成只用到大约一个核；第 6 步解读 donor 的效果时要记住这一点。每轮容器里实际的 availableProcessors 见上表。',
@@ -467,13 +481,15 @@ def report(p, result, ordered, summary, verdict) -> str:
               '玩家实体 tick 里的（上表"同步加载"列）真实玩家不会造成，不为 0 的一轮判无效重跑。'
               '其余的是原版自己的（流体 tick 或 chunk 变成可 tick 时的后处理读到还没做完的邻居），真实玩家的服务器上也有，只记录在 layer2-runs.csv 的 sync_loads_world。',
               f"- 扫视野的间隔 scan_every_ticks = {every}。扫描耗时不计进 MSPT，但占服务器时间："
-              + (f"每 tick 平均扫描耗时是 MSPT 均值的 {min(share):.1%}～{max(share):.1%}。" if share else "这批结果没有 tick 数，算不出占比。")
-              + "计划 5.1 要求 < 2%，超过就改成每 2 tick 扫一次再测。",
+              + (f"每 tick 平均扫描 {min(per_tick):.2f}～{max(per_tick):.2f} 毫秒，是 MSPT 均值的 {min(share):.1%}～{max(share):.1%}"
+                 f"（MSPT 本身只有几毫秒），占 50 毫秒 tick 预算的 {min(per_tick) / 50:.1%}～{max(per_tick) / 50:.1%}。" if share else "这批结果没有 tick 数，算不出占比。")
+              + "计划 5.1 的判据是 pilot 里开 / 关逐 tick 扫描比 MSPT、差别 < 2%；冒烟没做这组对照（降级），"
+              "部署机器上跑满前要补，超过就改成每 2 tick 扫一次。",
               f"- 就绪延迟只算起飞后进入视野、离结束超过 {p['tail_exclude_ms'] // 1000} 秒的 chunk；删失（出视野时还没就绪）按无穷大算，分位数是保守的上界。",
               '- 冒烟测量不要求机器安静（降级）。']
     if conc:
         lines.append('- **有并发**的轮次（飞行期间别的容器有生命周期事件），照样保留：' +
-                     '；'.join(f"{r['slot']}：{', '.join(r['concurrent'])}" for r in conc) + '。是否重跑由读者决定。')
+                     '；'.join(f"{r['slot']}：{_by_container(r['concurrent'])}" for r in conc) + '。完整事件在 layer2-runs.csv 的 concurrent 列。是否重跑由读者决定。')
     else:
         lines.append('- 所有轮次飞行期间都没有别的容器的生命周期事件。')
     return '\n'.join(lines) + '\n'

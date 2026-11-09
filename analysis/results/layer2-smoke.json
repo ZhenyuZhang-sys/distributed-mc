@@ -1,0 +1,14 @@
+{
+ "smoke": true,
+ "campaign": "layer2-20261109T031723",
+ "protocol_digest": "7488291f68d8bfa907f090d63cdd33f5717a2c8caf54b633f5fa6e246ce44899",
+ "published_utc": "2026-11-09T04:50:47.596615+00:00",
+ "artifacts": {
+  "layer2-runs.csv": "0a6cd380d8f4a72feec60289d9ed168cfa99e89ec7eedc5ac2e779b0f1cb6f57",
+  "layer2-summary.csv": "e33cd98dd5db1cbac1a066df670bbb1a2d6019bf7e8edc2e903bd3040ff4b4b6",
+  "layer2.csv": "2fd91de3ec958bffe43bdb03d362ca4eb6be51352afcfdb857fd6ea02d2d5892",
+  "layer2-chunks.csv": "2c084353b6fde4508cb2cc8274a3506b7cbfa0e57600fc162db2251c8a4c8e08",
+  "selfcheck.json": "a92fc5fac6eb8da1b218aeea36d6280e27742d0f529b339edeaf1aaad3860ac9",
+  "baseline-layer2.md": "333613f031186b226e6857d25c9a1fa46c3e0685edc7872e3b0754f603f4663f"
+ }
+}
