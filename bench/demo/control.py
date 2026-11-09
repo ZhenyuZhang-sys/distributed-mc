@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -19,7 +20,8 @@ DONORS = ('worker', 'worker2')
 ALL_WORKERS = ('worker', 'worker2', 'worker3')
 NETEM_ARGS = ('35ms', '1%', '20mbit')   # 延迟、丢包、限速（fish 的 netem.sh：on [延迟] [丢包] [限速]）
 SECONDS_RANGE = (10, 600)
-ACTIONS = ('donor_on', 'donor_off', 'feature', 'fly_start', 'fly_stop', 'netem')
+ACTIONS = ('donor_on', 'donor_off', 'feature', 'fly_start', 'fly_stop', 'netem', 'record_start', 'record_stop')
+PLAYER_NAME = re.compile(r'[A-Za-z0-9_]{1,16}')   # 原版玩家名的规则；拼进命令前先查，不让选择器（@a）或空格进去
 
 
 class BadRequest(ValueError):
@@ -38,8 +40,9 @@ def check_flight(speed, seconds):
 
 
 class Controller:
-    def __init__(self, runner, poller, flyer, wait_timeout=600, wait_interval=2):
+    def __init__(self, runner, poller, flyer, wait_timeout=600, wait_interval=2, tracker=None):
         self.runner, self.poller, self.flyer = runner, poller, flyer
+        self.tracker = tracker or Tracker(runner, poller)
         self.wait_timeout, self.wait_interval = wait_timeout, wait_interval
         self._lock = threading.Lock()
         self.current = None
@@ -68,6 +71,8 @@ class Controller:
             raise BadRequest('on 是 true / false')
         if action == 'fly_start':
             check_flight(body.get('speed'), body.get('seconds'))
+        if action == 'record_start' and not (isinstance(body.get('player'), str) and PLAYER_NAME.fullmatch(body['player'])):
+            raise BadRequest('玩家名只能是 1～16 个字母、数字或下划线')
         if action == 'netem' and not self.runner.netem_supported():
             raise BadRequest('模拟网络要等 fish 新版的 scripts/netem.sh（NETEM_SERVICE、限速参数）进 main，现在先灰着')
         with self.busy(action):
@@ -83,6 +88,10 @@ class Controller:
                 return dict(ok=True, run=self.flyer.start(body['speed'], body['seconds']))
             if action == 'fly_stop':
                 return dict(ok=True, run=self.flyer.stop())
+            if action == 'record_start':
+                return dict(ok=True, run=self.tracker.start(body['player']))
+            if action == 'record_stop':
+                return dict(ok=True, run=self.tracker.stop())
             self.netem(body['on'])
             return dict(ok=True)
 
@@ -90,6 +99,10 @@ class Controller:
 
     def status(self) -> dict:
         return json.loads(self.runner.rcon('donor status'))
+
+    def players(self) -> list:
+        """在线玩家名（/bench view 的 players），给"跟踪真人玩家"的下拉框。"""
+        return [p['name'] for p in json.loads(self.runner.rcon('bench view')).get('players', [])]
 
     def worker_ids(self) -> list:
         return sorted(w['id'] for w in self.status().get('workers', []))
@@ -188,3 +201,33 @@ class Flyer:
 
     def state(self):
         return dict(run=self.run, last=self.last)
+
+
+class Tracker:
+    """跟踪真人玩家（docs/step10-plan.md 7.2）：/bench record 只记录不移动，面板曲线和地图跟着这一轮的文件走。"""
+
+    def __init__(self, runner, poller):
+        self.runner, self.poller = runner, poller
+        self.run = None
+
+    def start(self, player) -> str:
+        if self.run:
+            raise Busy(f'正在跟踪：{self.run}')
+        run = f'rec-{player}-' + time.strftime('%Y%m%dT%H%M%S', time.gmtime())
+        reply = self.runner.rcon(f'bench record start {player} {run}')
+        if not reply.startswith('bench record started'):
+            raise RuntimeError(f'跟踪没开始：{reply}')
+        self.run = run
+        self.poller.flight = dict(run=run, start_x=None, speed=None)   # 真人玩家没有理想距离
+        return run
+
+    def stop(self):
+        if not self.run:
+            raise BadRequest('现在没有在跟踪')
+        run, self.run = self.run, None
+        self.poller.flight = None
+        self.runner.rcon(f'bench record stop {run}')
+        return run
+
+    def state(self):
+        return dict(run=self.run)

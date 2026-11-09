@@ -125,9 +125,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, DEMO_PAGE.read_bytes(), 'text/html; charset=utf-8')
         if url.path == '/api/live':
             c = d['controller']
-            return self.send(200, dict(row=d['poller'].latest(), busy=c.current, flyer=c.flyer.state(),
+            return self.send(200, dict(row=d['poller'].latest(), busy=c.current, flyer=c.flyer.state(), tracker=c.tracker.state(),
                                        ab=d['ab'].status() if d.get('ab') else None,
                                        netem_supported=bool(c.runner.netem_supported())))
+        if url.path == '/api/players':
+            return self.send(200, dict(players=d['controller'].players()))
         if url.path == '/api/series':
             raw = query.get('since', ['0'])[0]
             if not raw.isdigit():

@@ -36,6 +36,10 @@ class FakeRunner:
                                    mspt_100=6.0))
         if cmd == 'donor status':
             return 'Unknown or incomplete command' if 'donor' in self.broken else json.dumps(self.status)
+        if cmd.startswith('bench record start '):
+            return f"bench record started {cmd.split()[-1]}"
+        if cmd.startswith('bench record stop'):
+            return 'bench record stopped ' + cmd.split()[-1]
         if cmd.startswith('donor demand '):
             self.status['demand'] = cmd.endswith('on')
         elif cmd.startswith('donor feature '):

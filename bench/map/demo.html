@@ -84,6 +84,12 @@
       <button data-action="fly_stop">停止</button>
     </div>
     <div class="controls">
+      <label>真人玩家 <select id="player"><option value="">（没有在线的）</option></select></label>
+      <button data-action="record_start">跟踪</button>
+      <button data-action="record_stop">停止跟踪</button>
+      <span class="muted">只记录不移动；卡住按"没动而且视线前方 2 格内的 chunk 没就绪"近似</span>
+    </div>
+    <div class="controls">
       <button data-action="netem" id="netem-btn">模拟网络：开</button>
       <span class="muted" id="netem-note"></span>
     </div>
@@ -265,12 +271,15 @@ const QUESTIONS = {
   donor_off: "关掉找需求，停掉所有 worker？",
   fly_start: "放一架假玩家沿一条没生成过的航线飞？",
   fly_stop: "提前停下这一轮飞行？（这一轮不出汇总）",
+  record_start: "开始跟踪这个真人玩家？（只记录，不移动他）",
+  record_stop: "结束跟踪？",
 };
 document.querySelectorAll("button[data-action]").forEach(b => b.addEventListener("click", () => {
   const a = b.dataset.action;
   if (a === "netem") { const on = b.dataset.on !== "true"; return control({ action: "netem", on }, on ? "给两个 worker 的出站加 35ms 延迟、20mbit 限速、1% 丢包？" : "恢复正常网络？"); }
   const body = { action: a };
   if (a === "fly_start") { body.speed = $("speed").value; body.seconds = parseInt($("seconds").value, 10); }
+  if (a === "record_start") { body.player = $("player").value; if (!body.player) { $("status").textContent = "没有选玩家"; return; } }
   control(body, QUESTIONS[a]);
 }));
 for (const f of FEATURES) {
@@ -298,7 +307,7 @@ async function tick() {
     nb.textContent = nb.dataset.on === "true" ? "模拟网络：关" : "模拟网络：开";
     $("netem-note").textContent = st.netem_supported ? "35ms / 20mbit / 1% 丢包" : "要等 fish 新版的 netem.sh 进 main";
     if (!$("status").textContent.startsWith("正在做")) $("status").textContent = st.busy ? "正在做：" + st.busy : "";
-    pollMap((st.flyer && st.flyer.run) || (r.flight && r.flight.run));
+    pollMap((st.flyer && st.flyer.run) || (st.tracker && st.tracker.run) || (r.flight && r.flight.run));
     showAB(st.ab);
   } catch (e) { $("status").textContent = String(e); }
 }
@@ -338,8 +347,19 @@ async function showAB(ab) {
   }
 }
 
+async function refreshPlayers() {
+  try {
+    const d = await getJSON("/api/players");
+    const sel = $("player"), cur = sel.value;
+    sel.innerHTML = d.players.length ? d.players.map(n => `<option>${n}</option>`).join("") : `<option value="">（没有在线的）</option>`;
+    if (d.players.includes(cur)) sel.value = cur;
+  } catch (e) { /* 服务器还没起来 */ }
+}
+
 tick();
 setInterval(tick, 1000);
+refreshPlayers();
+setInterval(refreshPlayers, 5000);
 window.addEventListener("resize", () => { live.forEach(drawChart); drawMap($("map"), mapChunks, mapPlayer); });
 </script>
 </body>
