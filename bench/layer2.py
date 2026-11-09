@@ -77,7 +77,8 @@ def _ready(server, player):
         return False  # 玩家还没上线时命令报错，输出不是 JSON
 
 
-def fly(server, run, player, start, speed, seconds, out_dir, mode='wall', y=200, ready_timeout=300, done_slack=120):
+def fly(server, run, player, start, speed, seconds, out_dir, mode='wall', y=200, ready_timeout=300, done_slack=120,
+        tail_exclude_ms=10_000):
     """在 server（bench.server.Server，已经在跑）上飞一轮，结果写进 out_dir。返回 out_dir。
 
     假玩家用旁观模式（和 fish 第 3、6 步的测试一样）：不受重力，原版默认 spectatorsGenerateChunks=true，加载和生成与创造模式相同。
@@ -114,6 +115,6 @@ def fly(server, run, player, start, speed, seconds, out_dir, mode='wall', y=200,
     with (out_dir / 'cpu-samples.jsonl').open('w') as f:
         for t, u in samples:
             f.write(json.dumps(dict(time_ns=t, usage_usec=u)) + '\n')
-    compose(raw, samples, out_dir, initial_load_s=initial_load_s)
+    compose(raw, samples, out_dir, initial_load_s=initial_load_s, tail_exclude_ms=tail_exclude_ms)
     shutil.rmtree(RUNS / run)
     return out_dir
