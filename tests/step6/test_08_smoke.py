@@ -7,8 +7,10 @@
   会干扰测量，第 1 步吃过这个亏），飞之前确认它们不在跑。
 - 2 个 donor：两个 worker 起来、连上，打开找需求。
 - 每轮在不同的、没生成过的地方飞；每轮记下当时在跑的容器。
-- 判定只要求方向：2 个 donor 时服务器 CPU 比 0 个 donor 低（两轮均值），而且 donor 真的导入了 tile。
-  虚空率、就绪延迟、卡住时长占比、实际/理想距离只记录（1～2 次的波动太大），后两项是主要指标（调度 11-09）。
+- **只测量，不判优劣**（调度 11-09 决定：原判据"2 个 donor 时服务器 CPU 更低"按第一次的数据不成立，
+  卡住占比也看不出改善；看过数据再换一个能过的判据没有意义）。测试只断言这轮测量有效：守护计数为 0、两组都跑完、
+  2 个 donor 那组导入了 tile、0 个 donor 那组 worker 确实停了。卡住占比、实际/理想距离、虚空率、CPU、MSPT、
+  丢弃（按原因）、主线程导入耗时都写进 smoke.json，结论写在 docs/step6-report.md。
 - 测量有效的条件：新 layer2 的守护计数 sync_loads.count（假玩家 tick 里的同步加载）为 0。
   11-09 第一次跑时假玩家越过没生成的区域，2 核原版被看门狗杀掉，那次数据作废；sync_loads.world 是原版自己的，只记录。
 跑法（2 核服务器，拿独占锁）：MC_CPUS=2 MC_CPUSET=32-33 scripts/test.sh step6 --slow -k smoke
@@ -95,4 +97,4 @@ def test_elytra_smoke_0_vs_2_donors(server, worker, worker2, tmp_path_factory):
     print(json.dumps(report, ensure_ascii=False))
     (base / "smoke.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     assert all(r["imports_accepted"] > 0 for r in results if r["kind"] == "donors2"), "2 个 donor 时没有导入 tile"
-    assert report["donors2"]["cpu_cores_mean"] < report["donors0"]["cpu_cores_mean"], report
+    assert {r["kind"] for r in results} == {"donors0", "donors2"} and len(results) == len(ROUNDS), "两组都要跑完"
