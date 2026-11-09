@@ -264,17 +264,18 @@ final class CoordinatorServer {
                 }
                 // 11-09：按在线 donor 的实测吞吐估每个排队任务什么时候做完，来不及的现在就丢掉，交给服务器
                 double rate = 0;
-                long latency = 0;
+                List<Long> latencies = new java.util.ArrayList<>();
                 int n = 0;
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
                         rate += throughput.ratePerMs(c.workerId); // 11-09（A15）：按完成间隔，不按 1/延迟
-                        latency += throughput.latencyMs(c.workerId);
+                        latencies.add(throughput.latencyMs(c.workerId));
                         n++;
                     }
                 }
-                // 一个 tile 从开始到做完：各 donor 延迟中位数的平均（不能用 n/速率：并行时速率高、单个 tile 照样要那么久）
-                List<Long> hopeless = tasks.pruneHopeless(rate, n == 0 ? 0 : latency / n);
+                // 一个 tile 从开始到做完：最快那个 donor 的延迟中位数（不能用 n/速率：并行时速率高、单个 tile 照样要那么久；
+                // 也不能用平均：慢 donor 会让快 donor 做得完的任务被剪掉，11-09 codex-audit）
+                List<Long> hopeless = tasks.pruneHopeless(rate, pruneTileMs(latencies.stream().mapToLong(Long::longValue).toArray()));
                 if (!hopeless.isEmpty()) {
                     LOG.info("排队的 {} 个 tile 按现在的吞吐来不及，丢掉，交给服务器", hopeless.size());
                 }
@@ -490,6 +491,11 @@ final class CoordinatorServer {
         java.util.UUID p = c.player;
         net.minecraft.server.level.ServerPlayer sp = p == null ? null : server.getPlayerList().getPlayer(p);
         return java.util.Optional.of(WorkerName.of(p, sp == null ? null : sp.getGameProfile().getName(), c.world, c.name));
+    }
+
+    /** 排队剪枝估一个 tile 要多久：最快那个 donor 的延迟；没有 donor 是 0。纯函数。 */
+    static long pruneTileMs(long[] latencies) {
+        return java.util.Arrays.stream(latencies).min().orElse(0);
     }
 
     /** 当前生效的配置项（docs/config.md），放进 /donor status。 */

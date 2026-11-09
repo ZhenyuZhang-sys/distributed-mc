@@ -398,6 +398,21 @@ public final class TaskQueue {
         return t == null ? -1 : t.slackAtLease;
     }
 
+    /**
+     * 算进找需求队列上限的排队任务数：有截止时间的，加上还没算过的。找需求算过、玩家不会去的（侧后方）不算——
+     * 它们不派（skipNoDeadline），原来占满上限后前方的新 tile 进不来（11-09）。
+     */
+    public synchronized int queuedCountingTowardCap() {
+        int n = 0;
+        for (long id : queue) {
+            Task t = tasks.get(id);
+            if (!t.scored || deadlineKey(t) != Long.MAX_VALUE) {
+                n++;
+            }
+        }
+        return n;
+    }
+
     /** 入队时间（毫秒时间戳），不认识的任务是 -1。 */
     public synchronized long enqueuedAt(long taskId) {
         Task t = tasks.get(taskId);

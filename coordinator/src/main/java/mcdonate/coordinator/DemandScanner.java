@@ -163,7 +163,9 @@ public final class DemandScanner {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         int inner = innerRadius(), outer = inner + lookahead;
-        int queued = tasks.count(TaskQueue.State.QUEUED);
+        // 11-09：只算有截止时间（或还没算过）的排队任务：侧面的（玩家不朝那边走、不派）原来占满上限后就不再扫描，
+        // 前方的新 tile 进不来、已有的也不再重算截止时间，donor 闲着（kexu 三臂：8 核 donor 只用 1.2 核）
+        int queued = tasks.queuedCountingTowardCap();
         readsLeft = READS_PER_SCAN;
         drainEvents();
         long now = System.currentTimeMillis();
@@ -227,7 +229,7 @@ public final class DemandScanner {
                 c = Integer.compare(tx[i], tx[j]);
                 return c != 0 ? c : Integer.compare(tz[i], tz[j]);
             });
-            for (int k = 0; k < m && queued < QUEUE_CAP; k++) {
+            for (int k = 0; k < m; k++) {
                 if (System.nanoTime() - t0 > BUDGET_NANOS) {
                     break; // 这次扫描的时间用完了，剩下的（离玩家较远的）下一秒再查
                 }
@@ -237,7 +239,7 @@ public final class DemandScanner {
                     continue;
                 }
                 boolean known = tasks.find(x, z) >= 0;
-                if (!known) {
+                if (!known && queued < QUEUE_CAP) {
                     RegionRules.Enqueue e = decide(new TilePos(x, z), tk, chunkMap, access);
                     if (e.enqueue() && tasks.enqueue(x, z, e.world())) {
                         queued++;
