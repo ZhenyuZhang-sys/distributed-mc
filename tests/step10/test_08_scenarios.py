@@ -222,3 +222,22 @@ def test_driver_records_start_tick(tmp_path):
     runner.tick = 5990
     out = drive(rcell('firework'), tmp_path / 'c10')
     assert out['fly_start_tick'] == 5990
+
+
+def test_driver_keeps_worker_logs_even_when_the_round_fails(tmp_path):
+    # 调度 11-09：worker 崩了（PalettedContainer 多线程访问）时容器随下一轮重建，日志没了。每轮结束（包括判无效、飞失败）先把
+    # worker 容器的日志存进归档
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    asked = []
+    runner.service_log = lambda svc, since: (asked.append(svc), [f'{svc} line 1', f'{svc} line 2'])[1]
+    out = drive(rcell('firework'), tmp_path / 'ok')
+    assert (tmp_path / 'ok' / 'worker-worker.log').read_text().splitlines() == ['worker line 1', 'worker line 2']
+    assert asked == ['worker'] and out
+
+    def boom(*a, **kw):
+        raise RuntimeError('飞的时候断了')
+    flyer.fly_sync = boom
+    with pytest.raises(RuntimeError, match='飞的时候断了'):
+        drive(rcell('firework'), tmp_path / 'bad')
+    assert (tmp_path / 'bad' / 'worker-worker.log').exists()

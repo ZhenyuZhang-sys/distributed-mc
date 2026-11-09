@@ -91,6 +91,20 @@ def _server_tick(runner):
         return None
 
 
+def _keep_worker_logs(runner, controller, out, since):
+    """这一轮起过的 donor 容器的日志（带时间戳）存成 worker-<服务>.log。拿不到就算了。"""
+    if not hasattr(runner, 'service_log'):
+        return
+    for svc in sorted(getattr(controller, 'active', None) or []):
+        try:
+            lines = runner.service_log(svc, since)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f'worker-{svc}.log').write_text(''.join(l + '\n' for l in lines))
+        except Exception as e:   # noqa: BLE001
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f'worker-{svc}.log.error').write_text(repr(e))
+
+
 def _keep_diagnostics(runner, out, t_fly, donors):
     """查 MSPT 尖峰用（调度 11-09）：飞的时候带时间戳的服务器日志（server_env 开了 GC 日志的话也在里面），和 /donor imports 的全部条目
     （每条有主线程导入的三段耗时：解析、查区域含读存档、写入）。拿不到就算了，不影响这一轮。"""
@@ -119,6 +133,13 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
     events = events or ab._docker_events
 
     def drive(cell, out) -> dict:
+        t_cell = time.time()
+        try:
+            return _drive(cell, out)
+        finally:   # 调度 11-09：不管这一轮成不成，worker 容器的日志先存进归档（下一轮会重建容器）
+            _keep_worker_logs(runner, controller, Path(out), t_cell)
+
+    def _drive(cell, out) -> dict:
         p = cell['params']
         donors = p['donors']
         env = donor_env

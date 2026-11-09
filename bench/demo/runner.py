@@ -71,6 +71,10 @@ class Runner:
         """同上，每行带 Docker 的时间戳（UTC，到纳秒）：查 MSPT 尖峰时和 GC 日志、导入日志对时间。"""
         return compose('logs', '--since', str(int(t)), '--timestamps', '--no-log-prefix', 'minecraft', timeout=120).splitlines()
 
+    def service_log(self, service: str, t: float) -> list:
+        """某个服务 t（unix 秒）以后的日志，带时间戳（donor 崩了时存进归档）。"""
+        return compose('logs', '--since', str(int(t)), '--timestamps', '--no-log-prefix', service, timeout=120).splitlines()
+
     def services(self) -> list:
         """compose 里定义了的服务（不管起没起）。"""
         return compose('config', '--services').split()
