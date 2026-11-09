@@ -24,9 +24,11 @@ def rig(tmp_path, **fly_kw):
     return runner, ctl, flyer, fly
 
 
-def cell(donors, features='v0', latency_ms=0, repeat=1, duration_s=120):
-    return dict(experiment='flight', repeat=repeat, params=dict(donors=donors, speed='elytra', server_cpus=2, bots=1,
-                                                                features=features, latency_ms=latency_ms, duration_s=duration_s))
+def cell(donors, features='v0', latency_ms=0, repeat=1, duration_s=120, lookahead=None):
+    p = dict(donors=donors, speed='elytra', server_cpus=2, bots=1, features=features, latency_ms=latency_ms, duration_s=duration_s)
+    if lookahead:
+        p['lookahead'] = lookahead
+    return dict(experiment='flight', repeat=repeat, params=p)
 
 
 def test_driver_sets_up_each_config(tmp_path):
@@ -67,15 +69,22 @@ def test_invalid_run_fails_so_the_matrix_retries(tmp_path):
         drive(cell(2, 'deadline'), tmp_path / 'c')
 
 
+def configs_of(cells):
+    return {(c['params'].get('group'), c['params']['server_cpus'], c['params']['donors'], c['params']['features'],
+             c['params']['latency_ms'], c['params'].get('lookahead')) for c in cells}
+
+
 def test_demo_config_expands_to_all_settings():
-    # 调度 11-09：找每次都能明显看出差别的设置——2 核（原版 / deadline / deadline+网络 / 3 个 donor）、1 核（原版 / deadline）
+    # 调度 11-09：找每次都能明显看出差别的设置。三组，每组自己有一份原版对照：
+    # 2 核基本组（原版 / 2 donor / 2 donor + 网络）、2 核多 donor 组（原版 / 3 donor 提前量 8、16、24）、1 核组（原版 / 2 donor）
     cfg = run_matrix.load_config(run_matrix.ROOT / 'analysis/matrix/demo.json')
     cells = run_matrix.expand(cfg)
-    configs = {(c['params']['server_cpus'], c['params']['donors'], c['params']['features'], c['params']['latency_ms']) for c in cells}
-    assert configs == {(2, 0, 'v0', 0), (2, 2, 'deadline', 0), (2, 2, 'deadline', 35), (2, 3, 'deadline', 0),
-                       (1, 0, 'v0', 0), (1, 2, 'deadline', 0)}
+    assert configs_of(cells) == {
+        ('2c', 2, 0, 'v0', 0, None), ('2c', 2, 2, 'deadline', 0, None), ('2c', 2, 2, 'deadline', 35, None),
+        ('2c3d', 2, 0, 'v0', 0, None), ('2c3d', 2, 3, 'deadline', 0, 8), ('2c3d', 2, 3, 'deadline', 0, 16), ('2c3d', 2, 3, 'deadline', 0, 24),
+        ('1c', 1, 0, 'v0', 0, None), ('1c', 1, 2, 'deadline', 0, None)}
     assert all(c['params']['speed'] == 'elytra' and c['params']['duration_s'] == 120 for c in cells)
-    assert len(cells) == 6 * cfg['repeats']
+    assert len(cells) == 9 * cfg['repeats']
     assert cfg['donor_env']['WORKER3_CPUS'] == '4'
 
 
@@ -84,11 +93,11 @@ def test_paired_order_keeps_vanilla_next_to_its_donor_runs():
     cfg = run_matrix.load_config(run_matrix.ROOT / 'analysis/matrix/demo.json')
     assert cfg['order'] == 'paired'
     cells = run_matrix.order(run_matrix.expand(cfg), cfg['seed'], cfg['order'])
-    keys = [(c['params']['server_cpus'], c['repeat']) for c in cells]
+    keys = [(c['params'].get('group'), c['repeat']) for c in cells]
     blocks = [k for i, k in enumerate(keys) if i == 0 or keys[i - 1] != k]
     assert len(blocks) == len(set(blocks))                  # 同一个（核数, 第几次）的单元连在一起
     for k in set(keys):
-        block = [c for c in cells if (c['params']['server_cpus'], c['repeat']) == k]
+        block = [c for c in cells if (c['params'].get('group'), c['repeat']) == k]
         assert block[0]['params']['donors'] == 0             # 每块先跑原版，再跑有 donor 的
 
 
@@ -105,6 +114,14 @@ def test_driver_three_donors_and_discard_counts(tmp_path):
     assert (out['imports_accepted'], out['discard_late'], out['discard_server'], out['discard_other_world']) == (10, 3, 20, 0)
     assert (out['stale_dropped'], out['stale_cancelled']) == (5, 1)
     assert out['resumed_share'] == 0.0     # FakeFly 的 B：生成 600、接着做完 0、读盘 0
+    # 提前量：换世界时带上 -Dmcdonate.demandLookahead，服务器实际用的不对就判无效
+    fly.lookahead = '16'
+    drive(cell(3, 'deadline', lookahead=16), tmp_path / 'c16')
+    world = [c for c in runner.calls if c[:2] == ('script', 'new_world.sh')][-1]
+    assert ('MCD_JVM_EXTRA', '-Dmcdonate.demandLookahead=16') in world
+    fly.lookahead = None
+    with pytest.raises(RuntimeError, match='提前量'):
+        drive(cell(3, 'deadline', lookahead=24), tmp_path / 'c24')
     # 下一个 2 donor 的单元：worker3 要停掉
     drive(cell(2, 'deadline'), tmp_path / 'c2')
     assert fly.calls[-1]['workers'] == 2
@@ -146,12 +163,13 @@ def test_demo_figures_drawn(tmp_path):
         assert (tmp_path / 'figs' / f'{name}.png').stat().st_size > 1000
     # 图下面的数据表也写出来（报告和无障碍用）
     table = json.loads((tmp_path / 'figs' / 'demo-figures.json').read_text())
-    assert table['configs'][:3] == ['2 核 原版', '2 核 deadline', '2 核 deadline + 网络']
-    # 哪个设置下 donor 的效果最大、两次之间最稳：按每次成对（同一个第几次）的原版减 deadline，取两次里小的那个
+    assert table['configs'][:3] == ['2 核 原版', '2 核 2 donor deadline', '2 核 2 donor deadline + 网络']
+    # 哪个设置下 donor 的效果最大、两次之间最稳：同一组里、同一个第几次的原版减有 donor 的，取两次里小的那个，最大的胜出
     best = table['best']
-    assert best['setting'] == '1 核' and best['paired_reduction'] == pytest.approx([.30, .30], abs=1e-9)
-    two = next(s for s in table['settings'] if s['setting'] == '2 核')
+    assert best['setting'] == '1 核 2 donor deadline' and best['paired_reduction'] == pytest.approx([.30, .30], abs=1e-9)
+    two = next(s for s in table['settings'] if s['setting'] == '2 核 2 donor deadline')
     assert two['paired_reduction'] == pytest.approx([.12, .01], abs=1e-9)
+    assert all(s['setting'] != '2 核 2 donor deadline + 网络' for s in table['settings'])   # 网络那组是看网络影响的，不参加挑选
 
 
 def test_demo_figures_without_data(tmp_path):

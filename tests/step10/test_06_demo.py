@@ -325,6 +325,7 @@ class FakeFly:
         self.runner, self.donor_events, self.sync_a, self.restart_in_b = runner, donor_events, sync_a, restart_in_b
         self.resumed_b = resumed_b
         self.cpus = 2
+        self.lookahead = None   # 服务器实际用的提前量（done.json 的 demand_lookahead，系统属性没设是 null）
         self.calls = []
 
     def __call__(self, server, run, player, start, speed, seconds, out_dir, **kw):
@@ -349,7 +350,7 @@ class FakeFly:
                                                               sync_loads=0 if b else self.sync_a,
                                                               full_resumed=self.resumed_b if b else 0,
                                                               full_generated=600 if b else 900, full_loaded=0,
-                                                              available_processors=self.cpus)))
+                                                              available_processors=self.cpus, demand_lookahead=self.lookahead)))
         return out_dir
 
 
