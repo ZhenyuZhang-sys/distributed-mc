@@ -158,7 +158,10 @@ public final class OverlayClient {
             ClientPlayNetworking.send(new OverlaySubscribe(settings.overlay(), settings.hud()));
             subscribedThisConnection = true;
         }
-        if (settings.hud() && ++ticks % 20 == 0 && link != null && link.running()) {
+        if (++ticks % 100 == 0) {   // 每 5 秒：来源表超过 2 万个就删掉离玩家 64 圈以外的
+            SOURCES.prune(client.player.chunkPosition().x, client.player.chunkPosition().z, 64, 20_000);
+        }
+        if (settings.hud() && ticks % 20 == 0 && link != null && link.running()) {
             link.send("STATUS");
         }
         if (link != null && !link.running()) {
