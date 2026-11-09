@@ -45,14 +45,16 @@ services:
       #   publicHost  邀请里告诉玩家 worker 连哪个地址，必填：这台服务器的公网 IP 或域名
       #   publicPort  邀请里的端口，默认等于对外的 COORD_PORT（有端口转发、对外端口不同时单独设 COORD_PUBLIC_PORT）
       #   demand      自动找需求（玩家周围要生成的 tile）
-      #   features    调度开关，默认 territory,deadline（相邻的 tile 尽量给同一个 donor；按玩家飞行方向先做最急的，
-      #               来不及的不派、排队来不及的提前丢掉；docs/step7-report.md 的推荐配置）
+      #   features    调度开关，默认 territory,deadline,throughput（相邻的 tile 尽量给同一个 donor；按玩家飞行方向先做最急的，
+      #               来不及的不派、排队来不及的提前丢掉；按实测耗时一次给一个 donor 几个任务，donor 几个 tile 同时做）
+      #   demandLookahead  找需求往外多看几圈，默认 16（真机上 8 圈时"看到才派"太多）
       #   allowTokenless=false  只让带一次性 token 的 worker 连（不要改）
       JVM_OPTS: >-
         -Dmcdonate.publicHost=${PUBLIC_HOST:?在 .env 里设 PUBLIC_HOST（这台服务器的公网 IP 或域名）}
         -Dmcdonate.publicPort=${COORD_PUBLIC_PORT:-${COORD_PORT:-25580}}
         -Dmcdonate.demand=${MCD_DEMAND:-on}
-        -Dmcdonate.features=${MCD_FEATURES:-territory,deadline}
+        -Dmcdonate.features=${MCD_FEATURES:-territory,deadline,throughput}
+        -Dmcdonate.demandLookahead=${MCD_LOOKAHEAD:-16}
         -Dmcdonate.allowTokenless=false
         ${MCD_JVM_EXTRA:-}
     volumes:

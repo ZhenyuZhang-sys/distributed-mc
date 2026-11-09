@@ -46,7 +46,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `publicHost` | 空 | 发给玩家客户端的 coordinator 地址（主机名或 IP）。空就不发邀请，玩家的 worker 起不来 | 第 9 步 |
 | `inviteRequestMinMs` | 10000 | 每个玩家多久最多再要一次邀请（`mcdonate:invite_request`），超了忽略并记 WARN | 第 9 步 |
 | `publicPort` | 同 `port` | 发给玩家客户端的 coordinator 端口（端口转发时和监听端口不一样） | 第 9 步 |
-| `features` | 空 | 第 7 步的功能开关，逗号分隔（territory、deadline、throughput、hedge、waitdonor） | 空是 v0（先来先服务，测试的对照组）。**部署推荐 `territory,deadline`**（deploy/ 的默认；deadline 带实测前沿和排队剪枝），见 docs/step7-report.md 开头 |
+| `features` | 空 | 第 7 步的功能开关，逗号分隔（territory、deadline、throughput、hedge、waitdonor） | 空是 v0（先来先服务，测试的对照组）。**部署推荐 `territory,deadline,throughput`**（deploy/ 的默认；deadline 带实测前沿和排队剪枝；throughput 一次给一个 donor 几个任务，worker 几个 tile 同时生成。真机上 1 个 donor 时开 throughput 收下的比例从 52% 涨到 82%）。deploy/ 的 demandLookahead 默认 16，见 docs/step7-report.md 开头 |
 | `demand` | on | `off` 关掉自动找需求（测试里手动派任务时用） | |
 | `port` | 25580 | donor 连进来的端口 | |
 | `waitDonorMaxMs` | 2000 | 原版要生成的 chunk 正在 donor 上做时，最多等多久（7.6，做好后生效） | 越大服务器省的越多，但 donor 不回时玩家多等；不超过 donor 做一个 tile 的时间 |
