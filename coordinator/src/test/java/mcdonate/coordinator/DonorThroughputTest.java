@@ -241,7 +241,7 @@ class DonorThroughputTest {
         }
         feed(t, iv);
         assertEquals(1.0 / 0.7, t.ratePerMs(1) * 1000, 0.05);
-        assertEquals(1, t.lanes(1));
+        assertTrue(t.lanes(1) <= 2, "实测 1 个，最多往上探 1 个：" + t.lanes(1));
         long now = 100_000;
         assertFalse(t.canMeet(1, 2, now, now + 1_000), "1 秒截止赶不上");
         assertTrue(t.canMeet(1, 0, now, now + 1_000), "空着的照样能接");
@@ -254,5 +254,96 @@ class DonorThroughputTest {
         feed(t, List.of(new long[] {49_300, 50_000}));
         assertEquals(1, t.lanes(1));
         assertEquals(DonorThroughput.MAX_CONCURRENCY, new DonorThroughput().lanes(9), "冷启动：按最大并发探路（F5/G4）");
+    }
+
+    // ---- 往上探（调度 11-09）：实测并行度是"我们派了多少"，估低了只派 1～2 个，测出来也就 1～2，又是自我强化的循环 ----
+
+    /**
+     * 模拟 coordinator 和一个能同时做 real 个、每个 serviceMs 的 donor：队里全是紧任务（截止 = 现在 + deadlineMs），
+     * 每次有结果就补派到 canMeet 不让为止（最多 maxConcurrency 个在途）。开始前先有 10 个一个一个做的历史（估成 1 个并行）。
+     * 返回 {最后的 lanes, 迟到的个数, 总个数}。
+     */
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds) {
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter meter = new LoadMeter();
+        long now = 0;
+        for (int i = 0; i < 10; i++) {     // 历史：一个一个做
+            meter.start(now);
+            now += serviceMs;
+            long[] r = meter.read(now);
+            t.record(1, serviceMs, now, r[0], r[1], 1);
+            meter.end(now);
+        }
+        // 在途：{派出时刻, 开始做的时刻（排队的是 -1）, 截止, 派出时手上几个}
+        List<long[]> work = new ArrayList<>();
+        int late = 0, total = 0;
+        long end = now + seconds * 1_000;
+        while (now < end) {
+            while (work.size() < DonorThroughput.MAX_CONCURRENCY && t.canMeet(1, work.size(), now, now + deadlineMs)) {
+                meter.start(now);
+                work.add(new long[] {now, -1, now + deadlineMs, work.size() + 1});
+            }
+            int running = 0;
+            for (long[] w : work) {
+                if (w[1] >= 0) {
+                    running++;
+                }
+            }
+            for (long[] w : work) {
+                if (w[1] < 0 && running < real) {
+                    w[1] = now;
+                    running++;
+                }
+            }
+            long next = Long.MAX_VALUE;
+            for (long[] w : work) {
+                if (w[1] >= 0) {
+                    next = Math.min(next, w[1] + serviceMs);
+                }
+            }
+            if (next == Long.MAX_VALUE) {
+                now += 100;   // 一个都没派（不该发生）：时间照走
+                continue;
+            }
+            now = next;
+            for (var it = work.iterator(); it.hasNext(); ) {
+                long[] w = it.next();
+                if (w[1] >= 0 && w[1] + serviceMs == now) {
+                    long[] r = meter.read(now);
+                    t.record(1, now - w[0], now, r[0], r[1], (int) w[3]);
+                    meter.end(now);
+                    total++;
+                    if (now > w[2]) {
+                        late++;
+                    }
+                    it.remove();
+                }
+            }
+        }
+        return new int[] {t.lanes(1), late, total};
+    }
+
+    @Test
+    void lanesClimbToRealParallelism() {
+        // 正式服的情形：M5 真能同时做 4 个、每个 0.7 秒，开始只估成 1 个；队里全是 1 秒截止的紧任务。几十秒内 lanes 要爬到 4
+        int[] r = simulate(4, 700, 1_000, 60);
+        assertEquals(4, r[0], "lanes 爬到真实的并行度");
+        assertTrue(r[1] == 0, "真能并行时往上探不会迟到：" + r[1] + "/" + r[2]);
+    }
+
+    @Test
+    void probingSerialDonorStaysLowAndRarelyLate() {
+        // 真的一个一个做：往上探一次延迟就翻倍，退回来、过一阵才再探。迟到的只是偶尔探路的那几个
+        int[] r = simulate(1, 700, 1_000, 60);
+        assertTrue(r[0] <= 2, "lanes " + r[0]);
+        assertTrue(r[1] * 10 <= r[2], "迟到不超过一成：" + r[1] + "/" + r[2]);
+    }
+
+    @Test
+    void probingStopsWhereLatencyGrows() {
+        // 真能做 2 个：爬到 2，探 3 时延迟变长，退回
+        int[] r = simulate(2, 700, 1_000, 60);
+        assertTrue(r[0] >= 2 && r[0] <= 3, "lanes " + r[0]);
+        assertTrue(r[1] * 10 <= r[2], "迟到不超过一成：" + r[1] + "/" + r[2]);
     }
 }

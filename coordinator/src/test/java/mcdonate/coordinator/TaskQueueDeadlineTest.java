@@ -551,4 +551,17 @@ class TaskQueueDeadlineTest {
         assertEquals(-1, q.sampleLeasedAt(1, id), "不是它手上的");
         assertEquals(-1, q.sampleLeasedAt(2, id), "重派过：分不清是哪一次的结果，不取样");
     }
+
+    @Test
+    void remembersInFlightAtLease() {
+        // 往上探用：派出时这个 worker 手上一共几个（含这个）
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(2, 0);
+        long a = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        long b = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        assertEquals(1, q.inFlightAtLease(a));
+        assertEquals(2, q.inFlightAtLease(b));
+        assertEquals(0, q.inFlightAtLease(999), "不认识的");
+    }
 }
