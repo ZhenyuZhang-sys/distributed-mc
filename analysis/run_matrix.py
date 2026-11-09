@@ -34,7 +34,7 @@ SCHEMA = {
     'verify': dict(dims={'cheat', 'check_rate', 'donors'},
                    fixed={'duration_s', 'repeats', 'estimate_minutes'}, required={'cheat', 'duration_s'}),
 }
-TOP = {'name', 'seed', 'repeats', 'experiments', 'server_cpuset', 'donor_cpuset', 'rerun_on_interference', 'frametime_import'}
+TOP = {'name', 'seed', 'repeats', 'experiments', 'server_cpuset', 'donor_cpuset', 'rerun_on_interference', 'frametime_import', 'note'}
 # 每轮估计分钟数的默认值（第 6 节的估计）：起服、预热、停服归档的开销 + 实验本身。
 OVERHEAD_MIN = {'flight': 4, 'verify': 5}
 CAPACITY_MIN = 60

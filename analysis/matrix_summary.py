@@ -176,6 +176,10 @@ def _verdict(lo, hi, target, enough):
     return '数据不足'
 
 
+# 用户 11-09 决定第 8 步（作弊检测）暂停：没有 verify 结果时，检出率和 Y 照样列出，判这个
+STEP8_PAUSED = '数据不足（第 8 步暂停）'
+
+
 def hypotheses(rows) -> list[dict]:
     out = []
     base, by_n, features = _flight_x_rows(rows)
@@ -193,6 +197,11 @@ def hypotheses(rows) -> list[dict]:
                     verdict='数据不足' if worst is None else ('成立' if worst < MSPT_LIMIT else '不成立'),
                     rule='2 核所有 flight 轮里"每秒 MSPT 均值的 p95"取最差一轮，< 50 成立',
                     note=f'{len(mspt)} 轮；每秒最大值 {max((r.get("mspt_max") or 0 for r in mspt), default=None)}'))
+    if not any(r['experiment'] == 'verify' for r in rows):
+        out.append(dict(item='detect', value=None, ci_low=None, ci_high=None, verdict=STEP8_PAUSED,
+                        rule='Clopper–Pearson 95% 下限 ≥ 99% 成立（第 8 步恢复后再测）', note='用户 11-09 决定第 8 步暂停，没有 verify 实验'))
+        out.append(dict(item='Y', value=None, ci_low=None, ci_high=None, verdict=STEP8_PAUSED,
+                        rule='诚实 donor 的 verify 至少 5 轮即给出数值（第 8 步恢复后再测）', note='用户 11-09 决定第 8 步暂停，没有 verify 实验'))
     cheats = sorted({r['cheat'] for r in rows if r['experiment'] == 'verify' and r.get('cheat') not in (None, 'none')})
     for c in cheats:
         rs = [r for r in rows if r['experiment'] == 'verify' and r.get('cheat') == c]
@@ -204,9 +213,10 @@ def hypotheses(rows) -> list[dict]:
                         note=f'{k}/{n} 次抓到，默认作弊强度；少量塞矿的下限见第 8 步报告'))
     ys = [r['y'] for r in rows if r['experiment'] == 'verify' and r.get('cheat') == 'none' and r.get('y') is not None]
     lo, hi = t_interval(ys)
-    out.append(dict(item='Y', value=statistics.mean(ys) if ys else None, ci_low=lo, ci_high=hi,
-                    verdict='已定' if len(ys) >= MIN_RUNS else '数据不足',
-                    rule=f'诚实 donor 的 verify 至少 {MIN_RUNS} 轮即给出数值（Y 是待定的数，不是门槛）', note=f'{len(ys)} 轮'))
+    if any(r['experiment'] == 'verify' for r in rows):
+        out.append(dict(item='Y', value=statistics.mean(ys) if ys else None, ci_low=lo, ci_high=hi,
+                        verdict='已定' if len(ys) >= MIN_RUNS else '数据不足',
+                        rule=f'诚实 donor 的 verify 至少 {MIN_RUNS} 轮即给出数值（Y 是待定的数，不是门槛）', note=f'{len(ys)} 轮'))
     zs = [r['z'] for r in rows if r['experiment'] == 'frametime' and r.get('z') is not None]
     lo, hi = t_interval(zs)
     out.append(dict(item='Z', value=statistics.mean(zs) if zs else None, ci_low=lo, ci_high=hi,

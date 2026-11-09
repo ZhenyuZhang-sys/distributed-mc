@@ -21,13 +21,15 @@ def metrics(cell, out):
                 false_positives=0, y=0.05 + p['check_rate'], verify_cpu_ms=100 * p['check_rate'])
 
 
-def campaign(tmp_path, full=True):
+def campaign(tmp_path, full=True, verify=True):
     flight = [{'donors': [0, 1, 2, 4], 'speed': ['walk', 'elytra'], 'server_cpus': [2], 'features': ['v0', 'all'], 'duration_s': 60}]
     if full:
         flight += [{'donors': [2], 'speed': ['elytra'], 'server_cpus': [2], 'features': ['all'], 'latency_ms': [50, 150], 'duration_s': 60},
                    {'donors': [2], 'speed': ['elytra'], 'server_cpus': [2], 'features': ['all'], 'tile_size': [1, 2, 8], 'duration_s': 60},
                    {'donors': [2], 'speed': ['elytra'], 'server_cpus': [2], 'features': ['predict', 'hedge'], 'duration_s': 60}]
-    exps = {'flight': flight, 'verify': [{'cheat': ['none', 'ore', 'flat'], 'check_rate': [0.02, 0.2], 'duration_s': 60}]}
+    exps = {'flight': flight}
+    if verify:
+        exps['verify'] = [{'cheat': ['none', 'ore', 'flat'], 'check_rate': [0.02, 0.2], 'duration_s': 60}]
     if full:
         exps['capacity'] = [{'donors': [2, 4], 'features': ['v0', 'all'], 'server_cpus': [2]}]
     cfg = validate({'name': 'p', 'seed': 1, 'repeats': 2, 'experiments': exps})
@@ -67,7 +69,7 @@ def test_missing_experiments_give_no_data_not_errors(tmp_path):
 
 def test_no_data_reasons_written_and_step8_paused(tmp_path):
     # 每张"无数据"图的原因写进 figures/no-data.json；第 8 步暂停（用户 11-09），两张 verify 的图写明这个原因
-    c = campaign(tmp_path, full=False)
+    c = campaign(tmp_path, full=False, verify=False)
     status = plot_all(c, c / 'figures')
     reasons = json.loads((c / 'figures' / 'no-data.json').read_text())
     assert set(reasons) == {k for k, v in status.items() if v == '无数据'}

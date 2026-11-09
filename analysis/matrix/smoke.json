@@ -7,10 +7,29 @@
  "rerun_on_interference": false,
  "experiments": {
   "flight": [
-   {"donors": [0, 2], "speed": ["elytra"], "server_cpus": [2], "latency_ms": [0], "features": ["v0"], "bots": [1], "duration_s": 60}
-  ],
-  "verify": [
-   {"cheat": ["none", "ore"], "check_rate": [0.05], "donors": [1], "duration_s": 300}
+   {
+    "donors": [
+     0,
+     2
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 60
+   }
   ]
- }
+ },
+ "note": "第 8 步暂停（用户 11-09），冒烟矩阵去掉 verify"
 }
