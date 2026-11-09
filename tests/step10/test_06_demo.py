@@ -21,7 +21,8 @@ class FakeRunner:
         self.mspt = (5.0, 9.0)
         self.usage_usec = 0
         self.now_ns = 0
-        self.status = dict(workers=[], accepted=0, discarded=dict(late=0, other_world=0, server=0), features=[], demand=False)
+        self.status = dict(workers=[], accepted=0, discarded=dict(late=0, other_world=0, server=0), features=[], demand=False,
+                           stale=dict(dropped=0, cancelled=0))
         self.broken = set()
         self.env = {'worker': {'MAX_TICK_TIME': '-1'}, 'worker2': {'MAX_TICK_TIME': '-1'}}
         self.netem = False
@@ -56,15 +57,15 @@ class FakeRunner:
             self.status['features'] = sorted(f)
         return 'ok'
 
-    def compose(self, *args, timeout=120):
-        self.calls.append(('compose', *args))
+    def compose(self, *args, timeout=120, env=None):
+        self.calls.append(('compose', *args, *(sorted(env.items()) if env else ())))
         if args[0] == 'up':
             for s in args:
                 if s.startswith('worker') and s not in {w['name'] for w in self.status['workers']}:
                     self.status['workers'].append(dict(id=self.next_worker_id, name=s))
                     self.next_worker_id += 1
         elif args[0] == 'stop':
-            self.status['workers'] = []
+            self.status['workers'] = [w for w in self.status['workers'] if w['name'] not in args]
         return ''
 
     def script(self, name, *args, env=None, timeout=600):
@@ -331,6 +332,10 @@ class FakeFly:
         b = bool(st['workers'])
         self.calls.append(dict(run=run, start=start, speed=speed, seconds=seconds, workers=len(st['workers']),
                                demand=st['demand'], features=list(st['features'])))
+        if b:   # donor 在干活：导入和丢弃的计数在飞行期间涨
+            st['accepted'] += 10
+            st['discarded'] = dict(late=st['discarded']['late'] + 3, other_world=0, server=st['discarded']['server'] + 20)
+            st['stale'] = dict(dropped=st['stale']['dropped'] + 5, cancelled=st['stale']['cancelled'] + 1)
         if b and self.restart_in_b:
             st['workers'] = [dict(id=w['id'] + 100, name=w['name']) for w in st['workers']]  # 被看门狗杀掉又连上
         (out_dir / 'raw').mkdir(parents=True)

@@ -67,30 +67,71 @@ def test_invalid_run_fails_so_the_matrix_retries(tmp_path):
         drive(cell(2, 'deadline'), tmp_path / 'c')
 
 
-def test_demo_config_expands_to_three_configs():
+def test_demo_config_expands_to_all_settings():
+    # 调度 11-09：找每次都能明显看出差别的设置——2 核（原版 / deadline / deadline+网络 / 3 个 donor）、1 核（原版 / deadline）
     cfg = run_matrix.load_config(run_matrix.ROOT / 'analysis/matrix/demo.json')
     cells = run_matrix.expand(cfg)
-    configs = {(c['params']['donors'], c['params']['features'], c['params']['latency_ms']) for c in cells}
-    assert configs == {(0, 'v0', 0), (2, 'deadline', 0), (2, 'deadline', 35)}
-    assert all(c['params']['server_cpus'] == 2 and c['params']['speed'] == 'elytra' and c['params']['duration_s'] == 120
-               for c in cells)
-    assert len(cells) == 3 * cfg['repeats']
+    configs = {(c['params']['server_cpus'], c['params']['donors'], c['params']['features'], c['params']['latency_ms']) for c in cells}
+    assert configs == {(2, 0, 'v0', 0), (2, 2, 'deadline', 0), (2, 2, 'deadline', 35), (2, 3, 'deadline', 0),
+                       (1, 0, 'v0', 0), (1, 2, 'deadline', 0)}
+    assert all(c['params']['speed'] == 'elytra' and c['params']['duration_s'] == 120 for c in cells)
+    assert len(cells) == 6 * cfg['repeats']
+    assert cfg['donor_env']['WORKER3_CPUS'] == '4'
+
+
+def test_paired_order_keeps_vanilla_next_to_its_donor_runs():
+    # 原版的数随机器负载变（25% 到 43%），每组的原版对照要在同一批里、紧挨着跑
+    cfg = run_matrix.load_config(run_matrix.ROOT / 'analysis/matrix/demo.json')
+    assert cfg['order'] == 'paired'
+    cells = run_matrix.order(run_matrix.expand(cfg), cfg['seed'], cfg['order'])
+    keys = [(c['params']['server_cpus'], c['repeat']) for c in cells]
+    blocks = [k for i, k in enumerate(keys) if i == 0 or keys[i - 1] != k]
+    assert len(blocks) == len(set(blocks))                  # 同一个（核数, 第几次）的单元连在一起
+    for k in set(keys):
+        block = [c for c in cells if (c['params']['server_cpus'], c['repeat']) == k]
+        assert block[0]['params']['donors'] == 0             # 每块先跑原版，再跑有 donor 的
+
+
+def test_driver_three_donors_and_discard_counts(tmp_path):
+    runner, ctl, flyer, fly = rig(tmp_path)
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [],
+                               donor_env={'WORKER3_CPUS': '4', 'WORKER3_CPUSET': '88-91'})
+    out = drive(cell(3, 'deadline', 35), tmp_path / 'c3')
+    up = [c for c in runner.calls if c[:2] == ('compose', 'up')][-1]
+    assert 'worker3' in up and ('WORKER3_CPUS', '4') in up and ('WORKER3_CPUSET', '88-91') in up
+    assert fly.calls[-1]['workers'] == 3
+    assert len([c for c in runner.calls if c[:2] == ('script', 'netem.sh') and c[2] == 'on']) == 3   # 三个 donor 都加网络
+    # 飞行期间 /donor status 的增量：导入、丢弃按原因、过时删掉的；导入后接着做完的占比
+    assert (out['imports_accepted'], out['discard_late'], out['discard_server'], out['discard_other_world']) == (10, 3, 20, 0)
+    assert (out['stale_dropped'], out['stale_cancelled']) == (5, 1)
+    assert out['resumed_share'] == 0.0     # FakeFly 的 B：生成 600、接着做完 0、读盘 0
+    # 下一个 2 donor 的单元：worker3 要停掉
+    drive(cell(2, 'deadline'), tmp_path / 'c2')
+    assert fly.calls[-1]['workers'] == 2
+    assert any(c[:2] == ('compose', 'stop') and 'worker3' in c for c in runner.calls)
 
 
 def synthetic_campaign(tmp_path):
     """三种配置各 2 轮的合成结果，走真正的 run_matrix 归档，再给图和表用。"""
     cfg = run_matrix.validate({'name': 'syn', 'seed': 1, 'repeats': 2, 'experiments': {'flight': [
         {'donors': [0], 'speed': ['elytra'], 'server_cpus': [2], 'features': ['v0'], 'latency_ms': [0], 'bots': [1], 'duration_s': 120},
-        {'donors': [2], 'speed': ['elytra'], 'server_cpus': [2], 'features': ['deadline'], 'latency_ms': [0, 35], 'bots': [1], 'duration_s': 120}]}})
+        {'donors': [2], 'speed': ['elytra'], 'server_cpus': [2], 'features': ['deadline'], 'latency_ms': [0, 35], 'bots': [1], 'duration_s': 120},
+        {'donors': [0, 2], 'speed': ['elytra'], 'server_cpus': [1], 'features': ['deadline'], 'latency_ms': [0], 'bots': [1], 'duration_s': 120}]}})
 
     def fake(c, out):
         p = c['params']
-        d, net = p['donors'], p['latency_ms'] > 0
-        stall = .36 if d == 0 else (.27 if net else .24)
+        d, net, one = p['donors'], p['latency_ms'] > 0, p['server_cpus'] == 1
+        # 1 核：原版卡很多，deadline 降得多而且两次都稳；2 核：降得少，第 2 次几乎没降
+        if one:
+            stall = .60 if d == 0 else .30
+        else:
+            stall = .36 if d == 0 else (.27 if net else (.24 if c['repeat'] == 1 else .35))
         return dict(stall_fraction=stall + .01 * c['repeat'], stall_s=stall * 120, distance_ratio=1 - stall, latency_p95_ms='inf',
                     void_mean=.8 - (.1 if d else 0), mspt_p95=40.0, mspt_max=120.0, cpu_cores_mean=1.2,
                     full_generated=1100 if d == 0 else 700, full_resumed=0 if d == 0 else 350, full_loaded=0,
-                    donor_events=0 if d == 0 else 400, ahead_total=None if d == 0 else (.9 if net else 1.0), netem=net, valid=True)
+                    donor_events=0 if d == 0 else 400, ahead_total=None if d == 0 else (.9 if net else 1.0), netem=net, valid=True,
+                    resumed_share=0 if d == 0 else 350 / 1050, imports_accepted=0 if d == 0 else 30, discard_late=0 if d == 0 else 5,
+                    discard_server=0 if d == 0 else 40, discard_other_world=0, stale_dropped=0 if d == 0 else 8, stale_cancelled=0)
     run_matrix.run(cfg, {'flight': fake}, tmp_path)
     return tmp_path / 'matrix-syn'
 
@@ -105,7 +146,12 @@ def test_demo_figures_drawn(tmp_path):
         assert (tmp_path / 'figs' / f'{name}.png').stat().st_size > 1000
     # 图下面的数据表也写出来（报告和无障碍用）
     table = json.loads((tmp_path / 'figs' / 'demo-figures.json').read_text())
-    assert table['configs'] == ['原版（0 donor）', 'deadline（2 donor）', 'deadline + 网络（2 donor）']
+    assert table['configs'][:3] == ['2 核 原版', '2 核 deadline', '2 核 deadline + 网络']
+    # 哪个设置下 donor 的效果最大、两次之间最稳：按每次成对（同一个第几次）的原版减 deadline，取两次里小的那个
+    best = table['best']
+    assert best['setting'] == '1 核' and best['paired_reduction'] == pytest.approx([.30, .30], abs=1e-9)
+    two = next(s for s in table['settings'] if s['setting'] == '2 核')
+    assert two['paired_reduction'] == pytest.approx([.12, .01], abs=1e-9)
 
 
 def test_demo_figures_without_data(tmp_path):
@@ -120,4 +166,4 @@ def test_hypotheses_y_and_z_wording(tmp_path):
     h = {x['item']: x for x in hypotheses(rows)}
     assert h['Y']['verdict'] == '数据不足（第 8 步暂停）'
     assert h['Z']['verdict'] == '数据不足（要真显卡）'
-    assert h['stall']['verdict'] == '记录' and h['stall']['value'] == pytest.approx((.25 + .26) / 2)
+    assert h['stall']['verdict'] == '记录' and h['stall']['value'] == pytest.approx((.25 + .37) / 2)
