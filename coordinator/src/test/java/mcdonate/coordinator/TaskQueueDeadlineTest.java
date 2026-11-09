@@ -168,4 +168,74 @@ class TaskQueueDeadlineTest {
         assertEquals(0, q.inFlight(1));
         assertTrue(q.leasesWithDue().isEmpty());
     }
+
+    // ---- 11-09 调度：来不及导入的不派（7.3 的 canMeet，不开 throughput 也生效）----
+    // importBy = 预计这个 tile 的区域进服务器前沿的时间；之后交回会被判"在内存里"整个丢掉。
+    // 派之前用 dueOk 问"这个 donor 在 importBy − 余量之前做得完吗"，做不完的留在队列里（快的 donor 可能做得完），
+    // importBy 过了还没派的丢掉，交给服务器。
+
+    @Test
+    void dispatchSkipsTilesThatCannotBeImportedInTime() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 5);
+        q.setDue(0, 0, now.get() + 4_000, now.get() + 2_000);   // 最先看到，但 2 秒后就进前沿
+        q.setDue(5, 5, now.get() + 9_000, now.get() + 7_000);
+        long[] asked = new long[1];
+        var a = q.assign(1, 1, limit -> {
+            asked[0] = limit;
+            return now.get() + 5_000 <= limit;                   // 这个 donor 要 5 秒
+        });
+        assertEquals(5, a.orElseThrow().tx(), "(0,0) 来不及，派 (5,5)");
+        assertEquals(now.get() + 7_000 - TaskQueue.IMPORT_MARGIN_MS, asked[0], "问的是 importBy 减余量");
+        assertEquals(State.QUEUED, q.state(q.find(0, 0)), "来不及的先留着，快的 donor 也许做得完");
+    }
+
+    @Test
+    void earliestDueFirstAmongFeasible() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(9, 9);
+        q.enqueue(5, 5);
+        q.setDue(9, 9, now.get() + 30_000, now.get() + 28_000);
+        q.setDue(5, 5, now.get() + 12_000, now.get() + 10_000);
+        assertEquals(5, q.assign(1, 1, limit -> true).orElseThrow().tx(), "能做完的里面，玩家最先看到的先派");
+    }
+
+    @Test
+    void withoutImportByFallsBackToDue() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 4_000);
+        long[] asked = new long[1];
+        q.assign(1, 1, limit -> {
+            asked[0] = limit;
+            return true;
+        });
+        assertEquals(now.get() + 4_000, asked[0], "不知道前沿时照旧按 due 问");
+    }
+
+    @Test
+    void importLateQueuedTasksDropped() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 5);
+        long a = q.find(0, 0);
+        q.setDue(0, 0, now.get() + 6_000, now.get() + 1_000);
+        q.setDue(5, 5, now.get() + 20_000, now.get() + 15_000);
+        now.addAndGet(2_000);
+        assertEquals(List.of(a), q.dropLate(), "区域已经进了服务器前沿：交回也会被丢，不派了");
+        assertEquals(State.DROPPED, q.state(a));
+        assertTrue(q.staleJson().contains("\"import_late\":1"), q.staleJson());
+    }
+
+    @Test
+    void enqueueTimeKept() {
+        TaskQueue q = queue("");
+        q.enqueue(0, 0);
+        long id = q.find(0, 0);
+        now.addAndGet(700);
+        q.assign(1);
+        assertEquals(now.get() - 700, q.enqueuedAt(id));
+        assertEquals(-1, q.enqueuedAt(999));
+    }
 }
