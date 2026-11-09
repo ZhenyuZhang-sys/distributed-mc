@@ -241,3 +241,18 @@ def test_driver_keeps_worker_logs_even_when_the_round_fails(tmp_path):
     with pytest.raises(RuntimeError, match='飞的时候断了'):
         drive(rcell('firework'), tmp_path / 'bad')
     assert (tmp_path / 'bad' / 'worker-worker.log').exists()
+
+
+def test_driver_refuses_stale_worker_mods(tmp_path):
+    # 11-09 事故：跑批只跑了 collectMods，donor 容器挂的 build/mods-worker 一直是早上的旧 jar，一整上午的代码对比作废。
+    # donor 轮开始前比一下 build/mods-worker 里的 jar 和刚构建的 worker jar，不一样就拒绝；结果里记下 jar 的指纹
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    runner.worker_jar = lambda: dict(mounted='aaaa', built='bbbb')
+    with pytest.raises(RuntimeError, match='collectWorkerMods'):
+        drive(rcell('firework'), tmp_path / 'stale')
+    runner.worker_jar = lambda: dict(mounted='cccc', built='cccc')
+    out = drive(rcell('firework'), tmp_path / 'ok')
+    assert out['worker_jar'] == 'cccc'
+    out = drive(rcell('firework', donors=0, profile=None, features='v0'), tmp_path / 'vanilla')   # 原版不碰 worker
+    assert 'worker_jar' not in out

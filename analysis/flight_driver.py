@@ -82,6 +82,17 @@ def _status_counts(controller) -> dict:
                 import_ms=s.get('import', {}).get('totalMs', 0), tiles_done=sum(w.get('done', 0) for w in s.get('workers', [])))
 
 
+def _check_worker_jar(runner):
+    """donor 用的 worker jar（build/mods-worker，donor 容器挂的）必须就是刚构建的那个（worker/build/libs）。
+    11-09 事故：跑批只跑了 collectMods，mods-worker 一直是早上的旧 jar，一整上午的代码对比作废。返回 jar 的指纹（md5 前 8 位）。"""
+    if not hasattr(runner, 'worker_jar'):
+        return None
+    j = runner.worker_jar()
+    if j['mounted'] != j['built']:
+        raise RuntimeError(f"donor 挂的 worker jar（{j['mounted']}）不是刚构建的（{j['built']}）：构建时要跑 collectWorkerMods")
+    return j['mounted']
+
+
 def _server_tick(runner):
     """服务器现在的 tick 数（/bench tick），拿不到是 None。"""
     import json
@@ -174,11 +185,13 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             from bench.server import chunky
             cache_chunks = chunky(_LogShim(runner), int(start[0]), int(start[1]), cache * 16, timeout=900, replace_stale=True)
         ids_before = []
+        jar = None
         if donors == 0:
             controller.donor_off()
             for f in FEATURES:
                 controller.feature(f, False)
         else:
+            jar = _check_worker_jar(runner)
             runner.rcon('donor reset')
             controller.donor_on(donors, env=env)
             on = _features_on(p.get('features'))
@@ -240,6 +253,8 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 result.update(stall_fraction=sum(stalls) / len(stalls), stall_fraction_max=max(stalls))
             if dists:
                 result['distance_ratio'] = sum(dists) / len(dists)
+        if jar:
+            result['worker_jar'] = jar
         result.update(players=len(routes), scenario_route=routes[0], fly_start_unix=t_fly, fly_start_tick=start_tick,
                       cant_keep_up=sum("Can't keep up" in l for l in log_lines),
                       moved_too_quickly=sum('moved too quickly' in l for l in log_lines))

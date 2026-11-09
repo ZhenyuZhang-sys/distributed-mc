@@ -75,6 +75,16 @@ class Runner:
         """某个服务 t（unix 秒）以后的日志，带时间戳（donor 崩了时存进归档）。"""
         return compose('logs', '--since', str(int(t)), '--timestamps', '--no-log-prefix', service, timeout=120).splitlines()
 
+    def worker_jar(self) -> dict:
+        """donor 容器挂的 worker jar（build/mods-worker）和刚构建的（worker/build/libs）的 md5 前 8 位；没有文件是 None。"""
+        import hashlib
+        root = SCRIPTS.parent
+
+        def md5(p):
+            return hashlib.md5(p.read_bytes()).hexdigest()[:8] if p.exists() else None
+        return dict(mounted=md5(root / 'build/mods-worker/mcdonate-worker-0.1.0.jar'),
+                    built=md5(root / 'worker/build/libs/mcdonate-worker-0.1.0.jar'))
+
     def services(self) -> list:
         """compose 里定义了的服务（不管起没起）。"""
         return compose('config', '--services').split()
