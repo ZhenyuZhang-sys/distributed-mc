@@ -29,6 +29,8 @@ public final class DonorController {
 
         boolean workerRunning();
 
+        default boolean busy() { return false; }
+
         void startWorker(DonorInvite invite, ClientSettings settings);
 
         void stopWorker();
@@ -47,6 +49,7 @@ public final class DonorController {
     private DonorInvite invite;
     private long inviteAt;
     private boolean inviteUsed;
+    private boolean connected;
     private long lastRequest = Long.MIN_VALUE / 2;
 
     public DonorController(Env env) {
@@ -54,16 +57,18 @@ public final class DonorController {
     }
 
     private boolean wanted() {
-        return env.consent() && env.settings().enabled();
+        return connected && env.consent() && env.settings().enabled();
     }
 
     public void onInvite(DonorInvite i) {
         if (!i.valid()) {
             return;
         }
+        connected = true;
         invite = i;
         inviteAt = env.now();
         inviteUsed = false;
+        if (!wanted()) return;
         if (env.workerRunning()) {
             env.sendToWorker("TOKEN " + i.token()); // worker 在等新 token（NEED_TOKEN）
             inviteUsed = true;
@@ -71,6 +76,14 @@ public final class DonorController {
         }
         tryStart();
     }
+
+    /** 等服务器初次邀请；随后 tick 可以重试启动/过期邀请，不会在主菜单下载。 */
+    public void onJoin() {
+        connected = true;
+        lastRequest = env.now();
+    }
+
+    public void tick() { tryStart(); }
 
     /** 首次准备做完了（后台线程做完后回到主线程调）。 */
     public void onPrepared() {
@@ -88,7 +101,7 @@ public final class DonorController {
     }
 
     private void tryStart() {
-        if (!wanted() || env.workerRunning()) {
+        if (!wanted() || env.workerRunning() || env.busy()) {
             return;
         }
         if (!env.prepared()) {
@@ -96,7 +109,8 @@ public final class DonorController {
             return;
         }
         if (invite == null) {
-            return; // 等进服时的邀请
+            request();
+            return;
         }
         if (inviteUsed || env.now() - inviteAt > INVITE_FRESH_MS) {
             request();
@@ -108,7 +122,7 @@ public final class DonorController {
 
     /** worker 标准输出里给游戏看的一行（已去掉 MCDONATE 前缀）。 */
     public void onWorkerLine(String body) {
-        if (body.equals("NEED_TOKEN")) {
+        if (wanted() && body.equals("NEED_TOKEN")) {
             request();
         }
     }
@@ -131,6 +145,7 @@ public final class DonorController {
 
     /** 退出世界：停 worker，邀请作废（下次进服会收到新的）。 */
     public void onDisconnect() {
+        connected = false;
         if (env.workerRunning()) {
             env.stopWorker();
         }

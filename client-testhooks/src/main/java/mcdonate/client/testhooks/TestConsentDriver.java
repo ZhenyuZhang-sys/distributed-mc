@@ -49,12 +49,23 @@ public final class TestConsentDriver implements ConsentDriver {
             }
             LOG.info("测试钩子：进服 {} 秒后拉长帧时间 {} ms，持续 {} 秒", slowFrom, ms, (slowUntil - slowStart) / 1000);
         }
+        int threads = Integer.getInteger("mcdonate.testhooks.threads", -1);
+        if (threads > 0) {
+            java.nio.file.Path f = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("mc-donate-settings.properties");
+            var settings = mcdonate.client.ClientSettings.load(f).withThreads(threads)
+                    .withMemoryMb(Integer.getInteger("mcdonate.testhooks.memoryMb", 4096))
+                    .withWorkerCount(Integer.getInteger("mcdonate.testhooks.workerCount", 0));
+            try {
+                settings.save(f);
+                LOG.info("测试钩子：总线程{}、总内存{} MB、workerCount={}", settings.threads(), settings.memoryMb(), settings.workerCount());
+            } catch (java.io.IOException e) { throw new IllegalStateException(e); }
+        }
         int target = Integer.getInteger("mcdonate.testhooks.frameTargetMs", -1);
         if (target > 0) {
             java.nio.file.Path f = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("mc-donate-settings.properties");
             mcdonate.client.ClientSettings s = mcdonate.client.ClientSettings.load(f);
             try {
-                new mcdonate.client.ClientSettings(s.enabled(), s.threads(), s.memoryMb(), target).save(f);
+                s.withFrameTargetMs(target).save(f);
                 LOG.info("测试钩子：帧时间目标改成 {} ms", target);
             } catch (java.io.IOException e) {
                 LOG.warn("测试钩子：改帧时间目标失败：{}", e.toString());

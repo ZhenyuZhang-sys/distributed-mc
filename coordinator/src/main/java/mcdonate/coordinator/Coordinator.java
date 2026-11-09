@@ -14,6 +14,8 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import mcdonate.common.net.DonorInvite;
 import mcdonate.common.net.InviteRequest;
+import mcdonate.common.net.WorkerInvite;
+import mcdonate.common.net.WorkerInviteRequest;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -171,7 +173,22 @@ public final class Coordinator implements ModInitializer {
         // worker 要重连时用。每个玩家 inviteRequestMinMs（默认 10 秒）最多一次，超了忽略并记 WARN。
         PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
         PayloadTypeRegistry.playC2S().register(InviteRequest.TYPE, InviteRequest.CODEC);
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> sendInvite(server, handler.player));
+        PayloadTypeRegistry.playS2C().register(WorkerInvite.TYPE, WorkerInvite.CODEC);
+        PayloadTypeRegistry.playC2S().register(WorkerInviteRequest.TYPE, WorkerInviteRequest.CODEC);
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            CoordinatorServer n = network;
+            if (n != null) n.tokens.revoke(handler.player.getUUID());
+            if (ServerPlayNetworking.canSend(handler.player, WorkerInvite.TYPE)) {
+                for (int slot = 0; slot < WorkerInvite.MAX_WORKERS; slot++) sendWorkerInvite(server, handler.player, slot);
+            } else {
+                sendInvite(server, handler.player);
+            }
+        });
+        ServerPlayNetworking.registerGlobalReceiver(WorkerInviteRequest.TYPE, (payload, context) -> {
+            var p = context.player();
+            if (!payload.valid() || !INVITE_LIMITER.allow(p.getUUID(), payload.slot(), System.currentTimeMillis())) return;
+            sendWorkerInvite(context.server(), p, payload.slot());
+        });
         ServerPlayNetworking.registerGlobalReceiver(InviteRequest.TYPE, (payload, context) -> {
             net.minecraft.server.level.ServerPlayer p = context.player();
             if (!payload.valid()) {
@@ -254,7 +271,19 @@ public final class Coordinator implements ModInitializer {
             return;
         }
         ServerPlayNetworking.send(player, invite);
-        LOG.info("给 {} 发了 donor 邀请（token {}）", player.getGameProfile().getName(), TokenRegistry.redact(token));
+        LOG.info("给 {} 发了 donor 邀请", player.getGameProfile().getName());
+    }
+
+    static void sendWorkerInvite(net.minecraft.server.MinecraftServer server,
+            net.minecraft.server.level.ServerPlayer player, int slot) {
+        CoordinatorServer n = network;
+        if (n == null || PUBLIC_HOST.isEmpty() || slot < 0 || slot >= WorkerInvite.MAX_WORKERS
+                || !ServerPlayNetworking.canSend(player, WorkerInvite.TYPE)) return;
+        if (!new DonorInvite(PUBLIC_HOST, PUBLIC_PORT, "pending", server.overworld().getSeed()).valid()) return;
+        String token = n.tokens.issue(player.getUUID(), slot);
+        ServerPlayNetworking.send(player, new WorkerInvite(slot,
+                new DonorInvite(PUBLIC_HOST, PUBLIC_PORT, token, server.overworld().getSeed())));
+        LOG.info("给 {} 发了 donor 邀请（worker {}）", player.getGameProfile().getName(), slot + 1);
     }
 
     /** 第 9 步：发给玩家的 coordinator 公开地址，空 = 不发邀请；端口默认和监听端口一样。 */

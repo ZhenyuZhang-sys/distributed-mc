@@ -10,15 +10,21 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 final class InviteLimiter {
     private final long minMs;
-    private final Map<UUID, Long> last = new ConcurrentHashMap<>();
+    private record Slot(UUID player, int worker) {}
+    private final Map<Slot, Long> last = new ConcurrentHashMap<>();
 
     InviteLimiter(long minMs) {
         this.minMs = minMs;
     }
 
     boolean allow(UUID player, long now) {
+        return allow(player, 0, now);
+    }
+
+    boolean allow(UUID player, int worker, long now) {
+        if (worker < 0 || worker >= mcdonate.common.net.WorkerInvite.MAX_WORKERS) return false;
         boolean[] ok = {false};
-        last.compute(player, (k, prev) -> {
+        last.compute(new Slot(player, worker), (k, prev) -> {
             if (prev == null || now - prev >= minMs) {
                 ok[0] = true;
                 return now;
@@ -29,6 +35,6 @@ final class InviteLimiter {
     }
 
     void forget(UUID player) {
-        last.remove(player);
+        last.keySet().removeIf(s -> s.player().equals(player));
     }
 }

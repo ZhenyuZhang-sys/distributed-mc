@@ -65,5 +65,9 @@ sleep 3
 cp "$GAME/logs/latest.log" /out/latest.log 2>/dev/null || true
 cp "$GAME/mc-donate/frametimes.csv" /out/frametimes.csv 2>/dev/null || true
 cp "$GAME/mc-donate/worker/worker.log" /out/worker.log 2>/dev/null || true
+for slot in 2 3; do
+  cp "$GAME/mc-donate/worker-$slot/worker.log" "/out/worker-$slot.log" 2>/dev/null || true
+done
+find "$GAME/mc-donate" -name mcdonate-world-id -exec sh -c 'printf "%s " "$1"; cat "$1"' sh {} \; > /out/worker-worlds.txt 2>/dev/null || true
 (cd "$GAME" && find . -maxdepth 2 | sort) > /out/gamedir.txt
 echo done > /out/done

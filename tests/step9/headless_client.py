@@ -24,16 +24,12 @@ def run_client(name: str, seconds: int, mods: Path, out: Path, env: dict | None 
     """service：client（有外网）或 client-offline（只能连测试服务器，9.2 用）。"""
     """进服挂 seconds 秒。返回 {"log": 客户端日志, "ps": 进程快照, "gamedir": 游戏目录列表, "mods": 装了什么}。"""
     out.mkdir(parents=True, exist_ok=True)
-    saved = os.environ.copy()
-    try:
-        os.environ["MCD_CLIENT_MODS"] = str(mods)
-        os.environ["MCD_CLIENT_OUT"] = str(out)
-        # --build：run.sh 是打进镜像的，改了要重建（有缓存，很快）。第一次要下载客户端，慢
-        extra = [a for k, v in (env or {}).items() for a in ("-e", f"{k}={v}")]
-        compose("run", "--rm", "--build", *extra, service, name, str(seconds), timeout=2400)
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+    invocation_env = os.environ.copy()
+    invocation_env["MCD_CLIENT_MODS"] = str(mods)
+    invocation_env["MCD_CLIENT_OUT"] = str(out)
+    # 不改全局环境：RCON会在另一个线程启动子进程。
+    extra = [a for k, v in (env or {}).items() for a in ("-e", f"{k}={v}")]
+    compose("run", "--rm", "--build", *extra, service, name, str(seconds), timeout=2400, env=invocation_env)
     assert (out / "done").exists(), "客户端脚本没跑完"
     read = lambda f: (out / f).read_text(errors="replace") if (out / f).exists() else ""
     return {"log": read("latest.log"), "ps": read("ps.txt"), "gamedir": read("gamedir.txt"), "mods": read("mods.txt"),

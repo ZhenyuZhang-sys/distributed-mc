@@ -30,12 +30,14 @@ final class TokenRegistry {
 
     private static final class Entry {
         final UUID player;
+        final int slot;
         final byte[] token;
         final long issuedAt;
         boolean used;
 
-        Entry(UUID player, byte[] token, long issuedAt) {
+        Entry(UUID player, int slot, byte[] token, long issuedAt) {
             this.player = player;
+            this.slot = slot;
             this.token = token;
             this.issuedAt = issuedAt;
         }
@@ -49,7 +51,8 @@ final class TokenRegistry {
     private final LongSupplier clock;
     private final Random random;
     private final Map<String, Entry> byDigest = new HashMap<>();
-    private final Map<UUID, String> digestOfPlayer = new HashMap<>();
+    private record Slot(UUID player, int worker) {}
+    private final Map<Slot, String> digestOfPlayer = new HashMap<>();
 
     TokenRegistry(LongSupplier clock) {
         this(clock, new SecureRandom());
@@ -60,16 +63,26 @@ final class TokenRegistry {
         this.random = random;
     }
 
-    /** 发一个新 token；这个玩家之前的作废。 */
+    /** 单 worker 兼容入口：更新玩家的第0槽位。 */
     synchronized String issue(UUID player) {
-        revoke(player);
+        return issue(player, 0);
+    }
+
+    /** 只更新这个槽位。同玩家的其他 worker 邀请照常有效。 */
+    synchronized String issue(UUID player, int worker) {
+        if (worker < 0 || worker >= mcdonate.common.net.WorkerInvite.MAX_WORKERS) {
+            throw new IllegalArgumentException("worker slot 越界");
+        }
+        Slot slot = new Slot(player, worker);
+        String old = digestOfPlayer.remove(slot);
+        if (old != null) byDigest.remove(old);
         byte[] raw = new byte[16];
         random.nextBytes(raw);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
         byte[] bytes = token.getBytes(StandardCharsets.UTF_8);
         String d = digest(bytes);
-        byDigest.put(d, new Entry(player, bytes, clock.getAsLong()));
-        digestOfPlayer.put(player, d);
+        byDigest.put(d, new Entry(player, worker, bytes, clock.getAsLong()));
+        digestOfPlayer.put(slot, d);
         return token;
     }
 
@@ -86,7 +99,7 @@ final class TokenRegistry {
         }
         if (clock.getAsLong() - e.issuedAt > TTL_MS) {
             byDigest.remove(d);
-            digestOfPlayer.remove(e.player, d);
+            digestOfPlayer.remove(new Slot(e.player, e.slot), d);
             return Optional.empty();
         }
         e.used = true;
@@ -95,10 +108,11 @@ final class TokenRegistry {
 
     /** 玩家退出或重新进服：作废他的 token。 */
     synchronized void revoke(UUID player) {
-        String d = digestOfPlayer.remove(player);
-        if (d != null) {
-            byDigest.remove(d);
-        }
+        digestOfPlayer.entrySet().removeIf(e -> {
+            if (!e.getKey().player().equals(player)) return false;
+            byDigest.remove(e.getValue());
+            return true;
+        });
     }
 
     /** 写日志用：只露前 4 个字符。 */

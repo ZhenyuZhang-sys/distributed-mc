@@ -62,18 +62,20 @@ def check_log_text(text: str) -> list[str]:
     return bad
 
 
-def run(*cmd: str, timeout: float = 120) -> str:
+def run(*cmd: str, timeout: float = 120, env: dict | None = None) -> str:
     """运行命令，失败时把输出带进异常信息。"""
-    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    kwargs = {} if env is None else {"env": env}
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs)
     if p.returncode != 0:
         raise RuntimeError(f"{' '.join(cmd)} 退出码 {p.returncode}\n{p.stdout}\n{p.stderr}")
     return p.stdout
 
 
-def compose(*args: str, timeout: float = 120) -> str:
+def compose(*args: str, timeout: float = 120, env: dict | None = None) -> str:
     """对测试服务器执行 docker compose（复用 lib.sh 里的 tc）。"""
     script = 'source "$1"; shift; tc "$@"'
-    return run("bash", "-c", script, "bash", str(SCRIPTS / "lib.sh"), *args, timeout=timeout)
+    kwargs = {} if env is None else {"env": env}
+    return run("bash", "-c", script, "bash", str(SCRIPTS / "lib.sh"), *args, timeout=timeout, **kwargs)
 
 
 def limits() -> dict[str, str]:

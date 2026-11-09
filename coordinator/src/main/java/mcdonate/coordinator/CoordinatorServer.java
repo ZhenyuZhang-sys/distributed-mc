@@ -544,6 +544,7 @@ final class CoordinatorServer {
             }
             sb.append("{\"id\":").append(c.workerId).append(",\"name\":\"").append(c.name.replace("\"", ""))
                     .append("\",\"world\":\"").append(c.world == null ? "" : c.world)
+                    .append("\",\"player\":\"").append(c.player == null ? "" : c.player.toString())
                     .append("\",\"task\":").append(c.currentTask).append(",\"done\":").append(c.doneTiles.get())
                     .append(",\"idleMs\":").append(now - c.lastSeen)
                     .append(",\"inFlight\":").append(tasks.inFlight(c.workerId))
@@ -678,7 +679,7 @@ final class CoordinatorServer {
                 if (w.workerId() == Welcome.BAD_TOKEN) {
                     // 不打 token 本身（TokenRegistry.redact）
                     LOG.warn("worker {} 的 token 不对（{}），拒绝", hello.name(),
-                            hello.token().isEmpty() ? "没带" : TokenRegistry.redact(hello.token()));
+                            hello.token().isEmpty() ? "没带" : "已带，校验失败");
                     sendThenClose(w);
                     return;
                 }
