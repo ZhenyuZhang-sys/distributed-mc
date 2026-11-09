@@ -322,3 +322,14 @@ def test_pregen_replaces_a_stale_chunky_task():
     s = Srv()
     assert chunky(s, 0, 0, 256, timeout=1, replace_stale=True) == 1089
     assert s.sent[-1] == 'chunky confirm'
+
+
+def test_report_lists_each_round_with_its_slot():
+    # 调度 11-09：同一个代码 1×8 在 k3 用 1.42 核、在 k2 只用 0.64 核，差别来自槽位。每轮记上槽位，看同配置在不同槽位差多少
+    rows = [dict(experiment='flight', scenario='firework_turning', speed_bps=33.5, donors=1, donor_profile='1x8', code='10cadc8',
+                 slot=s, repeat=i, stall_after_exit=st, worker_cores=c, tile_s=t)
+            for i, (s, st, c, t) in enumerate((('k2', .49, .64, .21), ('k3', .33, 1.42, .40)), 1)]
+    md = firework.report(rows)
+    assert '## 每轮明细' in md
+    sec = md.split('## 每轮明细')[1]
+    assert '| 转弯 | 1 个 donor，8 核 · 10cadc8 | 1 | k2 | 49% |' in sec and '| k3 | 33% | 1.4 | 0.40 |' in sec, sec

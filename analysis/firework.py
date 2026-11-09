@@ -409,6 +409,13 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
                        f"| {_f(_mean(rs, 'cant_keep_up'), digits=0)} | {_f(_mean(rs, 'moved_too_quickly'), digits=0)} | {_f(_mean(rs, 'resumed_share'), True)} "
                        f"| {_f(_mean(rs, 'discard_late'), digits=0)} / {_f(_mean(rs, 'discard_server'), digits=0)} / {_f(_mean(rs, 'stale_dropped'), digits=0)} "
                        f"| {_f(_mean(rs, 'import_ms'), digits=0)} | {_f(_mean(rs, 'worker_cores'))} | {_f(_mean(rs, 'tile_s'), digits=2)} |")
+    if any(r.get('slot') for r in real):   # 调度 11-09：同配置在不同槽位差得多（核分配、超线程、同机负载），每轮记槽位
+        out += ['', '## 每轮明细', '', '| 场景 | 配置 | 轮 | 槽位 | 卡住占比 | worker 核数 | tile/s | MSPT max |', '| --- | --- | --- | --- | --- | --- | --- | --- |']
+        for scen in ('firework', 'firework_turning'):
+            for n in order:
+                for r in sorted((r for r in real if r.get('scenario') == scen and _cfg(r) == n), key=lambda r: (r.get('slot') or '', r.get('repeat') or 0)):
+                    out.append(f"| {SCEN_NAME[scen]} | {n} | {r.get('repeat', '—')} | {r.get('slot') or '—'} | {_f(r.get('stall_after_exit'), True)} "
+                               f"| {_f(r.get('worker_cores'))} | {_f(r.get('tile_s'), digits=2)} | {_f(r.get('mspt_max'), digits=0)} |")
     return '\n'.join(out) + '\n'
 
 
