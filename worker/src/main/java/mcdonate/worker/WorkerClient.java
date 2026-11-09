@@ -219,6 +219,12 @@ final class WorkerClient {
             // 分段耗时：收到、开始生成、生成完、打包完（coordinator 写进 /donor imports 的 seg）
             mcdonate.common.TaskTiming.stamp(tag, got == null ? g0 : got, g0, g1, System.currentTimeMillis());
             r = Result.success(t.taskId(), tag);
+        } catch (Waits.Fatal e) {
+            // 11-09（codex-audit A5）：原版生成出了致命错误，这个世界的生成状态不可信了：报失败，停止 worker（游戏那边会看到它退出）
+            LOG.error("任务 {} 生成时原版出了致命错误，worker 退出", t.taskId(), e);
+            send(Result.failure(t.taskId(), truncate(e.toString())));
+            server.execute(() -> server.halt(false));
+            return;
         } catch (RuntimeException e) {
             LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
             r = Result.failure(t.taskId(), truncate(e.toString()));

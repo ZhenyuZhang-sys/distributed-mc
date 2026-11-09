@@ -150,7 +150,8 @@ final class TileExporter {
                 }
             }
             return true;
-        }, cache::pollTask, timeoutMs, System::currentTimeMillis, "tile " + tile + " 区域里的生成任务结束");
+        }, cache::pollTask, timeoutMs, System::currentTimeMillis, "tile " + tile + " 区域里的生成任务结束",
+                net.minecraft.server.MinecraftServer::throwIfFatalException);
     }
 
     /** 测试用：下一个 tile 多等一个永远不会完成的 chunk（/donor stallnext）。 */
@@ -207,8 +208,10 @@ final class TileExporter {
             STALL_NEXT = false;
             futures.add(new java.util.concurrent.CompletableFuture<>());
         }
+        // 两段等待共用一个截止时间（A5：原来各拿一整份，慢 donor 可能等到 400 秒），每轮查原版的致命错误
+        long deadline = System.currentTimeMillis() + timeout;
         Waits.until(() -> futures.stream().allMatch(java.util.concurrent.CompletableFuture::isDone), cache::pollTask, timeout,
-                System::currentTimeMillis, "tile " + tile + " 的 16 个 chunk");
+                System::currentTimeMillis, "tile " + tile + " 的 16 个 chunk", net.minecraft.server.MinecraftServer::throwIfFatalException);
         for (var f : futures) {
             net.minecraft.server.level.ChunkResult<ChunkAccess> res = f.getNow(null);
             if (res == null || !res.isSuccess()) {
@@ -220,7 +223,7 @@ final class TileExporter {
         // 相邻 tile 的生成任务可能还在写这个 tile 外圈的 chunk（地物写进邻居），主线程这时序列化就撞上。
         // 序列化之前等整个区域（tile ± 外圈）里每个 chunk 都没有进行中的生成任务；等的时候照常处理 chunk 的主线程任务，不会卡死。
         long quietFrom = System.nanoTime();
-        waitNoGeneration(level, tile, cache, timeout);
+        waitNoGeneration(level, tile, cache, Math.max(1, deadline - System.currentTimeMillis()));
         long waited = System.nanoTime();
         int r = TileFile.MAX_RING;
         List<ExportedChunk> chunks = new ArrayList<>();
