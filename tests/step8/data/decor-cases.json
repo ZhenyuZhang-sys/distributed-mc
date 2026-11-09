@@ -1870,6 +1870,11 @@
 "a": "minecraft:cave_air",
 "b": "minecraft:gravel",
 "expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:lava",
+"expected": "terrain"
 }
 ]
 }

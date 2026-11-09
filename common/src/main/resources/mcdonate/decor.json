@@ -224,6 +224,10 @@
   ],
   [
    "minecraft:deepslate",
+   "minecraft:lava"
+  ],
+  [
+   "minecraft:deepslate",
    "minecraft:water"
   ],
   [
