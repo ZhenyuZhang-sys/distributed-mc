@@ -23,7 +23,7 @@ import time
 import pytest
 
 from bench import layer2
-from mcd import compose, data_root, donor_imports, limits, wait_until, worker_id
+from mcd import SCRIPTS, compose, data_root, donor_imports, limits, run, wait_until, worker_id
 
 ALL = ["territory", "deadline", "throughput", "hedge", "waitdonor"]
 ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"], "vanilla": []}
@@ -120,6 +120,47 @@ def donors(server, up: bool):
                    timeout=60, interval=1, what="donor 都停了")
 
 
+# "有网络"的条件（调度 11-09，按用户说的网络延迟约 70 ms）：往返 70 ms（每个方向 35 ms），donor 上传限 20 Mbps，丢包 1%。
+# 轮名后面加 "+net"（比如 deadline+net）就在这一轮加上：每个 donor 出站 35 ms、1%、20mbit，服务器出站 35 ms（不限速、不丢包）。
+NET_DONOR = ("35ms", "1%", "20mbit")
+NET_SERVER = ("35ms", "0%")
+
+
+def base_name(name: str) -> str:
+    return name.removesuffix("+net")
+
+
+def netem(svc: str, *args: str):
+    env = os.environ.copy()
+    try:
+        os.environ["NETEM_SERVICE"] = svc
+        run(str(SCRIPTS / "netem.sh"), *args, timeout=120)
+    finally:
+        os.environ.clear()
+        os.environ.update(env)
+
+
+def net_on(slow: bool):
+    for svc in ("worker", "worker2", *(["worker3"] if slow else [])):
+        netem(svc, "on", *NET_DONOR)
+    netem("minecraft", "on", *NET_SERVER)
+
+
+def net_off():
+    for svc in ("worker", "worker2", "worker3", "minecraft"):
+        try:
+            netem(svc, "off")
+        except RuntimeError:
+            pass  # 没在跑的服务
+
+
+def spread(values: list) -> dict:
+    v = sorted(x for x in values if x is not None and x >= 0)
+    if not v:
+        return {"n": 0}
+    return {"n": len(v), "p50": v[len(v) // 2], "p90": v[int(len(v) * 0.9)], "max": v[-1]}
+
+
 def set_features(server, on: list[str]):
     for f in ALL:
         server.rcon(f"donor feature {f} {'on' if f in on else 'off'}")
@@ -131,7 +172,7 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
     label = os.environ.get("MCD_ABLATION_LABEL", "default")
     assert label in LABELS, f"MCD_ABLATION_LABEL 要是 {LABELS} 之一"
     names = os.environ.get("MCD_ABLATION", DEFAULT).split(",")
-    unknown = [n for n in names if n not in ROUNDS]
+    unknown = [n for n in names if base_name(n) not in ROUNDS]
     assert not unknown, f"不认识的轮：{unknown}"
     base = server.artifact_dir or tmp_path_factory.mktemp("ablation")
     worker_id(server, "worker")
@@ -146,9 +187,10 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             start = (0, -200_000 + 100_000 * LABELS.index(label) + 8000 * i)
             slow = name.startswith("slow-")
             vanilla = name == "vanilla"
+            net = name.endswith("+net")
             donors(server, not vanilla)
             slow_donor(server, slow)
-            set_features(server, ROUNDS[name])
+            set_features(server, ROUNDS[base_name(name)])
             before_imports = len(donor_imports(server))
             before = counters(status(server))
             running = sorted(compose("ps", "--format", "{{.Service}}").split())
@@ -162,8 +204,14 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             fly_start_ms = int(time.time() * 1000)
             if not vanilla:
                 server.rcon("donor demand on")
-            out = layer2.fly(server, run=f"abl-{label}-{i}", player=f"abl{i}", start=start, speed=SPEED,
-                             seconds=SECONDS, out_dir=base / f"ablation-{label}-{i}-{name}")
+            try:
+                if net:
+                    net_on(slow)
+                out = layer2.fly(server, run=f"abl-{label}-{i}", player=f"abl{i}", start=start, speed=SPEED,
+                                 seconds=SECONDS, out_dir=base / f"ablation-{label}-{i}-{name}")
+            finally:
+                if net:
+                    net_off()
             fly_end_ms = int(time.time() * 1000)
             server.rcon("donor demand off")
             ids_after = {w["name"]: w["id"] for w in status(server)["workers"]}
@@ -185,7 +233,10 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             n = cfg["tileSize"]
             row = {
                 "label": label, "round": i, "name": name, "start": start, "services": running,
-                "coordinator_features": ROUNDS[name], "demand_lookahead": cfg["demandLookahead"], "tile_size": n,
+                "coordinator_features": ROUNDS[base_name(name)], "demand_lookahead": cfg["demandLookahead"], "tile_size": n,
+                "network": {"donor": NET_DONOR, "server": NET_SERVER} if net else None,
+                # 每个结果的大小（NBT 字节）和派出到收到的毫秒数的分布（coordinator 11-09 起记在 /donor imports）
+                "result_bytes": spread([r.get("bytes") for r in imports]), "result_ms": spread([r.get("ms") for r in imports]),
                 "donors": [{"name": s, "cpuset": lim.get(f"{s.upper()}_CPUSET"),
                             "cpus": float(lim.get("WORKER3_CPUS", 0.5)) if s == "worker3" else None}
                            for s in ([] if vanilla else ["worker", "worker2", *(["worker3"] if slow else [])])],

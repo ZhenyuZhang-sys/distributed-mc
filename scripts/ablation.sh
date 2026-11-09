@@ -5,6 +5,7 @@
 #   default  v0×2、每个开关各 1 轮、7.3 慢 donor（worker3）前后各 1 轮、全开×2（11 轮）
 #   tile2/tile8    tileSize=2/8，只跑 v0 1 轮
 #   look16/look24  demandLookahead=16/24，只跑 v0 1 轮
+# 轮名见 tests/step7/test_90_ablation.py；加 "+net" 的轮有网络延迟（35 ms、1%、donor 限 20 Mbps）。外面设 MCD_ABLATION 时用外面的
 # 每组的结果在那次 test.sh 的 artifacts 目录里：ablation-<组名>.json。
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -23,6 +24,8 @@ for g in "${groups[@]}"; do
     *) echo "不认识的组：$g" >&2; exit 2 ;;
   esac
   echo "==> $(date +%H:%M) 组 $g（MCD_JVM_EXTRA='$extra'）"
+  # 外面设了 MCD_ABLATION 就用外面的（比如第 7 步"有网络"那批：MCD_ABLATION=deadline+net scripts/ablation.sh look16）
+  [[ -n "${MCD_ABLATION:-}" ]] && rounds="$MCD_ABLATION"
   env MCD_JVM_EXTRA="$extra" MCD_ABLATION_LABEL="$g" ${rounds:+MCD_ABLATION="$rounds"} \
     scripts/test.sh step7 --slow -k ablation || { echo "组 $g 失败" >&2; status=1; }
 done

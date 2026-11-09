@@ -283,8 +283,15 @@ final class CoordinatorServer {
         workers.values().forEach(c -> c.send(new Heartbeat(now, Heartbeat.NO_TASK)));
     }
 
+    /** 每个结果的大小（NBT 字节）和派出到收到的毫秒数，导入时写进 /donor imports（第 7 步"有网络"那组要看分布）。 */
+    private final Map<Long, long[]> resultMeta = new ConcurrentHashMap<>();
+
     private void onResult(Connection c, Result r) {
         long leasedAt = tasks.leasedAt(r.taskId());
+        if (r.ok()) {
+            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(),
+                    leasedAt > 0 ? System.currentTimeMillis() - leasedAt : -1});
+        }
         if (r.ok() && leasedAt > 0) {
             // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
             throughput.record(c.workerId, System.currentTimeMillis() - leasedAt);
@@ -324,6 +331,7 @@ final class CoordinatorServer {
             case DISCARD -> LOG.info("丢弃 worker {} 的结果：{}", c.workerId, d.reason());
         }
         if (d.action() != TaskQueue.Action.IMPORT) {
+            resultMeta.remove(r.taskId());
             waitDonor.release(r.taskId());
         }
     }
@@ -360,8 +368,10 @@ final class CoordinatorServer {
                     LOG.info("导入任务 {}（worker {}，tile {}）：written={} overwritten={} skipped={}", r.taskId(), workerId,
                             tile, res.written(), res.overwritten(), res.skipped());
                 }
+                long[] meta = resultMeta.remove(r.taskId());
                 imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":" + res.accepted()
-                        + ",\"written\":" + (res.written() + res.overwritten()) + "}");
+                        + ",\"written\":" + (res.written() + res.overwritten())
+                        + ",\"bytes\":" + (meta == null ? -1 : meta[0]) + ",\"ms\":" + (meta == null ? -1 : meta[1]) + "}");
                 return res.accepted();
             } else {
                 TileImporter.Result res = TileImporter.importTile(server.overworld(), file, "task " + r.taskId());
