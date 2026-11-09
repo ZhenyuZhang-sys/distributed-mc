@@ -205,16 +205,16 @@ public final class TaskQueue {
         Long existing = byTile.get(tileKey(tx, tz));
         Task t;
         if (existing != null) {
-            t = tasks.get(existing);
-            if (t.state != State.FAILED && t.state != State.DROPPED) {
+            Task old = tasks.get(existing);
+            if (old.state != State.FAILED && old.state != State.DROPPED) {
                 return false;
             }
-            t.failures = 0;
-        } else {
-            t = new Task(nextId++, tx, tz);
-            tasks.put(t.id, t);
-            byTile.put(tileKey(tx, tz), t.id);
         }
+        // 11-09（codex-audit A3）：失败过、丢掉过又重新需要的，用新的任务编号；旧编号留着（撤回的标记不清），
+        // 旧编号的结果回来时认得出来，不能拿走新任务的导入权
+        t = new Task(nextId++, tx, tz);
+        tasks.put(t.id, t);
+        byTile.put(tileKey(tx, tz), t.id);
         t.state = State.QUEUED;
         t.hedged = false; // 撤回过、又重新需要了：之后的结果照常收
         t.scored = false;
@@ -362,7 +362,7 @@ public final class TaskQueue {
         long key = deadlineKey(t);
         t.slackAtLease = key == Long.MAX_VALUE ? -1 : key - t.leasedAt;
         t.worker = worker;
-        t.deadline = clock.getAsLong() + leaseMs;
+        t.deadline = Math.min(t.leasedAt + leaseMs, t.leasedAt + MAX_LEASE_TOTAL_MS);
         leaseAdd(worker, t.id);
         return Optional.of(new Assignment(t.id, t.tx, t.tz, leaseMs));
     }
@@ -455,7 +455,15 @@ public final class TaskQueue {
      * 清空（第 7 步对比每轮开始前，/donor reset）：排队的、在租的、做完的都忘掉，领地和归属不带进下一轮。
      * 返回在租的（要给 worker 发 cancel）；之后回来的结果不认识，丢掉。worker 认的 donor 世界和累计计数留着。
      */
+    private long epoch;
+
+    /** 代次：每次 reset 加一。交给主线程排着导入的结果在导入前比一下，变了就不导（11-09，codex-audit A2）。 */
+    public synchronized long epoch() {
+        return epoch;
+    }
+
     public synchronized List<Cancelled> reset() {
+        epoch++;
         List<Cancelled> out = new ArrayList<>();
         for (Task t : tasks.values()) {
             if (t.state == State.LEASED) {
@@ -580,20 +588,37 @@ public final class TaskQueue {
 
     /** 收回到期的租约，任务回到队首。返回收回的任务。由定时线程调。 */
     public synchronized List<Long> expire() {
+        return expireLeases().stream().map(Cancelled::taskId).toList();
+    }
+
+    /**
+     * 收回到期的租约。11-09（codex-audit A4）：收回也算一次失败（卡死的 worker 心跳照发，不能无限拿回同一个任务），
+     * 到 maxAttempts 次就 FAILED；返回收回的（任务、原来的 worker），调用方给原 worker 发 cancel。由定时线程调。
+     */
+    public synchronized List<Cancelled> expireLeases() {
         long now = clock.getAsLong();
-        List<Long> expired = new ArrayList<>();
+        List<Task> expired = new ArrayList<>();
         for (Task t : tasks.values()) {
             if (t.state == State.LEASED && t.deadline < now) {
-                expired.add(t.id);
+                expired.add(t);
             }
         }
-        expired.sort(null);
+        expired.sort(java.util.Comparator.comparingLong(t -> t.id));
+        List<Cancelled> out = new ArrayList<>();
         for (int i = expired.size() - 1; i >= 0; i--) {
-            Task t = tasks.get(expired.get(i));
+            Task t = expired.get(i);
+            out.add(0, new Cancelled(t.id, t.worker));
             releaseSoft(t.worker);
-            backToHead(t);
+            t.failures++;
+            if (t.failures >= maxAttempts) {
+                leaseRemove(t.worker, t.id);
+                t.state = State.FAILED;
+                t.worker = -1;
+            } else {
+                backToHead(t);
+            }
         }
-        return expired;
+        return out;
     }
 
     /** 解除这个 worker 的软认主。 */
@@ -651,6 +676,10 @@ public final class TaskQueue {
         }
         // 这个 worker 交了结果，这个任务不再占它的名额
         leaseRemove(worker, taskId);
+        if (!Long.valueOf(taskId).equals(byTile.get(tileKey(t.tx, t.tz)))) {
+            // 11-09（A3）：这个 tile 已经有了新的任务（撤回或丢掉以后又需要了）：旧编号的结果不导入
+            return discard("任务 " + taskId + " 已被新的任务取代");
+        }
         if (t.hedged) {
             // 对冲撤回后才回来：服务器已经接手，不导入，算浪费
             if (ok) {

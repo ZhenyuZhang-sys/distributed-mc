@@ -226,8 +226,13 @@ final class CoordinatorServer {
     /** 每秒：收回到期租约，给空闲 worker 派任务，断开 15 秒没动静的连接。 */
     private void tick() {
         try {
-            for (long id : tasks.expire()) {
-                LOG.info("任务 {} 租约到期，回到队首", id);
+            for (TaskQueue.Cancelled x : tasks.expireLeases()) {
+                // 11-09（A4）：收回的任务给原来的 worker 发 cancel（它可能卡住了，之后的结果作废也不要再做）
+                LOG.info("任务 {} 在 worker {} 上租约到期，收回（{}）", x.taskId(), x.worker(), tasks.state(x.taskId()));
+                Connection old = workers.get(x.worker());
+                if (old != null) {
+                    old.send(new Cancel(x.taskId()));
+                }
             }
             java.util.Set<String> worlds = new java.util.HashSet<>();
             workers.values().forEach(c -> {
@@ -360,6 +365,7 @@ final class CoordinatorServer {
         switch (d.action()) {
             case IMPORT -> {
                 d.cancelWorker().map(workers::get).ifPresent(other -> other.send(new Cancel(r.taskId())));
+                long epoch = tasks.epoch(); // 11-09（A2）：导入前再比一次，中间 /donor reset 过就不导
                 if (waitDonor.hasGate(r.taskId())) {
                     // 7.6：有 chunk 在等这个结果。导入提交到 chunk 缓存自己的队列：主线程同步等 chunk 时
                     // （getChunk 的 managedBlock）只执行这个队列，server.execute 的要等它结束，闸门只能等到超时。
@@ -368,7 +374,7 @@ final class CoordinatorServer {
                             : server;
                     ex.execute(() -> {
                         try {
-                            if (importResult(c, r)) {
+                            if (importResult(c, r, epoch)) {
                                 waitDonor.hits.incrementAndGet();
                             }
                         } finally {
@@ -376,7 +382,7 @@ final class CoordinatorServer {
                         }
                     });
                 } else {
-                    server.execute(() -> importResult(c, r));
+                    server.execute(() -> importResult(c, r, epoch));
                 }
             }
             case REQUEUE -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
@@ -390,7 +396,12 @@ final class CoordinatorServer {
     }
 
     /** 主线程上：校验 tile 并导入。出错就让任务回到队列。返回是否被接受。 */
-    private boolean importResult(Connection c, Result r) {
+    private boolean importResult(Connection c, Result r, long epoch) {
+        if (tasks.epoch() != epoch) {
+            LOG.info("任务 {} 的结果排着导入时 coordinator 重置了，作废", r.taskId());
+            resultMeta.remove(r.taskId());
+            return false;
+        }
         long t0 = System.nanoTime();
         try {
             return importResultTimed(c, r, System.currentTimeMillis());
