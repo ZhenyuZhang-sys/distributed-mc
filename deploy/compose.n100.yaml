@@ -1,0 +1,10 @@
+# 小机器（2 核、3 GB 容器）的资源限制，叠在 compose.yaml 上用（docs/deploy.md 第 3 节）：
+#   docker compose -f compose.yaml -f compose.n100.yaml up -d --wait --wait-timeout 600
+# 之后所有 docker compose 命令都要带这两个 -f。已经在别处限了资源的，沿用原来的命令，不用这个文件。
+services:
+  minecraft:
+    cpus: 2.0
+    mem_limit: 3g
+    environment:
+      INIT_MEMORY: 512M
+      MAX_MEMORY: 2G
