@@ -127,7 +127,7 @@ final class CoordinatorServer {
         } catch (IOException ignored) {
             // 关服时不管
         }
-        workers.values().forEach(Connection::close);
+        workers.values().forEach(c -> c.close("coordinator 停止"));
     }
 
     /** 握手：版本对就分配编号回 welcome，不对回 workerId = -1。纯函数，单元测试用。 */
@@ -183,7 +183,7 @@ final class CoordinatorServer {
         for (Connection c : workers.values()) {
             if (player.equals(c.player)) {
                 LOG.info("玩家 {} 退出，断开他的 worker {}", player, c.workerId);
-                c.close();
+                c.close("玩家退出");
             }
         }
     }
@@ -254,7 +254,7 @@ final class CoordinatorServer {
             for (Connection c : workers.values()) {
                 if (now - c.lastSeen > DEAD_MS) {
                     LOG.info("worker {} 15 秒没有消息，断开", c.workerId);
-                    c.close();
+                    c.close("15 秒没有消息（心跳超时）");
                     continue;
                 }
                 if (c.paused) {
@@ -525,7 +525,7 @@ final class CoordinatorServer {
                     }
                 }
             } catch (IOException | InterruptedException | ProtocolException e) {
-                close();
+                close("发送失败：" + e);
             }
         }
 
@@ -542,11 +542,12 @@ final class CoordinatorServer {
                     }
                 }
             } catch (SocketException e) {
-                // 断开
+                closeReason = closeReason != null ? closeReason : "连接断了：" + e.getMessage();
             } catch (IOException | ProtocolException e) {
+                closeReason = "连接出错：" + e;
                 LOG.warn("worker {} 的连接出错，断开：{}", workerId, e.toString());
             } finally {
-                close();
+                close(closeReason == null ? "对方关了连接" : closeReason);
             }
         }
 
@@ -554,7 +555,7 @@ final class CoordinatorServer {
             if (workerId < 0) {
                 if (!(m instanceof Hello hello)) {
                     LOG.warn("连接的第一条消息不是 hello，断开");
-                    close();
+                    close("第一条消息不是 hello");
                     return;
                 }
                 Admission adm = admit(hello, tokens, ALLOW_TOKENLESS);
@@ -607,13 +608,18 @@ final class CoordinatorServer {
             } catch (IOException ignored) {
                 // 反正要断
             }
-            close();
+            close("发完最后一条消息后断开");
         }
 
-        void close() {
+        /** 断开的原因（11-09：用户真机上 worker 反复断开，日志里只有"断开"，看不出为什么）。 */
+        private volatile String closeReason;
+        private final long openedAt = System.currentTimeMillis();
+
+        void close(String reason) {
             if (closed) {
                 return;
             }
+            closeReason = reason;
             closed = true;
             try {
                 socket.close();
@@ -623,7 +629,9 @@ final class CoordinatorServer {
             if (workerId >= 0 && workers.remove(workerId, this)) {
                 List<Long> back = tasks.workerGone(workerId);
                 throughput.forget(workerId);
-                LOG.info("worker {} 断开{}", workerId, back.isEmpty() ? "" : "，任务 " + back + " 回到队首");
+                long now = System.currentTimeMillis();
+                LOG.info("worker {} 断开（{}；连了 {} 秒，最后一条消息在 {} 秒前）{}", workerId, closeReason,
+                        (now - openedAt) / 1000, (now - lastSeen) / 1000, back.isEmpty() ? "" : "，任务 " + back + " 回到队首");
             }
         }
     }
