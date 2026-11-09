@@ -26,7 +26,10 @@ from bench import layer2
 from mcd import SCRIPTS, compose, data_root, donor_imports, limits, run, wait_until, worker_id
 
 ALL = ["territory", "deadline", "throughput", "hedge", "waitdonor"]
-ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"], "vanilla": []}
+ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"],
+          "slow-deadline": ["deadline"], "vanilla": []}
+# slow-deadline：第三个 donor 加 deadline。worker3 默认 0.5 核（慢 donor）；当成第三个正常 donor 用时
+# 外面设 WORKER3_CPUS=4 WORKER3_CPUSET=<4 个核>（11-09 调度：2 个和 3 个 donor 各跑 2 轮）
 # vanilla：原版对照（0 个 donor，worker 容器停掉，不找需求），同一组核、同样航线长度和时长（调度 11-09：
 # 有效轮的卡住比例比 kexu 的原版基线高，要在同一批里看 donor 加进来是不是更差）
 DEFAULT = "vanilla,v0,v0,territory,deadline,throughput,slow-v0,slow-throughput,hedge,waitdonor,all,vanilla,all"
