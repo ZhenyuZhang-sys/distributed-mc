@@ -1,4 +1,5 @@
 """第 10 步 10.4：画图只读汇总表。合成数据，不起服务器。"""
+import json
 import shutil
 
 from analysis.matrix_summary import write_tables
@@ -62,6 +63,16 @@ def test_missing_experiments_give_no_data_not_errors(tmp_path):
         assert status[name] == '无数据', (name, status[name])
         assert (c / 'figures' / f'{name}.png').exists()
     assert status['fig01_void_latency_vs_donors'] == 'ok'
+
+
+def test_no_data_reasons_written_and_step8_paused(tmp_path):
+    # 每张"无数据"图的原因写进 figures/no-data.json；第 8 步暂停（用户 11-09），两张 verify 的图写明这个原因
+    c = campaign(tmp_path, full=False)
+    status = plot_all(c, c / 'figures')
+    reasons = json.loads((c / 'figures' / 'no-data.json').read_text())
+    assert set(reasons) == {k for k, v in status.items() if v == '无数据'}
+    for name in ('fig07_detection_cost', 'fig08_chunks_before_blacklist'):
+        assert status[name] == '无数据' and '第 8 步暂停' in reasons[name], reasons.get(name)
 
 
 def test_empty_campaign(tmp_path):

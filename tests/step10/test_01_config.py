@@ -48,8 +48,8 @@ def test_smoke_matrix():
     for x in cells:
         by.setdefault(x['experiment'], []).append(x)
     assert len(by['flight']) == 2 and {x['params']['donors'] for x in by['flight']} == {0, 2}
-    assert {x['params']['cheat'] for x in by['verify']} == {'none', 'ore'}
-    assert 'capacity' not in by
+    # 第 8 步暂停（用户 11-09）：冒烟矩阵去掉 verify
+    assert 'verify' not in by and 'capacity' not in by
     assert plan(load_config(SMOKE))['hours'] < 0.75
 
 
