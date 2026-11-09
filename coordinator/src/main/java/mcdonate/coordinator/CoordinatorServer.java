@@ -130,6 +130,28 @@ final class CoordinatorServer {
         workers.values().forEach(c -> c.close("coordinator 停止"));
     }
 
+    private static final java.util.regex.Pattern WORLD_ID = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,64}");
+
+    /**
+     * hello 里报的 donor 世界算不算数（11-09，kexu 审）：格式不对（只许字母数字、下划线、横线，最长 64）不收；
+     * 这个世界已经绑在另一个在线的 worker 上，而两边不是同一个玩家（或都没有玩家）时不收——防冒认，拿走别人认主的任务。
+     * 不收就是空串：照旧等它交第一个结果时再从结果里认。纯函数。
+     *
+     * @param online 现在在线的 worker：世界 → 它的玩家（没有玩家是 null）
+     */
+    static String helloWorld(String worldId, java.util.UUID player, java.util.Map<String, java.util.UUID> online) {
+        if (worldId == null || !WORLD_ID.matcher(worldId).matches()) {
+            return "";
+        }
+        if (online.containsKey(worldId)) {
+            java.util.UUID owner = online.get(worldId);
+            if (owner == null || !owner.equals(player)) {
+                return "";
+            }
+        }
+        return worldId;
+    }
+
     /** 握手：版本对就分配编号回 welcome，不对回 workerId = -1。纯函数，单元测试用。 */
     static Welcome handshake(Hello hello, int workerId, long seed, int dataVersion) {
         return handshake(hello, workerId, seed, dataVersion, true);
@@ -322,6 +344,10 @@ final class CoordinatorServer {
         if (r.ok()) {
             String world = r.tile().getString("worldId");
             if (!world.isEmpty()) {
+                if (c.world != null && !c.world.equals(world)) {
+                    // 11-09（kexu）：hello 报的和结果里的不一样，以结果为准
+                    LOG.warn("worker {} 的结果来自 donor 世界 {}，和它 hello 里报的 {} 不一样，按结果算", c.workerId, world, c.world);
+                }
                 c.world = world;
                 tasks.setWorkerWorld(c.workerId, world);
             }
@@ -472,6 +498,7 @@ final class CoordinatorServer {
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
+                + ",\"maxLeaseTotalMs\":" + TaskQueue.MAX_LEASE_TOTAL_MS
                 + ",\"importFrontier\":" + DemandScanner.IMPORT_FRONTIER + ",\"importMarginMs\":" + TaskQueue.IMPORT_MARGIN_MS
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
@@ -638,8 +665,18 @@ final class CoordinatorServer {
                 player = adm.player();
                 // 11-09：worker 一连上就报它的 donor 世界，认主给这个世界的任务马上能派，"认主的世界不在"也不会误报
                 // （原来要等它交出第一个结果；donor 世界跨会话复用时，新连上的 worker 领不到认主的任务，用户真机上空等了 83 秒）
-                if (!hello.worldId().isEmpty()) {
-                    world = hello.worldId();
+                java.util.Map<String, java.util.UUID> online = new java.util.HashMap<>();
+                for (Connection o : workers.values()) {
+                    if (o.world != null) {
+                        online.put(o.world, o.player);
+                    }
+                }
+                String hw = helloWorld(hello.worldId(), adm.player(), online);
+                if (!hello.worldId().isEmpty() && hw.isEmpty()) {
+                    LOG.warn("worker {} 在 hello 里报的 donor 世界不收（格式不对，或者已经绑在另一个在线的 worker 上）：{}", hello.name(),
+                            hello.worldId().length() > 80 ? hello.worldId().substring(0, 80) + "…" : hello.worldId());
+                } else if (!hw.isEmpty()) {
+                    world = hw;
                     tasks.setWorkerWorld(w.workerId(), world);
                 }
                 workers.put(workerId, this);
