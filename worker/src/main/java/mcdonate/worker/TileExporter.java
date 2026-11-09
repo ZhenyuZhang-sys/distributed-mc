@@ -96,6 +96,12 @@ final class TileExporter {
     private static final int TILE_TICKET_LEVEL = net.minecraft.server.level.ChunkLevel.byStatus(ChunkStatus.INITIALIZE_LIGHT);
     /** 加了票、还没去掉的 tile（只在主线程上读写）。 */
     private static final java.util.Set<TilePos> PREFETCHED = new java.util.HashSet<>();
+    /**
+     * 排上过生成、生成还可能在跑的 tile → 它的 16 个 chunk 的 future（只在主线程上读写）。去票（任务被撤、导出完）不会让原版
+     * 已经建好的生成任务停下，所以撤掉的 tile 也留在这里，直到 future 都完成（11-09 kexu 转弯 10cadc8 还撞：转弯时撤得多，
+     * 被撤的相邻 tile 去了票、不在 PREFETCHED 里，导出前没等它，它的地物照样写进来）。
+     */
+    private static final java.util.Map<TilePos, List<java.util.concurrent.CompletableFuture<?>>> GENERATING = new java.util.HashMap<>();
 
     /**
      * 把 tile 的 16 个 chunk 排上生成、加票留住，不等（11-09）。worker 收到任务就调（在主线程上，很快），
@@ -114,11 +120,13 @@ final class TileExporter {
                 dm.addTicket(TILE_TICKET, pos, TILE_TICKET_LEVEL, pos);
             }
         }
+        List<java.util.concurrent.CompletableFuture<?>> fs = new ArrayList<>();
         for (int x = tile.minChunkX(); x <= tile.maxChunkX(); x++) {
             for (int z = tile.minChunkZ(); z <= tile.maxChunkZ(); z++) {
-                inv.mcdonate$schedule(x, z, ChunkStatus.INITIALIZE_LIGHT, true);
+                fs.add(inv.mcdonate$schedule(x, z, ChunkStatus.INITIALIZE_LIGHT, true));
             }
         }
+        GENERATING.put(tile, fs);
     }
 
     /** 去掉 prefetch 加的票（导出完、任务被撤）。在主线程上调。 */
@@ -138,17 +146,15 @@ final class TileExporter {
 
     /** 已经排上生成的、和 tile 紧挨着（含对角）的 tile，它们的 16 个 chunk 都到了 initialize_light。在主线程上调。 */
     static void waitAdjacentDone(TilePos tile, ServerChunkCache cache, long timeoutMs) {
-        mcdonate.worker.mixin.ServerChunkCacheInvoker inv = (mcdonate.worker.mixin.ServerChunkCacheInvoker) cache;
+        // 排上过的（包括已经被撤、去了票的）都算：它们的生成任务原版不会因为去票就停（见 GENERATING）
+        GENERATING.values().removeIf(fs -> fs.stream().allMatch(java.util.concurrent.CompletableFuture::isDone));
         List<java.util.concurrent.CompletableFuture<?>> futures = new ArrayList<>();
-        for (TilePos o : PREFETCHED) {
+        for (var e : GENERATING.entrySet()) {
+            TilePos o = e.getKey();
             if (o.equals(tile) || Math.max(Math.abs(o.x() - tile.x()), Math.abs(o.z() - tile.z())) > 1) {
                 continue;
             }
-            for (int x = o.minChunkX(); x <= o.maxChunkX(); x++) {
-                for (int z = o.minChunkZ(); z <= o.maxChunkZ(); z++) {
-                    futures.add(inv.mcdonate$schedule(x, z, ChunkStatus.INITIALIZE_LIGHT, true));
-                }
-            }
+            futures.addAll(e.getValue());
         }
         if (futures.isEmpty()) {
             return;
@@ -259,8 +265,11 @@ final class TileExporter {
         }
         for (int x = tile.minChunkX() - r; x <= tile.maxChunkX() + r; x++) {
             for (int z = tile.minChunkZ() - r; z <= tile.maxChunkZ() + r; z++) {
-                // 不加票、不触发生成，只拿现成的
-                ChunkAccess chunk = cache.getChunk(x, z, ChunkStatus.EMPTY, false);
+                // 纯查找（holder 里最新的 chunk）：不加票、不触发生成，也不会在主线程上 poll 别的任务（调度 11-09：
+                // getChunk 的 managedBlock 万一 poll 到排着的任务、建了新的生成任务，序列化时就会撞上）
+                net.minecraft.server.level.ChunkHolder holder =
+                        ((mcdonate.worker.mixin.ChunkMapInvoker) cache.chunkMap).mcdonate$holder(net.minecraft.world.level.ChunkPos.asLong(x, z));
+                ChunkAccess chunk = holder == null ? null : holder.getLatestChunk();
                 if (chunk == null) {
                     throw new IllegalStateException("chunk (" + x + ", " + z + ") 不在内存里，生成依赖和预期不符");
                 }

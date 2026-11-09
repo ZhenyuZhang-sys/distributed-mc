@@ -54,3 +54,12 @@ def test_adjacent_tiles_export_safely(worker):
         r = worker.rcon(f"donor export 6000 {-6000 - 10 * row} batch 10 1")
         assert r.startswith("{"), f"第 {row} 遍失败：{r}"
 
+
+@pytest.mark.slow
+def test_adjacent_export_with_cancelled_neighbours(worker):
+    """11-09 kexu k2（10cadc8 转弯）还撞：转弯时撤得多，被撤的相邻 tile 去了票，导出前没等它，它的地物照样写进来。
+    紧挨着的一排排上以后马上撤掉每隔一个，只导出剩下的；跑几遍都要成功。"""
+    for row in range(6):
+        r = worker.rcon(f"donor export 7000 {-7000 - 10 * row} batch 12 1 churn")
+        assert r.startswith("{"), f"第 {row} 遍失败：{r}"
+
