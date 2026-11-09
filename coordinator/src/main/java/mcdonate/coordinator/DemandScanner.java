@@ -246,10 +246,11 @@ public final class DemandScanner {
                 }
                 if (deadline && known) {
                     // 7.2：玩家（取最快看到它的那个）什么时候看到这个 tile
-                    double best = Double.POSITIVE_INFINITY, by = Double.POSITIVE_INFINITY;
+                    double best = Double.POSITIVE_INFINITY, by = Double.POSITIVE_INFINITY, lat = Double.POSITIVE_INFINITY;
                     TilePos tp = new TilePos(x, z);
                     for (Motion mo : motions.values()) {
                         best = Math.min(best, mo.deadlineSecondsFast(tp, view));
+                        lat = Math.min(lat, mo.lateralChunks(tp));
                         Integer f = fronts.get(mo);
                         if (f != null) {
                             // 区域比 tile 多一圈：tile 进 f+1 圈时区域碰到前沿
@@ -257,7 +258,8 @@ public final class DemandScanner {
                         }
                     }
                     tasks.setDue(x, z, Double.isInfinite(best) ? Long.MAX_VALUE : now + (long) (best * 1000),
-                            Double.isInfinite(by) ? Long.MAX_VALUE : now + (long) (by * 1000));
+                            Double.isInfinite(by) ? Long.MAX_VALUE : now + (long) (by * 1000),
+                            Double.isInfinite(lat) ? Integer.MAX_VALUE : (int) Math.round(lat));
                 }
             }
         }

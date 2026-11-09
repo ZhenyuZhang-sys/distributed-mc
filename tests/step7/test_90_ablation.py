@@ -27,7 +27,8 @@ from mcd import SCRIPTS, compose, data_root, donor_imports, limits, run, wait_un
 
 ALL = ["territory", "deadline", "throughput", "hedge", "waitdonor"]
 ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"],
-          "slow-deadline": ["deadline"], "slow-territory-deadline": ["territory", "deadline"], "vanilla": []}
+          "slow-deadline": ["deadline"], "slow-territory-deadline": ["territory", "deadline"],
+          "deploy": ["territory", "deadline", "throughput"], "vanilla": []}
 # slow-deadline：第三个 donor 加 deadline。worker3 默认 0.5 核（慢 donor）；当成第三个正常 donor 用时
 # 外面设 WORKER3_CPUS=4 WORKER3_CPUSET=<4 个核>（11-09 调度：2 个和 3 个 donor 各跑 2 轮）
 # vanilla：原版对照（0 个 donor，worker 容器停掉，不找需求），同一组核、同样航线长度和时长（调度 11-09：

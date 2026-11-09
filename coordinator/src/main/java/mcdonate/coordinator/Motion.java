@@ -55,6 +55,26 @@ final class Motion {
         return Math.max(dx, dz) - view;
     }
 
+    /**
+     * tile 中心离飞行线（过玩家、沿速度方向的直线）多少个 chunk（11-09：派活先做前方走廊）。不动时是正无穷。纯函数。
+     *
+     * @param x 玩家的方块坐标
+     */
+    static double lateralChunks(TilePos tile, double x, double z, double vx, double vz) {
+        double len = Math.hypot(vx, vz);
+        if (len == 0) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double cx = tile.minChunkX() + (TilePos.SIZE - 1) / 2.0 - x / 16, cz = tile.minChunkZ() + (TilePos.SIZE - 1) / 2.0 - z / 16;
+        return Math.abs(cx * vz - cz * vx) / len;
+    }
+
+    /** tile 离这个玩家飞行线多少个 chunk（见上）。 */
+    double lateralChunks(TilePos tile) {
+        double[] p = position(), v = velocity();
+        return lateralChunks(tile, p[0], p[1], v[0], v[1]);
+    }
+
     /** 按现在的速度直线走，多少秒后 tile 进入视距。 */
     double deadlineSeconds(TilePos tile, int view) {
         double[] p = position(), v = velocity();

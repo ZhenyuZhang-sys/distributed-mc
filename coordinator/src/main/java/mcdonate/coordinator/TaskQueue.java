@@ -41,6 +41,15 @@ public final class TaskQueue {
     static final long MAX_LEASE_TOTAL_MS = Config.getLong("maxLeaseTotalMs", 120_000);
 
     /**
+     * 11-09：前方走廊的半宽（chunk）：tile 中心离飞行线不超过这么多的先派（kexu 烟花直线：donor 写入只有 26% 在前方；
+     * 服务器只有 2 核时自己只够做最近的，donor 要先包下路线）。
+     */
+    static final int CORRIDOR_CHUNKS = Config.getInt("corridorChunks", 6);
+
+    /** 11-09：找需求算过、没有截止时间的 tile（侧后方）不派。false 退回原来的（donor 空着时也派它们），对照用。 */
+    static final boolean SKIP_NO_DEADLINE = !"false".equalsIgnoreCase(Config.get("skipNoDeadline", "true"));
+
+    /**
      * 11-09：派之前问"做得完吗"时，在 importBy 前面再留多少毫秒（结果在主线程上排队等导入、找需求每秒才看一次前沿）。
      */
     static final long IMPORT_MARGIN_MS = Config.getLong("importMarginMs", 1_000);
@@ -90,6 +99,8 @@ public final class TaskQueue {
         long importBy = Long.MAX_VALUE;
         /** 入队时间（分段耗时用）。 */
         long enqueuedAt = -1;
+        /** 11-09：tile 离最近一个玩家飞行线多少个 chunk（取整；不知道是 Integer.MAX_VALUE）。派活先做走廊里的。 */
+        int lateral = Integer.MAX_VALUE;
         /** 派出时离截止（importBy，不知道时 due）还有多少毫秒；不知道是 -1。 */
         long slackAtLease = -1;
 
@@ -209,6 +220,7 @@ public final class TaskQueue {
         t.scored = false;
         t.due = Long.MAX_VALUE;
         t.importBy = Long.MAX_VALUE;
+        t.lateral = Integer.MAX_VALUE;
         t.enqueuedAt = clock.getAsLong();
         t.hardWorld = hardWorld;
         t.softWorker = -1;
@@ -316,6 +328,9 @@ public final class TaskQueue {
             if (!eligible(c, worker)) {
                 continue;
             }
+            if (byDue && SKIP_NO_DEADLINE && c.scored && deadlineKey(c) == Long.MAX_VALUE) {
+                continue; // 11-09：找需求算过、玩家不会去的（侧后方）不派
+            }
             // 7.3 / 11-09：知道前沿时问"能不能在区域进前沿之前做完"（留余量），不知道时照旧问 due
             long limit = c.importBy != Long.MAX_VALUE ? c.importBy - IMPORT_MARGIN_MS : c.due;
             if (limit != Long.MAX_VALUE && !dueOk.test(limit)) {
@@ -325,7 +340,7 @@ public final class TaskQueue {
                 t = c; // 先进先出：第一个合适的
                 break;
             }
-            if (t == null || deadlineKey(c) < deadlineKey(t)) {
+            if (t == null || DISPATCH_ORDER.compare(c, t) < 0) {
                 t = c; // 7.2：最急的先派（11-09：知道前沿时按 importBy，和 pruneHopeless 的顺序一致）
             }
         }
@@ -359,6 +374,11 @@ public final class TaskQueue {
 
     /** 同上，再加上预计区域进服务器前沿的时间（11-09；不知道是 Long.MAX_VALUE）。 */
     public synchronized void setDue(int tx, int tz, long due, long importBy) {
+        setDue(tx, tz, due, importBy, Integer.MAX_VALUE);
+    }
+
+    /** 同上，再加上 tile 离飞行线多少个 chunk（11-09，走廊优先；不知道是 Integer.MAX_VALUE）。 */
+    public synchronized void setDue(int tx, int tz, long due, long importBy, int lateral) {
         Long id = byTile.get(tileKey(tx, tz));
         if (id == null) {
             return;
@@ -367,6 +387,7 @@ public final class TaskQueue {
         if (t.state == State.QUEUED || t.state == State.LEASED) {
             t.due = due;
             t.importBy = importBy;
+            t.lateral = lateral;
             t.scored = true;
         }
     }
@@ -461,6 +482,12 @@ public final class TaskQueue {
         return t.importBy != Long.MAX_VALUE ? t.importBy : t.due;
     }
 
+    /** 派活的先后：走廊里的在前（0），其余（1）；同一档按截止时间。pruneHopeless 按同样的顺序估排队。 */
+    private static final java.util.Comparator<Task> DISPATCH_ORDER = java.util.Comparator
+            .<Task>comparingInt(t -> t.lateral <= CORRIDOR_CHUNKS ? 0 : 1)
+            .thenComparingLong(TaskQueue::deadlineKey)
+            .thenComparingLong(t -> t.id);
+
     /**
      * 11-09：排队太久的现在就丢掉，交给服务器（f2 实测入队→派出 p50 4～10 秒、p90 22～43 秒，派出→交回约 1.4 秒）。
      * 排队的任务按截止时间从早到晚排（和 assign 的顺序一致），第 i 个（只数留下的）大约在
@@ -484,7 +511,7 @@ public final class TaskQueue {
                 order.add(t);
             }
         }
-        order.sort(java.util.Comparator.comparingLong(TaskQueue::deadlineKey).thenComparingLong(t -> t.id));
+        order.sort(DISPATCH_ORDER);
         int position = 0;
         for (Task t : order) {
             double start = now + (position + leased / 2.0) / tilesPerMs;
