@@ -44,6 +44,7 @@ public final class Coordinator implements ModInitializer {
         //   /donor provenance       测试用：最近 64 条来源事件（coordinator 报给 common.Provenance 的 DONOR/REJECTED）
         //   /donor syncload <x> <z>  测试用：在主线程上同步要这个 chunk（FULL），回复用了多少毫秒（7.6a）
         //   /donor waitimport chunkcache|server  测试用：等 donor 的导入走哪个队列（7.6a，正确的是 chunkcache）
+        //   /donor waitsync abandon|wait  变异检查用：主线程同步要 chunk 时放弃闸门（正确）还是照样等
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
@@ -88,6 +89,9 @@ public final class Coordinator implements ModInitializer {
                         .then(Commands.literal("waitimport")
                                 .then(Commands.literal("chunkcache").executes(ctx -> setWaitImport(ctx.getSource(), true)))
                                 .then(Commands.literal("server").executes(ctx -> setWaitImport(ctx.getSource(), false))))
+                        .then(Commands.literal("waitsync")
+                                .then(Commands.literal("abandon").executes(ctx -> setWaitSync(ctx.getSource(), true)))
+                                .then(Commands.literal("wait").executes(ctx -> setWaitSync(ctx.getSource(), false))))
                         .then(Commands.literal("rules")
                                 .then(Commands.literal("strict").executes(ctx -> setStrict(ctx.getSource(), true)))
                                 .then(Commands.literal("legacy").executes(ctx -> setStrict(ctx.getSource(), false))))
@@ -259,6 +263,13 @@ public final class Coordinator implements ModInitializer {
             network.waitDonor.importViaChunkCache = chunkCache;
         }
         return reply(source, "waitimport " + (chunkCache ? "chunkcache" : "server"));
+    }
+
+    private static int setWaitSync(CommandSourceStack source, boolean abandon) {
+        if (network != null) {
+            network.waitDonor.abandonOnSync = abandon;
+        }
+        return reply(source, "waitsync " + (abandon ? "abandon" : "wait"));
     }
 
     private static int setFeature(CommandSourceStack source, String name, boolean on) {

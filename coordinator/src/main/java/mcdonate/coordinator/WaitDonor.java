@@ -49,6 +49,11 @@ public final class WaitDonor {
      * 同步等的时候不执行，只能等到超时。false 只给测试用（证明测试真的覆盖了这个坑）。
      */
     volatile boolean importViaChunkCache = true;
+    /**
+     * 主线程同步要 chunk 时放不放弃闸门。true（正确做法）：放弃所有闸门、不建新的，主线程不等 donor；
+     * false 只给变异检查用（/donor waitsync wait）：证明"同步要 chunk 不等"那条测试真的防住了主线程卡在闸门上。
+     */
+    volatile boolean abandonOnSync = true;
 
     WaitDonor(Features features, TaskQueue tasks, DonorThroughput throughput) {
         this.features = features;
@@ -63,7 +68,7 @@ public final class WaitDonor {
     }
 
     CompletableFuture<Void> gateFor(long chunk, long now) {
-        if (!features.on(Features.WAITDONOR) || SYNC_DEPTH.get() > 0) {
+        if (!features.on(Features.WAITDONOR) || (SYNC_DEPTH.get() > 0 && abandonOnSync)) {
             return null;
         }
         int cx = (int) chunk, cz = (int) (chunk >>> 32);
@@ -136,7 +141,7 @@ public final class WaitDonor {
     public static void enterSync() {
         SYNC_DEPTH.incrementAndGet();
         WaitDonor w = instance;
-        if (w != null && !w.gates.isEmpty()) {
+        if (w != null && w.abandonOnSync && !w.gates.isEmpty()) {
             for (Long id : java.util.List.copyOf(w.gates.keySet())) {
                 w.abandoned.incrementAndGet();
                 w.release(id);

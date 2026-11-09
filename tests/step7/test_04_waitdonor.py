@@ -103,8 +103,12 @@ def ready(server, worker):
     # 变异检查用（docs/step7-plan.md 7.6a）：MCD_MUTATE_WAITIMPORT=server 时导入故意改回 server.execute
     if os.environ.get("MCD_MUTATE_WAITIMPORT") == "server":
         assert "server" in server.rcon("donor waitimport server")
+    # 变异检查：MCD_MUTATE_WAITSYNC=wait 时主线程同步要 chunk 也照样等闸门（应当让"同步要 chunk 不等"那条失败）
+    if os.environ.get("MCD_MUTATE_WAITSYNC") == "wait":
+        assert "wait" in server.rcon("donor waitsync wait")
     yield wid
     server.rcon("donor waitimport chunkcache")
+    server.rcon("donor waitsync abandon")
     server.rcon("donor feature waitdonor off")
     server.rcon("bench track off")
 
@@ -152,6 +156,7 @@ def test_sync_load_does_not_wait(server, ready):
     ms = int(server.rcon(f"donor syncload {x} {z}").split()[1])
     w1 = status(server)["waitdonor"]
     print(f"同步要 chunk 用了 {ms} ms", w0, w1)
+    assert w1["waits"] == w0["waits"], ("主线程同步要 chunk 时不能建闸门（会卡主线程等 donor）", w0, w1)
     assert w1["timeouts"] == w0["timeouts"], (w0, w1)
     assert chunk_runs(server, x, z)["noise"] > 0, "同步要的 chunk 应该是服务器自己生成的"
 
