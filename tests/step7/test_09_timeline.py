@@ -34,3 +34,10 @@ def test_status_reports_frontier(server):
     assert "frontier" in s["scan"], s["scan"]
     assert {"importFrontier", "importMarginMs"} <= set(s["config"]), s["config"]
     assert "import_late" in s["stale"], s["stale"]
+
+
+def test_status_reports_neighbor_pad(server):
+    # 11-09 走廊邻居补齐：默认关，开关和派出个数写进 /donor status（直线 A/B 看）
+    s = json.loads(server.rcon("donor status"))
+    assert s["config"]["corridorNeighborPad"] == 0, s["config"]
+    assert "padded" in s["stale"], s["stale"]
