@@ -304,4 +304,19 @@ class TaskQueueDeadlineTest {
         q.setDue(0, 0, now.get() + 2_000, now.get() + 1_000);
         assertEquals(List.of(), q.pruneHopeless(0, 1_000), "没有 donor（吞吐 0）时估不了，不丢");
     }
+
+    @Test
+    void slackRecordedAtLease() {
+        // 派出时离截止（importBy，不知道时 due）还有多少毫秒；都不知道是 -1。看排队久的是不是没有 deadline 的
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 0);
+        q.setDue(0, 0, now.get() + 9_000, now.get() + 7_000);
+        long a = q.find(0, 0), b = q.find(5, 0);
+        q.assign(1);
+        q.assign(2);
+        assertEquals(7_000, q.slackAtLease(a));
+        assertEquals(-1, q.slackAtLease(b));
+        assertEquals(-1, q.slackAtLease(999));
+    }
 }
