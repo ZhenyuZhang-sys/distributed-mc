@@ -84,8 +84,13 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     level = f"soak{int(time.time())}"
     run(str(SCRIPTS / "new_world.sh"), level, str(server.seed), timeout=900)
     server.level = level
+    # 对照世界：先关自动存盘再生成（11-09 f3：抽样的几千个分散 chunk 生成完，原版每 5 分钟的自动存盘在一个 tick 里
+    # 把它们全编码，整机忙时用了 60 秒，看门狗把服务器杀了）。生成完停服再拷，和上面浸泡的存档一样一致；拷完再起来，后面的测试照常用
+    server.rcon("save-off")
     server.chunky_list(sample)
-    control = server.snapshot(base / "control")
+    compose("stop", "minecraft", timeout=300)
+    control = server._copy_world(base / "control")
+    compose("up", "-d", "--wait", "--wait-timeout", "600", "minecraft", timeout=660)
     acc = {"imported": Diff(examples=[]), "server": Diff(examples=[])}
     for p in sample:
         acc["imported" if p in imported else "server"].add(compare_chunks(read_chunk(snap, *p), read_chunk(control, *p)))
