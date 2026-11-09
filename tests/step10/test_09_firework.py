@@ -202,3 +202,23 @@ def test_report_compares_code_versions():
 def test_cli_label_per_campaign():
     assert firework.parse_campaign_arg('runs/matrix-x=30a7c22') == ('runs/matrix-x', '30a7c22')
     assert firework.parse_campaign_arg('runs/matrix-x') == ('runs/matrix-x', None)
+
+
+def test_autosave_seconds_from_cumulative_ticks():
+    # 起飞时 tick 5990；每秒 20 tick，第 1 秒走到 6010 → 那一秒里有 autosave（6000）；之后 12000 在第 301 秒
+    rows = [dict(t_s=i, ticks=20) for i in range(1, 400)]
+    assert firework.autosave_seconds(rows, 5990) == [1, 301]
+    assert firework.autosave_seconds(rows, None) == []
+
+
+def test_report_has_demo_section():
+    rows = []
+    for v in (10, 15):
+        for d in (0, 1):
+            rows.append(dict(experiment='flight', scenario='firework', speed_bps=v, donors=d, donor_profile='1x8' if d else None,
+                             stall_after_exit=0.0, forward_ready_median=80 * (1 + d), view_ready_mean=.5 + .3 * d,
+                             front_sector_ready_mean=.4 + .4 * d))
+    md = firework.report(rows)
+    assert '## 演示用：10/15 格/秒，同样不卡、前方已生成区域翻倍' in md
+    sec = md.split('## 演示用')[1]
+    assert '| 10 | 原版（0 个 donor） | 0% | 80 | 50% | 40% |' in sec and '| 10 | 1 个 donor，8 核 | 0% | 160 | 80% | 80% |' in sec

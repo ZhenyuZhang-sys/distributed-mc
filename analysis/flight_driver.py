@@ -82,6 +82,15 @@ def _status_counts(controller) -> dict:
                 import_ms=s.get('import', {}).get('totalMs', 0), tiles_done=sum(w.get('done', 0) for w in s.get('workers', [])))
 
 
+def _server_tick(runner):
+    """服务器现在的 tick 数（/bench tick），拿不到是 None。"""
+    import json
+    try:
+        return int(json.loads(runner.rcon('bench tick'))['tick'])
+    except Exception:   # noqa: BLE001
+        return None
+
+
 def _keep_diagnostics(runner, out, t_fly, donors):
     """查 MSPT 尖峰用（调度 11-09）：飞的时候带时间戳的服务器日志（server_env 开了 GC 日志的话也在里面），和 /donor imports 的全部条目
     （每条有主线程导入的三段耗时：解析、查区域含读存档、写入）。拿不到就算了，不影响这一轮。"""
@@ -166,6 +175,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         speed = scenario_speed(p)
         routes = (scenarios.routes(scenario, seed=seed, seconds=p['duration_s'], speed=p.get('speed_bps'), cache_radius_blocks=cache * 16)
                   if scenario else [None])
+        start_tick = _server_tick(runner)   # 对 autosave（每 6000 tick）用
         t_fly = time.time()
         dirs = [out / ('flight' if i == 0 else f'flight{i + 1}') for i in range(len(routes))]
         errors = []
@@ -209,7 +219,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 result.update(stall_fraction=sum(stalls) / len(stalls), stall_fraction_max=max(stalls))
             if dists:
                 result['distance_ratio'] = sum(dists) / len(dists)
-        result.update(players=len(routes), scenario_route=routes[0], fly_start_unix=t_fly,
+        result.update(players=len(routes), scenario_route=routes[0], fly_start_unix=t_fly, fly_start_tick=start_tick,
                       cant_keep_up=sum("Can't keep up" in l for l in log_lines),
                       moved_too_quickly=sum('moved too quickly' in l for l in log_lines))
         if cpu_before is not None:

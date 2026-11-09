@@ -124,6 +124,23 @@ def forward_summary(per, rows, start, radius):
     return dict(forward_ready_median=vals[len(vals) // 2], forward_ready_min=vals[0])
 
 
+AUTOSAVE_TICKS = 6000
+
+
+def autosave_seconds(rows, start_tick, every=AUTOSAVE_TICKS):
+    """哪几秒里有 autosave（服务器 tick 数到 every 的整数倍；sync-chunk-writes=true 时存盘同步写在主线程）。
+    start_tick：起飞时的 tick 数（驱动的 fly_start_tick），按逐秒行的 ticks 累加。"""
+    if start_tick is None:
+        return []
+    out, t = [], start_tick
+    for r in rows:
+        nt = t + r.get('ticks', 0)
+        if nt // every > t // every:
+            out.append(r['t_s'])
+        t = nt
+    return out
+
+
 def max_sustainable(runs, limit=0.05, key='config'):
     """runs：[{config, speed_bps, stall_after_exit}]。返回 {config: 能扛住的最高速度或 None}。"""
     by = {}
@@ -233,6 +250,17 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
     for n in names:
         per = sorted((r['speed_bps'], r.get('stall_after_exit')) for r in sweep if r['config'] == n)
         out.append(f"| {n} | **{_f(best[n])}** | " + '，'.join(f'{_f(v, digits=1) if isinstance(v, float) else v}: {_f(s, True)}' for v, s in per) + ' |')
+    demo = [r for r in sweep if r['speed_bps'] in (10, 15)]
+    if demo:   # 调度 11-09：演示用这组
+        out += ['', '## 演示用：10/15 格/秒，同样不卡、前方已生成区域翻倍', '',
+                '| 速度（格/秒） | 配置 | 卡住占比 | 前方已就绪距离（中位，格） | 视距圈就绪（平均） | 前方 90 度扇形就绪（平均） |',
+                '| --- | --- | --- | --- | --- | --- |']
+        for v in (10, 15):
+            for n in names:
+                rs = [r for r in demo if r['speed_bps'] == v and r['config'] == n]
+                if rs:
+                    out.append(f"| {v} | {n} | {_f(_mean(rs, 'stall_after_exit'), True)} | {_f(_mean(rs, 'forward_ready_median'), digits=0)} "
+                               f"| {_f(_mean(rs, 'view_ready_mean'), True)} | {_f(_mean(rs, 'front_sector_ready_mean'), True)} |")
     real = [r for r in fw if r.get('speed_bps') in (None, 33.5)]
     out += ['', '真实烟花速度（33.5 格/秒）下，出了缓存区以后：', '',
             '| 场景 | 配置 | 卡住占比 | 前方已就绪（中位 / 最低，格） | 视距圈就绪（平均 / 最低） | 前方 90 度扇形就绪（平均 / 最低） | 实际 / 理想速度 | 第一次卡住（出去后几秒） | MSPT p95 / max | Can\'t keep up | moved too quickly | 接着做完的占比（donor 导入或缓存区边上的半成品） | 丢弃：来晚 / 碰到服务器 / 过时 | 导入主线程（ms） | worker 核数 | tile/s |',

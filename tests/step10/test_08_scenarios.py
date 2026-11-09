@@ -213,3 +213,12 @@ def test_driver_keeps_spike_diagnostics(tmp_path):
     got = [json.loads(l) for l in (tmp_path / 'c9' / 'imports.jsonl').read_text().splitlines()]
     assert [g['tile'] for g in got] == [[i, 0] for i in range(5)]
     assert isinstance(out['fly_start_unix'], float)
+
+
+def test_driver_records_start_tick(tmp_path):
+    # 调度 11-09：autosave 每 6000 tick 一次（sync-chunk-writes=true 时同步写在主线程），记下起飞时服务器的 tick 数好对尖峰
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    runner.tick = 5990
+    out = drive(rcell('firework'), tmp_path / 'c10')
+    assert out['fly_start_tick'] == 5990
