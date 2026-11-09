@@ -209,6 +209,18 @@ final class CoordinatorServer {
                 if (!late.isEmpty()) {
                     LOG.info("任务 {} 玩家已经看到了还没派出去，丢掉，交给服务器", late);
                 }
+                // 7.2（11-09 补的漏洞）：玩家已经飞过、又不在任何玩家需求范围里的：删掉，派出去的撤回
+                TaskQueue.Stale stale = tasks.dropPassed(demand::inDemand);
+                for (TaskQueue.Cancelled c : stale.cancelled()) {
+                    waitDonor.release(c.taskId());
+                    Connection conn = workers.get(c.worker());
+                    if (conn != null) {
+                        conn.send(new Cancel(c.taskId()));
+                    }
+                }
+                if (!stale.dropped().isEmpty() || !stale.cancelled().isEmpty()) {
+                    LOG.info("玩家已经飞过的 tile：删掉排队的 {} 个，撤回派出的 {} 个", stale.dropped().size(), stale.cancelled().size());
+                }
             }
             if (features.on(Features.HEDGE)) {
                 // 7.4：预计做完时玩家已经看到了的，撤回，交给服务器
@@ -404,6 +416,7 @@ final class CoordinatorServer {
                 .append(",\"other_world\":").append(discardedBy.get(RegionRules.Discard.OTHER_WORLD).get())
                 .append(",\"server\":").append(discardedBy.get(RegionRules.Discard.SERVER).get())
                 .append("},\"accepted\":").append(acceptedImports.get())
+                .append(",\"stale\":").append(tasks.staleJson())
                 .append(",\"hedge\":{\"cancelled\":").append(tasks.hedgeCancelled()).append(",\"wasted\":").append(tasks.hedgeWasted())
                 .append("},\"ledger\":").append(Ownership.LEDGER.size())
                 .append(",\"waitdonor\":").append(waitDonor.json())

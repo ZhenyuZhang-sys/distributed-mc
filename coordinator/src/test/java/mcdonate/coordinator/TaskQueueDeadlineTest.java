@@ -53,6 +53,53 @@ class TaskQueueDeadlineTest {
         assertEquals(5, q.assign(1).orElseThrow().tx());
     }
 
+    // ---- 7.2 的漏洞（11-09 f3 实测：几轮里 donor 写入的 chunk 几乎全在玩家身后）----
+    // 计划写了"玩家已经到了的任务直接丢掉"，实现只丢了 due 已过的；飞过的 tile 没有将来的到达时间（due 是无穷大），
+    // 一直留在队列里，别的做完了照样派。开 deadline 时：飞过了（due 无穷大）、又不在任何玩家当前需求范围里的，删掉；派出去的撤回。
+
+    @Test
+    void passedTilesOutsideDemandAreDroppedAndLeasedOnesCancelled() {
+        TaskQueue q = queue("deadline");
+        // 玩家沿 +x 飞，tile 0..4 在身后，10 在前面
+        for (int x : new int[] {0, 2, 4, 10}) {
+            q.enqueue(x, 0);
+        }
+        q.enqueue(30, 30); // 从来没被找需求算过 due（比如手动派的）：不动
+        TaskQueue.Assignment leased = q.assign(7).orElseThrow(); // 派出去一个（tile 0）
+        for (int x : new int[] {0, 2, 4}) {
+            q.setDue(x, 0, Long.MAX_VALUE); // 飞过了：将来不会再看到
+        }
+        q.setDue(10, 0, now.get() + 5_000);
+        // 当前需求范围：只有 x >= 3 的（tile 4 还在范围里，即使飞过了也留着）
+        TaskQueue.Stale stale = q.dropPassed((tx, tz) -> tx >= 3);
+        assertEquals(List.of(q.find(2, 0)), stale.dropped(), "排队中、飞过了、不在范围里的删掉");
+        assertEquals(List.of(new TaskQueue.Cancelled(leased.taskId(), 7)), stale.cancelled(), "派出去的撤回、发 cancel");
+        assertEquals(State.DROPPED, q.state(leased.taskId()));
+        assertEquals(State.QUEUED, q.state(q.find(4, 0)), "还在范围里的留着");
+        assertEquals(State.QUEUED, q.state(q.find(10, 0)), "前面的留着");
+        assertEquals(State.QUEUED, q.state(q.find(30, 30)), "没算过 due 的不动");
+        assertEquals(0, q.inFlight(7));
+    }
+
+    @Test
+    void inDemandAreaIsChebyshevAroundAnyPlayer() {
+        long p = ((long) 0 << 32) | (100 & 0xffffffffL); // 玩家在 chunk (100, 0)
+        // tile 大小 4、outer 12：tile 28 覆盖 chunk 112..115，离 100 是 12 圈，在；tile 29 是 16 圈，不在
+        assertTrue(DemandScanner.inArea(28, 0, new long[] {p}, 12, 4));
+        assertTrue(!DemandScanner.inArea(29, 0, new long[] {p}, 12, 4));
+        assertTrue(DemandScanner.inArea(22, -3, new long[] {p}, 12, 4), "负坐标：tile -3 覆盖 chunk -12..-9");
+        assertTrue(!DemandScanner.inArea(0, 0, new long[0], 12, 4), "没有玩家：都不在范围里");
+    }
+
+    @Test
+    void passedTilesKeptWhenDeadlineOff() {
+        TaskQueue q = queue(""); // v0（先来先服务）是对照组，保持原样
+        q.enqueue(0, 0);
+        q.setDue(0, 0, Long.MAX_VALUE);
+        TaskQueue.Stale stale = q.dropPassed((tx, tz) -> false);
+        assertTrue(stale.dropped().isEmpty() && stale.cancelled().isEmpty());
+    }
+
     @Test
     void severalLeasesPerWorker() {
         TaskQueue q = queue("throughput");

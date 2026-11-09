@@ -71,6 +71,8 @@ public final class TaskQueue {
         boolean hedged;
         /** 7.2：预计玩家什么时候看到这个 tile（毫秒时间戳）；不知道是 Long.MAX_VALUE。 */
         long due = Long.MAX_VALUE;
+        /** 7.2：找需求算过 due 没有（没算过的，比如手动派的，不按"飞过了"删）。 */
+        boolean scored;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -184,6 +186,9 @@ public final class TaskQueue {
             byTile.put(tileKey(tx, tz), t.id);
         }
         t.state = State.QUEUED;
+        t.hedged = false; // 撤回过、又重新需要了：之后的结果照常收
+        t.scored = false;
+        t.due = Long.MAX_VALUE;
         t.hardWorld = hardWorld;
         t.softWorker = -1;
         t.orphanSince = clock.getAsLong();
@@ -328,7 +333,59 @@ public final class TaskQueue {
         Task t = tasks.get(id);
         if (t.state == State.QUEUED || t.state == State.LEASED) {
             t.due = due;
+            t.scored = true;
         }
+    }
+
+    public record Cancelled(long taskId, int worker) {}
+
+    /** {@link #dropPassed} 的结果：删掉的排队任务、撤回的已派任务（要给 worker 发 cancel）。 */
+    public record Stale(List<Long> dropped, List<Cancelled> cancelled) {}
+
+    public interface TileFilter {
+        boolean test(int tx, int tz);
+    }
+
+    private int staleDropped;
+    private int staleCancelled;
+
+    /**
+     * 7.2（11-09 补的漏洞）：开 deadline 时，玩家已经飞过（找需求算过、没有将来的到达时间，due 是无穷大）、
+     * 又不在任何玩家当前需求范围里的 tile：排队的删掉，派出去的撤回（之后回来的结果作废）。
+     * 计划本来就写了"玩家已经到了的任务直接丢掉"，原来只丢了 due 已过的，飞过的一直留着，别的做完了照样派
+     * （f3 实测几轮 donor 写入的 chunk 几乎全在玩家身后）。开关关着（v0，先来先服务）不动，它是对照组。
+     */
+    public synchronized Stale dropPassed(TileFilter inDemand) {
+        List<Long> dropped = new ArrayList<>();
+        List<Cancelled> cancelled = new ArrayList<>();
+        if (!features.on(Features.DEADLINE)) {
+            return new Stale(dropped, cancelled);
+        }
+        for (Task t : tasks.values()) {
+            if (!t.scored || t.due != Long.MAX_VALUE || inDemand.test(t.tx, t.tz)) {
+                continue;
+            }
+            if (t.state == State.QUEUED) {
+                queue.remove(t.id);
+                t.state = State.DROPPED;
+                dropped.add(t.id);
+                staleDropped++;
+            } else if (t.state == State.LEASED) {
+                int w = t.worker;
+                leaseRemove(w, t.id);
+                t.state = State.DROPPED;
+                t.worker = -1;
+                t.hedged = true; // 之后回来的结果作废
+                cancelled.add(new Cancelled(t.id, w));
+                staleCancelled++;
+            }
+        }
+        dropped.sort(null);
+        return new Stale(dropped, cancelled);
+    }
+
+    public synchronized String staleJson() {
+        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + "}";
     }
 
     /** 7.2：还在排队、玩家已经看到了（due 已过）的任务丢掉，交给服务器。返回丢掉的。 */

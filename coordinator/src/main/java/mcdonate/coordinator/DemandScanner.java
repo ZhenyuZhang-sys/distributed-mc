@@ -130,6 +130,28 @@ public final class DemandScanner {
         }
     }
 
+    /** 上一次扫描时各玩家所在的 chunk 和 outer 圈数（7.2 删飞过的 tile 用；别的线程读）。 */
+    private volatile long[] lastPlayers = new long[0];
+    private volatile int lastOuter;
+
+    /** 这个 tile 在不在任何玩家当前的需求范围（outer 圈）里。按上一次扫描的位置。 */
+    boolean inDemand(int tx, int tz) {
+        return inArea(tx, tz, lastPlayers, lastOuter, TilePos.SIZE);
+    }
+
+    /** tile 离某个玩家所在 chunk 的切比雪夫距离（chunk）不超过 outer。纯函数。 */
+    static boolean inArea(int tx, int tz, long[] players, int outer, int size) {
+        for (long p : players) {
+            int px = (int) p, pz = (int) (p >>> 32);
+            int dx = Math.max(0, Math.max(tx * size - px, px - (tx * size + size - 1)));
+            int dz = Math.max(0, Math.max(tz * size - pz, pz - (tz * size + size - 1)));
+            if (Math.max(dx, dz) <= outer) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 在主线程上调用，每秒一次。 */
     void scan() {
         long t0 = System.nanoTime();
@@ -150,6 +172,12 @@ public final class DemandScanner {
             motions.computeIfAbsent(p.getUUID(), k -> new Motion()).record(now, p.getX(), p.getZ());
         }
         motions.keySet().retainAll(present);
+        long[] at0 = new long[level.players().size()];
+        for (int i = 0; i < at0.length; i++) {
+            at0[i] = level.players().get(i).chunkPosition().toLong();
+        }
+        lastPlayers = at0;
+        lastOuter = outer;
         for (ServerPlayer p : level.players()) {
             ChunkPos at = p.chunkPosition();
             // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再按离玩家远近排序。

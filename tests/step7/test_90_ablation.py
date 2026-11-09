@@ -14,6 +14,7 @@
 跑法：scripts/ablation.sh（会依次用不同的 MCD_JVM_EXTRA 调 test.sh step7 --slow -k ablation）
 """
 
+import bisect
 import json
 import os
 
@@ -41,6 +42,29 @@ def flight_guard(out) -> dict:
     return done.get("sync_loads") or {}
 
 
+def donor_lead(out) -> dict:
+    """donor 写入的 chunk，写入那一刻在玩家前方多远（沿飞行方向 +x，单位 chunk）：在前方 ≥ 10（一个视距）的比例、
+    在身后（玩家已经飞过）的比例、中位数。来源是飞行记录的 provenance.jsonl（donor 事件）和逐秒玩家位置。"""
+    raw = out / "raw"
+    secs = [json.loads(l) for l in (raw / "seconds.jsonl").read_text().splitlines() if l.strip()]
+    ts = [s["t_s"] * 1000 for s in secs]
+    xs = [s["x"] / 16 for s in secs]
+    leads = []
+    path = raw / "provenance.jsonl"
+    for line in (path.read_text().splitlines() if path.exists() else []):
+        e = json.loads(line)
+        if e["kind"] != "donor":
+            continue
+        i = min(bisect.bisect_left(ts, e["t_ms"]), len(xs) - 1)
+        leads.append(e["cx"] - xs[i])
+    if not leads:
+        return {"donor_chunks": 0}
+    leads.sort()
+    n = len(leads)
+    return {"donor_chunks": n, "ahead_10": sum(l >= 10 for l in leads) / n, "behind": sum(l < 0 for l in leads) / n,
+            "median_lead": leads[n // 2]}
+
+
 def main_metrics(summary: dict) -> dict:
     """主要指标：卡住时长占比、实际/理想距离（新 layer2，字段名含 stuck、distance），和虚空率、就绪延迟并列。"""
     keys = ("void_mean", "void_p95", "latency_p50_ms", "latency_p95_ms", "cpu_cores_mean", "mspt_mean", "mspt_max")
@@ -58,6 +82,7 @@ def counters(s: dict) -> dict:
         "hedge_cancelled": s["hedge"]["cancelled"], "hedge_wasted_tiles": s["hedge"]["wasted"],
         "waitdonor_hits": s["waitdonor"]["hits"], "waitdonor_timeouts": s["waitdonor"]["timeouts"],
         "waitdonor_abandoned": s["waitdonor"]["abandoned"],
+        "stale_dropped": s.get("stale", {}).get("dropped", 0), "stale_cancelled": s.get("stale", {}).get("cancelled", 0),
         "donor_tiles": {w["name"]: w["done"] for w in s["workers"]},
         # 主线程上导入用了多久（coordinator 11-09 加的计时；旧版没有就是 0）
         "import_ms": s.get("import", {}).get("totalMs", 0), "imports_timed": s.get("import", {}).get("count", 0),
@@ -148,8 +173,9 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "discarded": {k: d[k] for k in ("late", "other_world", "server")},
                 "ring_overhead": (n + 2) ** 2 / n ** 2 - 1,
                 **{k: d[k] for k in ("hedge_cancelled", "hedge_wasted_tiles", "waitdonor_hits", "waitdonor_timeouts",
-                                     "waitdonor_abandoned", "donor_tiles", "import_ms", "imports_timed")},
-                "main": main_metrics(summary), "sync_loads": flight_guard(out),
+                                     "waitdonor_abandoned", "donor_tiles", "import_ms", "imports_timed",
+                                     "stale_dropped", "stale_cancelled")},
+                "main": main_metrics(summary), "sync_loads": flight_guard(out), "lead": donor_lead(out),
                 "summary": summary,
             }
             # 假玩家 tick 里同步加载过：这一轮无效，记下来接着跑别的轮（最后判失败），不浪费整批
