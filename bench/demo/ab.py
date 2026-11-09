@@ -43,7 +43,10 @@ def _judge(out_dir, b, ids_before=None, ids_after=None):
         invalid.append(f"玩家实体 tick 里同步加载了 {summary['sync_loads']} 次（假玩家跑到了生成前面），这一轮的卡住不可信")
     donor_events = done.get('provenance', {}).get('donor', 0)
     if b:
-        if not donor_events:
+        if not donor_events and summary.get('full_resumed'):
+            invalid.append(f"飞行期间有 {summary['full_resumed']} 个 chunk 是导入后服务器接着做完的（donor 在干活），"
+                           '但 coordinator 没报 DONOR 来源事件：这个版本的 coordinator 还没有上报（fish 第 6 步进 main 后才有），分不清哪些是 donor 写的')
+        elif not donor_events:
             invalid.append('飞行期间没有 donor 来源事件：donor 没在干活，或者中途掉线了')
         if ids_before != ids_after:
             invalid.append(f'飞行中 worker 重启过（coordinator 里的 id {ids_before} → {ids_after}），多半是被看门狗杀掉')
