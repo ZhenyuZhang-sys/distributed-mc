@@ -26,6 +26,10 @@ class FakeRunner:
         self.env = {'worker': {'MAX_TICK_TIME': '-1'}, 'worker2': {'MAX_TICK_TIME': '-1'}}
         self.netem = False
         self.next_worker_id = 1
+        self.compose_services = ['minecraft', 'worker', 'worker2', 'worker3']
+
+    def services(self):
+        return list(self.compose_services)
 
     def rcon(self, cmd):
         self.calls.append(('rcon', cmd))
@@ -448,3 +452,12 @@ def test_page_has_track_entry(web):
     with urllib.request.urlopen(web['base'] + '/demo', timeout=5) as r:
         page = r.read().decode()
     assert 'data-action="record_start"' in page and 'data-action="record_stop"' in page and '/api/players' in page
+
+
+def test_donor_off_only_stops_services_that_exist(web):
+    # main 的 compose 里还没有 worker3（fish 第 7 步才加）：compose stop 不认识的服务直接报错（11-09 k2 冒烟）
+    runner = web['runner']
+    runner.compose_services = ['minecraft', 'worker', 'worker2']
+    code, r = post(web['base'], '/api/control', dict(action='donor_off'))
+    assert code == 200, r
+    assert ('compose', 'stop', 'worker', 'worker2') in runner.calls
