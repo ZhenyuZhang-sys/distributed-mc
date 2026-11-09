@@ -34,3 +34,11 @@ def test_status_reports_frontier(server):
     assert "frontier" in s["scan"], s["scan"]
     assert {"importFrontier", "importMarginMs"} <= set(s["config"]), s["config"]
     assert "import_late" in s["stale"], s["stale"]
+
+
+def test_status_reports_worker_rate(server, worker):
+    # 11-09 正式服 hopeless 398：每个 worker 的实测速率、延迟、在途、名额和能力估计写进 /donor status，排查派活用
+    worker_id(server, "worker")
+    w = json.loads(server.rcon("donor status"))["workers"][0]
+    assert {"ratePerSec", "latencyMs", "inFlight", "slots", "capacityPerSec", "busyMs"} <= set(w), w
+    assert w["slots"] >= 1 and w["capacityPerSec"] > 0, w

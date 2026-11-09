@@ -489,4 +489,19 @@ class TaskQueueDeadlineTest {
         assertEquals(1, q.pruneHopeless(List.of(donors.get(0))).size(), "只有慢的：做不完，剪");
     }
 
+
+    // ---- 11-09 正式服 hopeless 398：空着的 donor 能马上接的不剪 ----
+
+    @Test
+    void idleDonorKeepsTasksItCanStartNow() {
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 5; i++) {
+            q.enqueue(i * 2, 0);
+            q.setDue(i * 2, 0, now.get() + 3_000, now.get() + 2_000, 1);   // 留出 1 秒余量后限 1 秒
+        }
+        // donor 延迟 0.7 秒、速率被低估成 1/0.7 秒、手上 0 个、4 个名额
+        List<Long> dropped = q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(700, 1.0 / 700, 0, 4)));
+        assertEquals(1, dropped.size(), "前 4 个马上能开始、0.7 秒做完，不剪；第 5 个要排队才剪：" + dropped);
+        assertEquals(q.find(8, 0), dropped.get(0));
+    }
 }
