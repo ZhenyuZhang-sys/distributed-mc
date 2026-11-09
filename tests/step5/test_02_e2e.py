@@ -81,11 +81,12 @@ def test_ten_tiles_written(server, ten):
     assert not missing, missing
 
 
-def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
+@pytest.fixture(scope="module")
+def match(server, worker, ten, tmp_path_factory):
     # 和第 3 步关卡一样：服务器把这块区域做成成品，worker（同 seed 的另一个全新世界）
     # 也生成同一块作为原版答案，逐块比，分两层（analysis/mca/decor.py）：
     # - 严格层（装饰类方块以外）：导入的、没导入的都必须是 0。没导入的部分是两个原版世界互比，
-    #   它不是 0 说明装饰类清单不全。
+    #   它不是 0 说明装饰类清单不全（这一条 11-09 起只在 slow 里查，见 test_not_imported_strict_zero）。
     # - 统计层：tile 内部按 relative_check 和没导入部分比；边界一圈、两圈按 seam_guard 护栏（11-09 拆开，见下面）。
     x0, z0 = G0 * 4 - 2, G0 * 4 - 2
     size = 6 * 4 + 4 + 4
@@ -135,8 +136,14 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     if server.artifact_dir:
         (server.artifact_dir / "seam-density.json").write_text(
             json.dumps({"density": seam, "ratio_ring1": ratios(seam)}, indent=2) + "\n")
+    return acc, summary, center_diff
+
+
+def test_ten_tiles_match_vanilla(match):
+    acc, summary, center_diff = match
     assert not center_diff, f"tile 中间的 chunk 和 worker 不一致，导入丢了东西：{center_diff}"
-    assert all(v.strict == 0 for v in acc.values()), summary
+    # 严格层：导入那一侧（tile、边界一圈两圈）必须是 0。没导入部分（两个原版世界互比）只在 slow 里查（调度 11-09）
+    assert all(acc[k].strict == 0 for k in ("tile", "ring1", "ring2")), summary
     assert all(v.decor_rate <= SANITY for v in acc.values()), summary
     # 判据拆开（调度 11-09，看过数据后改：这条约每 3 次挂 1 次，都是 tile 外面一圈的已知接缝问题，见 docs/step6-report.md 第 11 节）：
     # - tile 内部（"导入有没有写坏"的核心，不放松）：严格层 0（上面），统计层照原来的二项检验和 66 方块上限，和没导入部分比
@@ -146,6 +153,15 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     seam = Diff(examples=[]).add(acc["ring1"]).add(acc["ring2"])
     guard = seam_guard(seam, acc["not_imported"])
     assert not guard, ("导入边界护栏", guard, summary)
+
+
+@pytest.mark.slow
+def test_not_imported_strict_zero(match):
+    # 没导入部分是两个原版世界互比：严格层不是 0 说明装饰类清单缺项（不是导入的问题），由人确认后补进
+    # analysis/mca/decor.py（同一提交导出 decor.json）。调度 11-09 定的规矩：原版对原版的严格检查挪到 slow，
+    # 照旧严格，只是不进日常回归（每次完整回归都可能撞上一种新的原版差异，挡住无关的合并）。
+    acc, summary, _ = match
+    assert acc["not_imported"].strict == 0, ("清单缺项", summary["not_imported"])
 
 
 # ---- kill worker ----

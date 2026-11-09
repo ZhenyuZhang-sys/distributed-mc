@@ -111,8 +111,10 @@ def test_boundary_matches_vanilla(gate):
     assert d.strict == 0, _strict_examples(result, [1])
 
 
+@pytest.mark.slow
 def test_outer_rings_strict_zero(gate):
-    # 外圈和导入无关，是两个原版世界互比：严格层必须是 0，否则是装饰类清单不全（补 analysis/mca/decor.py）
+    # 外圈和导入无关，是两个原版世界互比：严格层必须是 0，否则是装饰类清单不全（补 analysis/mca/decor.py）。
+    # 调度 11-09：原版对原版的严格检查挪到 slow（照旧严格，挂了是清单缺项，由人确认后入清单），不进日常回归
     result, _ = gate
     d = _sum(result["rings"], [2, 3])
     print(f"外圈（原版互比）：严格差异 {d.strict}，装饰类差异率 {d.decor_rate:.4%}")
