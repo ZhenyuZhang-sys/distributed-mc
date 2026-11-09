@@ -256,3 +256,16 @@ def test_driver_refuses_stale_worker_mods(tmp_path):
     assert out['worker_jar'] == 'cccc'
     out = drive(rcell('firework', donors=0, profile=None, features='v0'), tmp_path / 'vanilla')   # 原版不碰 worker
     assert 'worker_jar' not in out
+
+
+def test_run_name_differs_between_attempts(tmp_path):
+    # 11-09：中途打断的一轮在服务器的 bench-runs 里留下同名目录，同一格重试时 bench fly start 拒绝（"已存在，换个 run 名"）。
+    # 每次尝试的 run 名都不一样
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    names = []
+    orig = flyer.fly_sync
+    flyer.fly_sync = lambda run, *a, **kw: (names.append(run), orig(run, *a, **kw))[1]
+    drive(rcell('firework'), tmp_path / 'a1')
+    drive(rcell('firework'), tmp_path / 'a2')
+    assert len(names) == 2 and names[0] != names[1] and all(n.startswith('mx-mx') for n in names)

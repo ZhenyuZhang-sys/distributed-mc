@@ -211,12 +211,14 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                   if scenario else [None])
         start_tick = _server_tick(runner)   # 对 autosave（每 6000 tick）用
         t_fly = time.time()
+        # 每次尝试的 run 名不同：中途打断的一轮会在服务器的 bench-runs 里留下同名目录，重试时 bench fly start 会拒绝
+        run_tag = f'{time.time_ns() // 1_000_000 % 10**8:08d}'
         dirs = [out / ('flight' if i == 0 else f'flight{i + 1}') for i in range(len(routes))]
         errors = []
 
         def one(i, route):
             try:
-                flyer.fly_sync(f'mx-{name}-p{i + 1}' if len(routes) > 1 else f'mx-{name}', start, speed,
+                flyer.fly_sync(f'mx-{name}-{run_tag}-p{i + 1}' if len(routes) > 1 else f'mx-{name}-{run_tag}', start, speed,
                                p['duration_s'], dirs[i], route=route,
                                player=None if i == 0 else f'{flyer.PLAYER}{i + 1}')
             except Exception as e:   # 一个玩家飞失败，这一轮就无效
