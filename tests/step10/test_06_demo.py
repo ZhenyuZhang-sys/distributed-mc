@@ -398,6 +398,9 @@ def test_ab_endpoint_runs_in_background_and_reports(tmp_path):
         with urllib.request.urlopen(base + '/api/ab/replay?which=B', timeout=5) as resp:
             rep = json.loads(resp.read())
         assert 'events' in rep and 'counts' in rep
+        # 并排曲线：两轮的逐秒行
+        with urllib.request.urlopen(base + '/api/ab/seconds?which=A', timeout=5) as resp:
+            assert json.loads(resp.read())['rows'] == [dict(t_s=1, x=0.0, z=0.0)]
         code, _ = post(base, '/api/ab', dict(speed='rocket', seconds=60))
         assert code == 400
     finally:

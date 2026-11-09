@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mc-donate 演示面板</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --fg: #1d1d1b; --muted: #6b6b66; --grid: #e4e4df; --border: #d9d9d3;
+    --s1: #2f6fd0; --s2: #d9822b; --s3: #2e9e6b; --warn-bg: #fff3d6; --warn-fg: #7a4b00; --bad: #b42318; --good: #1f7a4a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --fg: #ececea; --muted: #a3a39d; --grid: #33332f; --border: #3a3a36;
+            --s1: #6ea0f0; --s2: #f0a35c; --s3: #5cc495; --warn-bg: #3d2f12; --warn-fg: #ffd27a; --bad: #ff8a80; --good: #6fd39c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  h1 { font-size: 17px; margin: 0; }
+  .tag { font-size: 12px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); }
+  #warnings { padding: 0 16px; }
+  #warnings div { margin: 8px 0 0; padding: 6px 10px; border-radius: 6px; background: var(--warn-bg); color: var(--warn-fg); }
+  main { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.4fr); gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-width: 0; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  .muted { color: var(--muted); }
+  #map { width: 100%; height: 420px; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  select, input { font: inherit; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .chart { position: relative; }
+  .chart h3 { font-size: 13px; font-weight: 600; margin: 0 0 2px; }
+  .chart .now { font-size: 12px; color: var(--muted); min-height: 1.4em; }
+  .chart canvas { width: 100%; height: 120px; display: block; }
+  .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+         padding: 2px 6px; font-size: 12px; display: none; white-space: nowrap; z-index: 2; }
+  .legend { font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin: 0 4px 0 8px; border-radius: 2px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--grid); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .bad { color: var(--bad); } .good { color: var(--good); }
+  #ab-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  #ab-maps canvas { width: 100%; height: 260px; display: block; }
+  #status { font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>mc-donate 演示面板</h1>
+  <span class="tag">演示，粗测：不进第 10 步的矩阵和假设表</span>
+  <span class="tag">面板每秒发 2 条 RCON，自己也占一点服务器时间</span>
+  <span id="status" class="muted"></span>
+</header>
+<div id="warnings"></div>
+<main>
+  <section>
+    <h2>实时地图 <span class="muted" id="map-run"></span></h2>
+    <canvas id="map"></canvas>
+    <div class="legend">
+      <i style="background:#5b8c5a"></i>原版
+      <i style="background:#7d6b9e"></i>导入后服务器接着做完
+      <i style="background:linear-gradient(90deg,#e6a13c,#3c8ee6,#b83ce6)"></i>donor（按编号）
+      <i style="background:#d62728"></i>验证打回
+      <i style="background:#c7c7c7"></i>读盘
+    </div>
+  </section>
+  <section>
+    <h2>控制</h2>
+    <div class="controls">
+      <button data-action="donor_on">donor 开</button>
+      <button data-action="donor_off">donor 关</button>
+      <span class="muted">在线 <b id="donors-now">—</b></span>
+    </div>
+    <div class="controls" id="features"></div>
+    <div class="controls">
+      <label>速度 <select id="speed"><option value="walk">走路 4.3</option><option value="horse">骑马 14</option>
+        <option value="elytra" selected>鞘翅 30</option></select></label>
+      <label>时长 <input id="seconds" type="number" min="10" max="600" value="120" style="width:5em"> 秒</label>
+      <button data-action="fly_start">开始飞</button>
+      <button data-action="fly_stop">停止</button>
+    </div>
+    <div class="controls">
+      <button data-action="netem" id="netem-btn">模拟网络：开</button>
+      <span class="muted" id="netem-note"></span>
+    </div>
+    <div class="controls">
+      <button id="ab-btn">一键 A/B：donor 关 vs donor 开（deadline）</button>
+      <span class="muted" id="ab-state"></span>
+    </div>
+    <div class="charts" id="charts">
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-mspt"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-tps"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-cpu"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-void"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-stall"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-distance"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-donors"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-imports"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-discards"></canvas><div class="tip"></div></div>
+      <div class="chart"><h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-ahead"></canvas><div class="tip"></div></div>
+    </div>
+  </section>
+  <section style="grid-column: 1 / -1">
+    <h2>A/B 对比 <span class="muted" id="ab-name"></span></h2>
+    <p class="muted" id="ab-note">还没有结果。同一条航线、同样的速度和时长，两轮各一个全新世界（同 seed），A 不开 donor，B 开 donor 和 deadline。</p>
+    <table id="ab-table"></table>
+    <div class="charts" id="ab-charts"></div>
+    <div id="ab-maps">
+      <div><h3>A：donor 关</h3><canvas id="map-A"></canvas></div>
+      <div><h3>B：donor 开</h3><canvas id="map-B"></canvas></div>
+    </div>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const FEATURES = ["territory", "deadline", "throughput", "hedge", "waitdonor"];
+const fmt = (v, d = 2) => v == null ? "—" : (v === "inf" || v === Infinity) ? "∞（有删失）" : (typeof v === "number" ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(d)) : String(v));
+const pct = (v) => v == null ? "—" : (v * 100).toFixed(0) + "%";
+
+// ---- 小图：一个量一张，不画双轴 ----
+const CHARTS = [
+  { id: "mspt", title: "MSPT（毫秒，最近 20 tick）", series: [["均值", "--s1", r => r.mspt_mean], ["最大", "--s2", r => r.mspt_max]], ref: 50 },
+  { id: "tps", title: "TPS", series: [["TPS", "--s1", r => r.tps]], ymax: 22 },
+  { id: "cpu", title: "服务器 CPU（核）", series: [["核数", "--s1", r => r.cpu_cores]] },
+  { id: "void", title: "视野虚空率（飞行中）", series: [["虚空率", "--s1", r => r.flight && r.flight.void_rate]], ymax: 1, unit: "%" },
+  { id: "stall", title: "卡住占比（这一秒 / 整轮）", series: [["这一秒", "--s1", r => r.flight && r.flight.stall_fraction], ["整轮", "--s2", r => r.flight && r.flight.stall_fraction_total]], ymax: 1, unit: "%" },
+  { id: "distance", title: "实际 / 理想距离", series: [["比例", "--s1", r => r.flight && r.flight.distance_ratio]], ymax: 1.05, unit: "%" },
+  { id: "donors", title: "donor 在线数", series: [["在线", "--s1", r => r.donors_online]] },
+  { id: "imports", title: "每秒导入的 tile", series: [["导入", "--s1", r => r.imports]] },
+  { id: "discards", title: "每秒丢弃的 tile（按原因）", series: [["来晚", "--s1", r => r.discards && r.discards.late], ["别的 donor 世界", "--s2", r => r.discards && r.discards.other_world], ["碰到服务器的", "--s3", r => r.discards && r.discards.server]] },
+  { id: "ahead", title: "donor 写入时在玩家前方的比例", series: [["这一秒", "--s1", r => r.flight && r.flight.ahead_s], ["整轮", "--s2", r => r.flight && r.flight.ahead_total]], ymax: 1, unit: "%" },
+];
+
+function makeChart(parent, spec) {
+  // 实时那几张图的格子写在 HTML 里（id="chart-…"），A/B 的图现建
+  let box = document.getElementById("chart-" + spec.id)?.parentElement;
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "chart";
+    box.innerHTML = `<h3></h3><div class="now"></div><div class="legend"></div><canvas id="chart-${spec.id}"></canvas><div class="tip"></div>`;
+    parent.appendChild(box);
+  }
+  box.querySelector("h3").textContent = spec.title;
+  box.querySelector(".legend").innerHTML = spec.series.length > 1 ? spec.series.map(([n, c]) => `<i style="background:var(${c})"></i>${n}`).join("") : "";
+  spec.canvas = box.querySelector("canvas");
+  spec.now = box.querySelector(".now");
+  spec.tip = box.querySelector(".tip");
+  spec.canvas.addEventListener("mousemove", (ev) => hover(spec, ev));
+  spec.canvas.addEventListener("mouseleave", () => { spec.tip.style.display = "none"; spec.hoverX = null; drawChart(spec); });
+  return spec;
+}
+
+function drawChart(spec) {
+  const cv = spec.canvas, dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const pts = spec.points || [];
+  const xs = pts.map(p => p.t);
+  const vals = pts.flatMap(p => p.v.filter(v => v != null && isFinite(v)));
+  const pad = { l: 34, r: 6, t: 6, b: 16 };
+  const x0 = xs.length ? xs[0] : 0, x1 = xs.length ? Math.max(xs[xs.length - 1], x0 + 1) : 1;
+  let ymax = spec.ymax || Math.max(1, ...vals, spec.ref || 0) * 1.1;
+  if (spec.ymax && vals.length && Math.max(...vals) > spec.ymax) ymax = Math.max(...vals) * 1.05;
+  const X = t => pad.l + (t - x0) / (x1 - x0) * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - v / ymax * (h - pad.t - pad.b);
+  ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1; ctx.fillStyle = css("--muted"); ctx.font = "11px system-ui";
+  for (const f of [0, .5, 1]) {
+    const y = Y(ymax * f); ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.fillText(spec.unit === "%" ? (ymax * f * 100).toFixed(0) + "%" : (ymax * f).toFixed(ymax * f >= 10 ? 0 : 1), 2, y + 4);
+  }
+  if (spec.ref && spec.ref < ymax) { ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(pad.l, Y(spec.ref)); ctx.lineTo(w - pad.r, Y(spec.ref)); ctx.stroke(); ctx.setLineDash([]); ctx.fillText(spec.ref + " 上限", w - pad.r - 44, Y(spec.ref) - 3); }
+  if (!vals.length) { ctx.fillText("无数据", w / 2 - 18, h / 2); return; }
+  spec.series.forEach(([name, color], i) => {
+    ctx.strokeStyle = css(color); ctx.lineWidth = 2; ctx.beginPath();
+    let on = false;
+    for (const p of pts) {
+      const v = p.v[i];
+      if (v == null || !isFinite(v)) { on = false; continue; }
+      if (on) ctx.lineTo(X(p.t), Y(v)); else { ctx.moveTo(X(p.t), Y(v)); on = true; }
+    }
+    ctx.stroke();
+  });
+  if (spec.hoverX != null) { ctx.strokeStyle = css("--muted"); ctx.beginPath(); ctx.moveTo(spec.hoverX, pad.t); ctx.lineTo(spec.hoverX, h - pad.b); ctx.stroke(); }
+  spec.X = X; spec.x0 = x0; spec.x1 = x1; spec.padL = pad.l; spec.plotW = w - pad.l - pad.r;
+}
+
+function hover(spec, ev) {
+  const pts = spec.points || [];
+  if (!pts.length || !spec.X) return;
+  const r = spec.canvas.getBoundingClientRect();
+  const t = spec.x0 + (ev.clientX - r.left - spec.padL) / spec.plotW * (spec.x1 - spec.x0);
+  let best = pts[0];
+  for (const p of pts) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+  spec.hoverX = spec.X(best.t);
+  drawChart(spec);
+  const shown = spec.series.map(([n], i) => `${n} ${spec.unit === "%" ? pct(best.v[i]) : fmt(best.v[i])}`).join(" · ");
+  spec.tip.textContent = `${best.label || ("t=" + best.t.toFixed(0) + "s")}：${shown}`;
+  spec.tip.style.display = "block";
+  spec.tip.style.left = Math.min(spec.hoverX + 8, r.width - spec.tip.offsetWidth) + "px";
+  spec.tip.style.top = "40px";
+}
+
+const live = CHARTS.map(s => makeChart($("charts"), { ...s }));
+let rows = [], since = 0;
+
+function updateCharts() {
+  for (const spec of live) {
+    spec.points = rows.map(r => ({ t: r.t_s, v: spec.series.map(([, , f]) => f(r)) }));
+    const last = rows.length ? rows[rows.length - 1] : null;
+    spec.now.textContent = last ? spec.series.map(([n, , f]) => `${spec.series.length > 1 ? n + " " : ""}${spec.unit === "%" ? pct(f(last)) : fmt(f(last))}`).join(" · ") : "";
+    drawChart(spec);
+  }
+}
+
+// ---- 地图（和 / 页面同样的上色，颜色由服务器给） ----
+function drawMap(canvas, chunks, player) {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!chunks.size) { ctx.fillStyle = css("--muted"); ctx.fillText("无数据", w / 2 - 18, h / 2); return; }
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const k of chunks.keys()) { const [x, z] = k.split(",").map(Number); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+  const cell = Math.max(1, Math.min(w / (maxX - minX + 3), h / (maxZ - minZ + 3)));
+  const ox = (w - (maxX - minX + 1) * cell) / 2, oz = (h - (maxZ - minZ + 1) * cell) / 2;
+  for (const [k, c] of chunks) { const [x, z] = k.split(",").map(Number); ctx.fillStyle = c; ctx.fillRect(ox + (x - minX) * cell, oz + (z - minZ) * cell, Math.max(1, cell - (cell > 4 ? 1 : 0)), Math.max(1, cell - (cell > 4 ? 1 : 0))); }
+  if (player) { ctx.fillStyle = css("--fg"); ctx.beginPath(); ctx.arc(ox + (player.x / 16 - minX) * cell, oz + (player.z / 16 - minZ) * cell, 4, 0, Math.PI * 2); ctx.fill(); }
+}
+
+let mapRun = null, mapSince = 0, mapChunks = new Map(), mapPlayer = null;
+async function pollMap(run) {
+  if (!run) return;
+  if (run !== mapRun) { mapRun = run; mapSince = 0; mapChunks = new Map(); $("map-run").textContent = run; }
+  try {
+    const d = await getJSON("/events?run=" + encodeURIComponent(run) + "&since=" + mapSince);
+    d.events.forEach(e => mapChunks.set(e.cx + "," + e.cz, e.color));
+    mapSince = d.next; if (d.player) mapPlayer = d.player;
+    drawMap($("map"), mapChunks, mapPlayer);
+  } catch (e) { /* 这一轮还没有文件 */ }
+}
+
+// ---- 控制：每个按钮先确认，再 POST（JSON + X-Demo 头） ----
+async function getJSON(url) { const r = await fetch(url, { cache: "no-store" }); if (!r.ok) throw new Error(url + " → " + r.status); return r.json(); }
+async function control(body, question) {
+  if (!confirm(question)) return;
+  $("status").textContent = "正在做：" + body.action + "……";
+  try {
+    const r = await fetch(body.path || "/api/control", { method: "POST", headers: { "Content-Type": "application/json", 'X-Demo': '1' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    $("status").textContent = r.ok ? "完成：" + body.action : "失败（" + r.status + "）：" + (d.error || "");
+  } catch (e) { $("status").textContent = "失败：" + e; }
+}
+const QUESTIONS = {
+  donor_on: "起 worker、worker2，等它们连上，再打开找需求？",
+  donor_off: "关掉找需求，停掉所有 worker？",
+  fly_start: "放一架假玩家沿一条没生成过的航线飞？",
+  fly_stop: "提前停下这一轮飞行？（这一轮不出汇总）",
+};
+document.querySelectorAll("button[data-action]").forEach(b => b.addEventListener("click", () => {
+  const a = b.dataset.action;
+  if (a === "netem") { const on = b.dataset.on !== "true"; return control({ action: "netem", on }, on ? "给两个 worker 的出站加 35ms 延迟、20mbit 限速、1% 丢包？" : "恢复正常网络？"); }
+  const body = { action: a };
+  if (a === "fly_start") { body.speed = $("speed").value; body.seconds = parseInt($("seconds").value, 10); }
+  control(body, QUESTIONS[a]);
+}));
+for (const f of FEATURES) {
+  const b = document.createElement("button");
+  b.dataset.feature = f; b.textContent = f;
+  b.addEventListener("click", () => { const on = b.dataset.on !== "true"; control({ action: "feature", name: f, on }, `第 7 步开关 ${f}：${on ? "打开" : "关掉"}？`); });
+  $("features").appendChild(b);
+}
+$("ab-btn").addEventListener("click", () => control({ action: "A/B", path: "/api/ab", speed: $("speed").value, seconds: parseInt($("seconds").value, 10) },
+  "开始一键 A/B？两轮各换一个全新世界（会重启测试服务器），A 不开 donor、B 开 donor 和 deadline，鞘翅 120 秒大约 8～10 分钟。"));
+
+// ---- 实时 ----
+async function tick() {
+  try {
+    const s = await getJSON("/api/series?since=" + since);
+    rows = rows.concat(s.rows).slice(-900); since = s.next;
+    updateCharts();
+    const st = await getJSON("/api/live");
+    const r = st.row || {};
+    $("donors-now").textContent = r.donors_online == null ? "—" : r.donors_online;
+    const warn = [...(r.warnings || []), ...Object.entries(r.errors || {}).map(([k, v]) => `拿不到 ${k}：${v}`)];
+    $("warnings").innerHTML = warn.map(w => `<div>${w.replace(/</g, "&lt;")}</div>`).join("");
+    document.querySelectorAll("button[data-feature]").forEach(b => { const on = (r.features || []).includes(b.dataset.feature); b.dataset.on = on; b.textContent = b.dataset.feature + (on ? "：开" : "：关"); });
+    const nb = $("netem-btn"); nb.disabled = !st.netem_supported; nb.dataset.on = (r.warnings || []).some(w => w.startsWith("模拟网络"));
+    nb.textContent = nb.dataset.on === "true" ? "模拟网络：关" : "模拟网络：开";
+    $("netem-note").textContent = st.netem_supported ? "35ms / 20mbit / 1% 丢包" : "要等 fish 新版的 netem.sh 进 main";
+    if (!$("status").textContent.startsWith("正在做")) $("status").textContent = st.busy ? "正在做：" + st.busy : "";
+    pollMap((st.flyer && st.flyer.run) || (r.flight && r.flight.run));
+    showAB(st.ab);
+  } catch (e) { $("status").textContent = String(e); }
+}
+
+// ---- A/B ----
+let abShown = null;
+const AB_ROWS = [
+  ["卡住时长（秒）", s => fmt(s.stall_s, 1)], ["卡住占比", s => pct(s.stall_fraction)], ["实际 / 理想距离", s => pct(s.distance_ratio)],
+  ["虚空率均值", s => pct(s.void_mean)], ["就绪 p95（毫秒）", s => fmt(s.latency_p95_ms)], ["MSPT 均值 / 最大", s => fmt(s.mspt_mean) + " / " + fmt(s.mspt_max)],
+  ["服务器 CPU（核）", s => fmt(s.cpu_cores_mean)], ["导入后服务器接着做完的 chunk", s => fmt(s.full_resumed, 0)], ["服务器自己生成的 chunk", s => fmt(s.full_generated, 0)],
+];
+async function showAB(ab) {
+  if (!ab) return;
+  $("ab-state").textContent = ab.state === "running" ? "A/B 正在跑……" : ab.state === "failed" ? "A/B 失败：" + ab.error : "";
+  $("ab-btn").disabled = ab.state === "running";
+  if (ab.state !== "done" || !ab.result || abShown === ab.result.name) return;
+  const res = ab.result; abShown = res.name;
+  $("ab-name").textContent = res.name;
+  $("ab-note").textContent = res.note + ` ${res.speed} ${res.speed_blocks_per_s} 格/秒，${res.seconds} 秒，seed ${res.seed}，开关 ${res.features.join(", ")}；模拟网络${res.netem ? "开" : "关"}；并发：${res.concurrent.length ? res.concurrent.join("；") : "无"}。`;
+  const valid = r => r.valid ? `<span class="good">有效</span>` : `<span class="bad">无效：${r.invalid.join("；")}</span>`;
+  $("ab-table").innerHTML = `<tr><th></th><th>A：donor 关</th><th>B：donor 开</th></tr>` +
+    AB_ROWS.map(([n, f]) => `<tr><td>${n}</td><td class="num">${f(res.A.summary)}</td><td class="num">${f(res.B.summary)}</td></tr>`).join("") +
+    `<tr><td>donor 来源事件</td><td class="num">${res.A.donor_events}</td><td class="num">${res.B.donor_events}</td></tr>` +
+    `<tr><td>有效性</td><td>${valid(res.A)}</td><td>${valid(res.B)}</td></tr>`;
+  const [a, b] = await Promise.all(["A", "B"].map(w => getJSON("/api/ab/seconds?which=" + w).then(d => d.rows)));
+  $("ab-charts").innerHTML = "";
+  const both = (f) => { const byT = new Map(); a.forEach(r => byT.set(r.t_s, [f(r), null])); b.forEach(r => byT.set(r.t_s, [(byT.get(r.t_s) || [null])[0], f(r)])); return [...byT.entries()].sort((x, y) => x[0] - y[0]).map(([t, v]) => ({ t, v })); };
+  for (const [id, title, f, unit] of [["ab-stall", "卡住（这一秒的 tick 占比）", r => r.ticks ? r.stalled_ticks / r.ticks : null, "%"],
+                                      ["ab-void", "视野虚空率", r => r.void_rate, "%"], ["ab-mspt", "MSPT 均值（毫秒）", r => r.mspt_mean]]) {
+    const spec = makeChart($("ab-charts"), { id, title, unit, ymax: unit === "%" ? 1 : null, series: [["A：donor 关", "--s2"], ["B：donor 开", "--s1"]] });
+    spec.points = both(f); spec.now.textContent = ""; drawChart(spec);
+  }
+  for (const w of ["A", "B"]) {
+    const rep = await getJSON("/api/ab/replay?which=" + w);
+    const m = new Map(); rep.events.forEach(e => m.set(e.cx + "," + e.cz, e.color));
+    drawMap($("map-" + w), m, rep.track.length ? rep.track[rep.track.length - 1] : null);
+  }
+}
+
+tick();
+setInterval(tick, 1000);
+window.addEventListener("resize", () => { live.forEach(drawChart); drawMap($("map"), mapChunks, mapPlayer); });
+</script>
+</body>
+</html>
