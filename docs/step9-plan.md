@@ -71,7 +71,11 @@
 - token 60 秒过期，邀请只在进服时发一次：玩家晚同意、worker 晚起，或者 coordinator 重启后 worker 要重连，都会过期、没法再要。
 - 客户端发 `mcdonate:invite_request`（游戏内频道，不改 coordinator 的 TCP 协议），服务器作废这个玩家的旧 token、重发邀请。每个玩家 10 秒最多一次（`inviteRequestMinMs`），超了忽略并记 WARN。
 - 已做（11-09）：payload、频率限制、服务器处理，单元测试。等客户端 mod 能跑（9.3）再做的端到端：过期后再要能拿到新 token、旧 token 失效、刷请求被限流、coordinator 重启后 worker 靠再要邀请重连。
-- 还要接的：worker 握手被拒（-2）时经本地控制通道告诉客户端（`NEED_TOKEN`），客户端再要邀请，把新 token 发给 worker（`TOKEN <t>`）。另外 worker 建世界前取 seed 的那次握手（SeedHandshake）也会带 token：要么那次不用掉 token（只检查），要么改成从邀请里拿 seed、再由 Welcome 核对，接客户端时定。
+- 还要接的：worker 握手被拒（-2）时经本地控制通道告诉客户端（`NEED_TOKEN`），客户端再要邀请，把新 token 发给 worker（`TOKEN <t>`）。
+- **seed 怎么拿（调度 11-09 定）**：客户端起的 worker 建世界前不再为了 seed 单独握手，直接用邀请里的 seed（客户端 mod 用 `-Dmcdonate.inviteSeed` 传）；
+  正式连接 coordinator 时照常带 token 握手，token 只换这一次连接。Welcome 里的 seed 和建世界用的再核对一遍，不一致就不领任务、记 ERROR（和 Docker worker 一样）。
+  Docker 里的本地 worker 没有邀请，照旧走 allowTokenless 和建世界前握手。理由：一个 token 只换一次连接，语义清楚；握手不用"只检查、不用掉"的特殊模式。
+  单元测试：有邀请 seed 时跳过取 seed 的握手、Docker worker 照旧握手、Welcome 的 seed 不一致时不工作（SeedHandshakeTest）。
 
 ### 3.3 协议改动（要转给 kexu 确认）
 

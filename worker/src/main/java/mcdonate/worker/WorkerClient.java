@@ -122,7 +122,7 @@ final class WorkerClient {
                     throw new IOException("coordinator 拒绝：协议版本 " + w.protocol() + "，本机 " + Protocol.VERSION);
                 }
                 long mine = server.overworld().getSeed();
-                seedMismatch = w.seed() != mine;
+                seedMismatch = !seedOk(w, mine);
                 if (seedMismatch) {
                     LOG.error("存档 seed {} 和 coordinator 的 {} 不一样，不领任务", mine, w.seed());
                 } else {
@@ -163,6 +163,11 @@ final class WorkerClient {
             }
             deliver(r);
         });
+    }
+
+    /** Welcome 里的 seed 和自己建世界用的一样才领任务（第 5 步；第 9 步建世界的 seed 来自邀请，这里是唯一的核对）。 */
+    static boolean seedOk(Welcome w, long worldSeed) {
+        return w.seed() == worldSeed;
     }
 
     /** 测试用（/donor hold）：扣着做完的结果先不发，放开时一起发。7.6a 用它让服务器先碰到闸门、再收到结果。 */

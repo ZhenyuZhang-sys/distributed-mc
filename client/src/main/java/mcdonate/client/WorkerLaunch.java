@@ -21,7 +21,8 @@ public final class WorkerLaunch {
     public static final int NICE = 10;
     public static final String TOKEN_ENV = "MCDONATE_TOKEN";
 
-    public record Options(Path java, int xmxMb, int genThreads, long parentPid, String coordinator) {}
+    /** inviteSeed：邀请里的 seed，worker 建世界直接用它，不为了 seed 单独握手（调度 11-09，docs/step9-plan.md 3.2b）。 */
+    public record Options(Path java, int xmxMb, int genThreads, long parentPid, String coordinator, long inviteSeed) {}
 
     private WorkerLaunch() {}
 
@@ -32,6 +33,7 @@ public final class WorkerLaunch {
                 "-XX:ActiveProcessorCount=" + (o.genThreads() + 1),
                 "-Dmcdonate.coordinator=" + o.coordinator(),
                 "-Dmcdonate.parentPid=" + o.parentPid(),
+                "-Dmcdonate.inviteSeed=" + o.inviteSeed(),
                 "-jar", "fabric-server-launch.jar", "nogui"));
         List<String> cmd = new ArrayList<>();
         if (osName.toLowerCase(Locale.ROOT).startsWith("windows")) {
