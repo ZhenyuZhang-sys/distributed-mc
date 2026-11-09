@@ -47,6 +47,15 @@ public final class TaskQueue {
     static final int CORRIDOR_CHUNKS = Config.getInt("corridorChunks", 6);
 
     /** 11-09：找需求算过、没有截止时间的 tile（侧后方）不派。false 退回原来的（donor 空着时也派它们），对照用。 */
+    /**
+     * 11-09 走廊邻居补齐：直线飞时走廊边上的 chunk 要等两侧的邻居也 FULL 才发给客户端（codex-pipe 真客户端：
+     * 一个 chunk 61.7 秒 FULL、93.2 秒才发），donor 只做走廊里的 tile 时，两侧要等服务器自己生成。
+     * 1：走廊外紧挨走廊 tile（相邻含对角）、离飞行线不超过 走廊 + 一个 tile、自己也会进视野的 tile，
+     * 和走廊里的同一档派，截止时间取它和这些走廊邻居里最早的，跟着邻居一起派。只改派活顺序，
+     * "来不来得及"（剪枝、慢 donor）仍按它自己的截止时间。0 关（默认）。
+     */
+    static final int CORRIDOR_NEIGHBOR_PAD = Config.getInt("corridorNeighborPad", 0);
+
     static final boolean SKIP_NO_DEADLINE = !"false".equalsIgnoreCase(Config.get("skipNoDeadline", "true"));
 
     /**
@@ -105,6 +114,8 @@ public final class TaskQueue {
         int lateral = Integer.MAX_VALUE;
         /** 派出时离截止（importBy，不知道时 due）还有多少毫秒；不知道是 -1。 */
         long slackAtLease = -1;
+        /** 走廊邻居补齐后的派活截止时间（不补是 Long.MAX_VALUE）；refreshPad 在排序前算。 */
+        long padKey = Long.MAX_VALUE;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -135,6 +146,18 @@ public final class TaskQueue {
     }
 
     private final Features features;
+    private int neighborPad = CORRIDOR_NEIGHBOR_PAD;
+    private int paddedLeases;
+
+    /** 测试用：改走廊邻居补齐的列数（默认取 corridorNeighborPad）。 */
+    synchronized void setNeighborPad(int pad) {
+        neighborPad = pad;
+    }
+
+    /** 因为走廊邻居补齐才排进走廊这一档、派出去的个数（A/B 看）。 */
+    public synchronized int paddedLeases() {
+        return paddedLeases;
+    }
 
     public TaskQueue(LongSupplier clock, long leaseMs, int maxAttempts, Features features) {
         this.clock = clock;
@@ -313,6 +336,9 @@ public final class TaskQueue {
             return Optional.empty();
         }
         boolean byDue = features.on(Features.DEADLINE);
+        if (byDue) {
+            refreshPad();
+        }
         Task t = null;
         for (var it = queue.iterator(); it.hasNext(); ) {
             Task c = tasks.get(it.next());
@@ -344,7 +370,7 @@ public final class TaskQueue {
                 t = c; // 先进先出：第一个合适的
                 break;
             }
-            if (t == null || DISPATCH_ORDER.compare(c, t) < 0) {
+            if (t == null || dispatchOrder.compare(c, t) < 0) {
                 t = c; // 7.2：最急的先派（11-09：知道前沿时按 importBy，和 pruneHopeless 的顺序一致）
             }
         }
@@ -360,6 +386,9 @@ public final class TaskQueue {
                     c.softWorker = worker;
                 }
             }
+        }
+        if (t.padKey != Long.MAX_VALUE) {
+            paddedLeases++;
         }
         t.state = State.LEASED;
         t.leasedAt = clock.getAsLong();
@@ -516,7 +545,7 @@ public final class TaskQueue {
     }
 
     public synchronized String staleJson() {
-        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + ",\"import_late\":" + importLate + ",\"hopeless\":" + hopeless + "}";
+        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + ",\"import_late\":" + importLate + ",\"hopeless\":" + hopeless + ",\"padded\":" + paddedLeases + "}";
     }
 
     private int importLate;
@@ -527,11 +556,37 @@ public final class TaskQueue {
         return t.importBy != Long.MAX_VALUE ? t.importBy : t.due;
     }
 
-    /** 派活的先后：走廊里的在前（0），其余（1）；同一档按截止时间。pruneHopeless 按同样的顺序估排队。 */
-    private static final java.util.Comparator<Task> DISPATCH_ORDER = java.util.Comparator
-            .<Task>comparingInt(t -> t.lateral <= CORRIDOR_CHUNKS ? 0 : 1)
-            .thenComparingLong(TaskQueue::deadlineKey)
+    /**
+     * 派活的先后：走廊里的（和补齐的）在前（0），其余（1）；同一档按截止时间（补齐的取走廊邻居的）。
+     * pruneHopeless 按同样的顺序估排队。用之前先 refreshPad。
+     */
+    private final java.util.Comparator<Task> dispatchOrder = java.util.Comparator
+            .<Task>comparingInt(t -> t.lateral <= CORRIDOR_CHUNKS || t.padKey != Long.MAX_VALUE ? 0 : 1)
+            .thenComparingLong(t -> Math.min(deadlineKey(t), t.padKey))
             .thenComparingLong(t -> t.id);
+
+    /** 算排队任务的 padKey（见 CORRIDOR_NEIGHBOR_PAD）。走廊邻居在排队、在租、做完了都算：做完了边上的 chunk 正等这一列。 */
+    private void refreshPad() {
+        int max = CORRIDOR_CHUNKS + neighborPad * mcdonate.common.TilePos.SIZE;
+        for (long id : queue) {
+            Task t = tasks.get(id);
+            t.padKey = Long.MAX_VALUE;
+            if (neighborPad <= 0 || t.lateral <= CORRIDOR_CHUNKS || t.lateral > max || deadlineKey(t) == Long.MAX_VALUE) {
+                continue;
+            }
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    Long nid = byTile.get(tileKey(t.tx + dx, t.tz + dz));
+                    Task n = nid == null ? null : tasks.get(nid);
+                    if (n == null || n == t || n.lateral > CORRIDOR_CHUNKS
+                            || (n.state != State.QUEUED && n.state != State.LEASED && n.state != State.DONE)) {
+                        continue;
+                    }
+                    t.padKey = Math.min(t.padKey, deadlineKey(n));
+                }
+            }
+        }
+    }
 
     /**
      * 11-09：排队太久的现在就丢掉，交给服务器（f2 实测入队→派出 p50 4～10 秒、p90 22～43 秒，派出→交回约 1.4 秒）。
@@ -575,7 +630,8 @@ public final class TaskQueue {
                 order.add(t);
             }
         }
-        order.sort(DISPATCH_ORDER);
+        refreshPad();
+        order.sort(dispatchOrder);
         for (Task t : order) {
             // 和派发一样的预测（codex-audit F2），取最早做完的 donor
             int best = -1;

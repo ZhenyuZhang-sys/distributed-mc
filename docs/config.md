@@ -44,6 +44,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `importFrontier` | true | 开 deadline 时实测服务器前沿（玩家前进方向上最远有 holder 的圈数，/donor status 的 scan.frontier），按它算每个 tile 的 importBy；派之前问 donor 能不能在 importBy 之前做完，做不完的不派，importBy 过了的丢掉 | 11-09 kexu 演示里前沿约 14 圈，比 inner（22）近 8 圈。false 退回只按 due（玩家看到的时间）|
 | `importMarginMs` | 1000 | importBy 前面再留多少毫秒（结果在主线程排队、前沿每秒才测一次） | 看 /donor imports 的 seg.main_wait |
 | `corridorChunks` | 6 | 开 deadline 时，tile 中心离飞行线不超过这么多 chunk 的先派（前方走廊），其余后派 | 11-09 kexu 烟花直线：donor 写入只有 26% 在前方；服务器只有 2 核时 donor 要先包下路线 |
+| `corridorNeighborPad` | 0 | 开 deadline 时，走廊外紧挨走廊 tile、离飞行线不超过走廊 + 一个 tile、自己也会进视野的 tile，和走廊里的同一档派，截止时间取走廊邻居的（跟着邻居一起派，只多一列）。只改派活顺序，剪枝和慢 donor 仍按它自己的截止时间。/donor status 的 `stale.padded` 是这样派出的个数 | 11-09 直线 A/B 用：走廊边上的 chunk 要等两侧邻居 FULL 才发给客户端（codex-pipe 真客户端 61.7 秒 FULL、93.2 秒才发）。默认关，A/B 后再定 |
 | `skipNoDeadline` | true | 开 deadline 时，找需求算过、玩家不会去的 tile（侧后方，没有截止时间）不派 | false 退回原来的（donor 空着时也派），对照用 |
 | `maxLeaseTotalMs` | 120000 | 一个任务从派出起，心跳最多续租到多久，过了收回重派 | 11-09：worker 卡死时心跳照发，原来能无限续租 |
 | `importBudgetMs` | 10 | 软预算：每个 tick 结束时导入用到这么多毫秒就停，其余留到下个 tick。每个 tick 至少提交 1 个 tile，单个 tile 本身就可能超过 10 ms，所以**不保证导入那一 tick 的 MSPT 在 10 ms 以内**，只是不再几个 tile 挤在同一 tick 里 | 11-09 codex-audit A10：几个结果一起到时同一 tick 里做完，MSPT 最大 305 ms |

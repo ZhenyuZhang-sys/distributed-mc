@@ -525,7 +525,7 @@ final class CoordinatorServer {
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
                 + ",\"maxLeaseTotalMs\":" + TaskQueue.MAX_LEASE_TOTAL_MS + ",\"importBudgetMs\":" + IMPORT_BUDGET_MS
-                + ",\"corridorChunks\":" + TaskQueue.CORRIDOR_CHUNKS + ",\"skipNoDeadline\":" + TaskQueue.SKIP_NO_DEADLINE
+                + ",\"corridorChunks\":" + TaskQueue.CORRIDOR_CHUNKS + ",\"corridorNeighborPad\":" + TaskQueue.CORRIDOR_NEIGHBOR_PAD + ",\"skipNoDeadline\":" + TaskQueue.SKIP_NO_DEADLINE
                 + ",\"importFrontier\":" + DemandScanner.IMPORT_FRONTIER + ",\"importMarginMs\":" + TaskQueue.IMPORT_MARGIN_MS
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
