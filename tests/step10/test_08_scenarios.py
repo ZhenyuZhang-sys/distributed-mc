@@ -388,3 +388,15 @@ def test_firework_vanilla_label_shows_ticket_throttle():
     from analysis import firework as f
     assert '票节流 16' in f._cfg(dict(donors=0, ticket_throttle=16))
     assert '票节流 4' in f._cfg(dict(donors=1, donor_profile='1x8', ticket_throttle=4))
+
+
+def test_driver_keeps_donor_status_after_flight(tmp_path):
+    # 调度 11-09：fish-rate 的 status 每个 worker 有 lanes / parallelism / ratePerSec / laneLatencyMs，飞完那一刻的整份 /donor status
+    # 存进归档（donor-status.json），结果里摘出每个 worker 的这几项
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.status['workers'] = [dict(id=7, name='w', done=3, lanes=4, parallelism=3.5, ratePerSec=4.8, laneLatencyMs=700)]
+    out = drive(rcell('firework'), tmp_path / 'c15')
+    import json
+    saved = json.loads((tmp_path / "c15" / "donor-status.json").read_text())
+    assert saved['workers'][0]['lanes'] == 4
+    assert dict(id=7, lanes=4, parallelism=3.5, ratePerSec=4.8, laneLatencyMs=700) in out['worker_status']

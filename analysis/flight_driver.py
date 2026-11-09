@@ -94,6 +94,10 @@ def _prop_matches(want, used):
     return str(used) == str(want)
 
 
+# fish-rate（11-09）status 里每个 worker 的速度估计；老代码没有这些就不记
+WORKER_STATUS_KEYS = ('lanes', 'parallelism', 'ratePerSec', 'laneLatencyMs', 'latencyMs', 'busyMs', 'slots', 'capacityPerSec')
+
+
 def _status_counts(controller) -> dict:
     """/donor status 里会涨的计数：导入、丢弃按原因、过时删掉的（7.2）、导入的主线程耗时、donor 做完的 tile。"""
     s = controller.status()
@@ -259,6 +263,10 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         st = controller.status() if props else {}
         used = {k: _prop_used(st, k) for k in props}
         counts_after = _status_counts(controller) if donors else None
+        status_after = controller.status() if donors else None
+        if status_after is not None:   # 飞完那一刻整份 /donor status（fish-rate 的每个 worker 的 lanes、速率等）
+            out.mkdir(parents=True, exist_ok=True)
+            (out / 'donor-status.json').write_text(json.dumps(status_after, ensure_ascii=False, indent=1))
         cpu_after = runner.worker_cpu(services) if cpu_before is not None else None
         log_lines = runner.server_log_since(t_fly) if hasattr(runner, 'server_log_since') else []
         _keep_diagnostics(runner, out, t_fly, donors)
@@ -280,6 +288,8 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         result = {k: _num(s[k]) for k in METRICS if k in s}
         for k in props:
             result[f'{k}_effective'] = used[k]
+        if status_after is not None:
+            result['worker_status'] = [{k: w[k] for k in ('id',) + WORKER_STATUS_KEYS if k in w} for w in status_after.get('workers', [])]
         if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个
             stalls = [j['summary'].get('stall_fraction') for j in all_judged if j['summary'].get('stall_fraction') is not None]
             dists = [j['summary'].get('distance_ratio') for j in all_judged if j['summary'].get('distance_ratio') is not None]
