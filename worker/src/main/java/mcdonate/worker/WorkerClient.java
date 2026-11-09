@@ -55,7 +55,7 @@ final class WorkerClient {
     static final String WORKER_TOKEN_ENV = "MCDONATE_TOKEN";
 
     WorkerClient(MinecraftServer server, String address) {
-        this(server, address, line -> System.out.println(line));
+        this(server, address, ControlOut.stdout()); // 不经过 System.out（原版会把它包成日志格式，见 ControlOut）
     }
 
     WorkerClient(MinecraftServer server, String address, java.util.function.Consumer<String> controlOut) {
