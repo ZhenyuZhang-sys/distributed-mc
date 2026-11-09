@@ -34,12 +34,16 @@ public class RecordGameTest implements FabricGameTest {
                 FlightGameTest.check(done.get("speed").isJsonNull() && done.get("ideal_distance").isJsonNull(), "record 不该有速度和理想距离：" + done);
                 FlightGameTest.check(!FlightGameTest.field(done, "stopped").getAsBoolean(), "record 正常结束不算 stopped：" + done);
                 FlightGameTest.check("command".equals(FlightGameTest.field(done, "stopped_reason").getAsString()), "结束原因：" + done);
-                FlightGameTest.check(FlightGameTest.field(done, "ticks").getAsLong() >= 30, "tick 数：" + done);
+                // runAfterDelay(30) 在第 30 个 tick 中间执行，那个 tick 的结束还没算上；留点余量
+                FlightGameTest.check(FlightGameTest.field(done, "ticks").getAsLong() >= 25, "tick 数：" + done);
                 List<JsonObject> prov = FlightGameTest.lines(h, run, "provenance.jsonl");
                 int cx = c.x + 45, cz = c.z + dz;
                 FlightGameTest.check(prov.stream().anyMatch(e -> e.get("cx").getAsInt() == cx && e.get("cz").getAsInt() == cz
                         && "vanilla".equals(e.get("kind").getAsString())), "强制生成的 chunk 没有来源事件");
-                FlightGameTest.check(!FlightGameTest.lines(h, run, "chunks.jsonl").isEmpty(), "chunks.jsonl 是空的");
+                // 玩家没动：没有进出视野的事件，chunks.jsonl 可以是空的；逐秒行要有（和飞行一样的格式）
+                List<JsonObject> secs = FlightGameTest.lines(h, run, "seconds.jsonl");
+                FlightGameTest.check(!secs.isEmpty() && secs.size() == FlightGameTest.field(done, "rows").getAsInt()
+                        && secs.get(0).has("stalled_ticks") && secs.get(0).has("void_rate"), "逐秒行：" + secs.size() + " " + done);
                 FlightGameTest.delete(h, run);
             });
         });

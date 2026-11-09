@@ -67,6 +67,16 @@ public final class FlightRecorder {
     };
     private int enters, readies, leaves;
     private boolean finished;
+    // 跟踪真人玩家（flight == null，docs/step10-plan.md 7.2）：只记录不移动
+    private final double startX, startZ, startY;
+    private double prevX, prevZ;
+    private long lastEndNanos;
+    private String stoppedReason;
+
+    /** 跟踪真人玩家：不移动、不改能力，记录视野、卡住（{@link RealStall} 的近似）、来源事件，文件和飞行一样。 */
+    static FlightRecorder record(String run, ServerPlayer player, int viewDistance, FlightOutput out) {
+        return new FlightRecorder(run, player, null, viewDistance, out);
+    }
 
     FlightRecorder(String run, ServerPlayer player, Flight flight, int viewDistance, FlightOutput out) {
         this.run = run;
@@ -78,13 +88,19 @@ public final class FlightRecorder {
         this.requestedViewDistance = player.requestedViewDistance();
         this.out = out;
         this.tracker = new ViewTracker(viewDistance, this::event);
-        this.rows = new SecondRows(flight.mode() == Flight.Mode.WALL ? (int) Math.ceil(flight.seconds()) : 0, r -> out.second(r.json()));
-        player.getAbilities().mayfly = true;
-        player.getAbilities().flying = true;
-        player.onUpdateAbilities();
-        posX = flight.startX();
-        posZ = flight.startZ();
-        place(player, posX, posZ);
+        this.rows = new SecondRows(flight != null && flight.mode() == Flight.Mode.WALL ? (int) Math.ceil(flight.seconds()) : 0,
+                r -> out.second(r.json()));
+        this.startX = flight != null ? flight.startX() : player.getX();
+        this.startZ = flight != null ? flight.startZ() : player.getZ();
+        this.startY = flight != null ? flight.y() : player.getY();
+        posX = prevX = startX;
+        posZ = prevZ = startZ;
+        if (flight != null) {
+            player.getAbilities().mayfly = true;
+            player.getAbilities().flying = true;
+            player.onUpdateAbilities();
+            place(player, posX, posZ);
+        }
         ChunkPos c = player.chunkPosition();
         this.initial = tracker.start(c.x, c.z, this::ready);
         out.runJson(config().toString());
@@ -115,12 +131,19 @@ public final class FlightRecorder {
         if (finished) return;
         ServerPlayer p = player(server);
         if (p == null) {
-            finish(false, "player_left");
+            leave();
             return;
         }
         long now = System.nanoTime();
+        if (!started) lastEndNanos = now;
         started = true;
         tickStart = now;
+        if (flight == null) {
+            // 真人玩家：位置由客户端的移动包在这个 tick 里改，endTick 时和这里比
+            prevX = p.getX();
+            prevZ = p.getZ();
+            return;
+        }
         // 像客户端一样前进：这一 tick 该走的时间（墙钟模式按真实时间，tick 模式每 tick 1/20 秒），不越过没就绪的 chunk
         long target = flight.mode() == Flight.Mode.WALL ? Math.min(now - t0, (long) (flight.seconds() * 1e9))
                 : Math.min(ticks + 1, (long) Math.ceil(flight.seconds() * 20)) * 50_000_000L;
@@ -143,11 +166,21 @@ public final class FlightRecorder {
         if (finished || !started) return;
         ServerPlayer p = player(server);
         if (p == null) {
-            finish(false, "player_left");
+            leave();
             return;
         }
         long now = System.nanoTime();
         ticks++;
+        if (flight == null) {
+            double moved = Math.hypot(p.getX() - prevX, p.getZ() - prevZ);
+            distance += moved;
+            stalledThisTick = RealStall.stalled(moved, p.getX(), p.getZ(), p.getYRot(), this::ready);
+            if (stalledThisTick) {
+                stalledTicks++;
+                stallNanos += now - lastEndNanos;   // 卡住的这个 tick 从上一个 tick 结束算起，整段都算卡住
+            }
+        }
+        lastEndNanos = now;
         long elapsed = now - t0;
         endMs = elapsed / 1_000_000;
         long scan = System.nanoTime();
@@ -157,9 +190,28 @@ public final class FlightRecorder {
             unreadyTicks++;   // 不该发生：前进时已经挡住了。不为 0 说明模拟客户端的逻辑有漏洞
         }
         rows.tick(elapsed, now - tickStart, p.getX(), p.getZ(), s, stalledThisTick);
-        if (flight.finished(flight.elapsed(elapsed, ticks))) {
+        if (flight != null && flight.finished(flight.elapsed(elapsed, ticks))) {
             finish(false, null);
         }
+    }
+
+    /** 玩家不在了：飞行算出错（aborted），跟踪真人玩家是正常结束（stopped_reason = left）。 */
+    private void leave() {
+        if (flight == null) {
+            finishRecord("left");
+        } else {
+            finish(false, "player_left");
+        }
+    }
+
+    /** 跟踪真人玩家的正常结束：command = /bench record stop，left = 玩家下线，server_stopping = 停服。 */
+    void finishRecord(String reason) {
+        stoppedReason = reason;
+        finish(false, null);
+    }
+
+    boolean recording() {
+        return flight == null;
     }
 
     /** 结束：写最后一秒和 done.json。stopped = 被 /bench fly stop 提前停下；aborted = 出错原因（没有就是 null）。 */
@@ -180,7 +232,11 @@ public final class FlightRecorder {
         done.addProperty("t0_nanotime", t0);
         // 像客户端一样前进（11-09）：实际距离、理想距离、卡在没就绪 chunk 前面的 tick 数和时长
         done.addProperty("distance", distance);
-        done.addProperty("ideal_distance", flight.blocksPerSecond() * flight.seconds());
+        done.addProperty("ideal_distance", flight != null ? (Number) (flight.blocksPerSecond() * flight.seconds()) : null);
+        if (flight == null) {
+            done.addProperty("seconds", endMs / 1000.0);   // 跟踪了多久（compose 当飞行时长用）
+            done.addProperty("stopped_reason", stoppedReason);
+        }
         done.addProperty("stalled_ticks", stalledTicks);
         done.addProperty("stall_ms", stallNanos / 1e6);
         done.addProperty("unready_ticks", unreadyTicks);
@@ -227,12 +283,12 @@ public final class FlightRecorder {
         o.addProperty("run", run);
         o.addProperty("player", playerName);
         o.addProperty("uuid", playerId.toString());
-        o.addProperty("mode", flight.mode().name().toLowerCase(java.util.Locale.ROOT));
-        o.addProperty("speed", flight.blocksPerSecond());
-        o.addProperty("seconds", flight.seconds());
-        o.addProperty("y", flight.y());
-        o.addProperty("start_x", flight.startX());
-        o.addProperty("start_z", flight.startZ());
+        o.addProperty("mode", flight != null ? flight.mode().name().toLowerCase(java.util.Locale.ROOT) : "record");
+        o.addProperty("speed", flight != null ? (Number) flight.blocksPerSecond() : null);
+        o.addProperty("seconds", flight != null ? (Number) flight.seconds() : null);
+        o.addProperty("y", startY);
+        o.addProperty("start_x", startX);
+        o.addProperty("start_z", startZ);
         o.addProperty("view_distance", viewDistance);
         // 假玩家的请求视距（原版发包按 clamp(请求, 2, 服务器视距)；加载和生成不受影响，见计划 2.1）
         o.addProperty("requested_view_distance", requestedViewDistance);
@@ -289,7 +345,7 @@ public final class FlightRecorder {
     }
 
     private void place(ServerPlayer p, double x, double z) {
-        p.teleportTo(level, x, flight.y(), z, p.getYRot(), p.getXRot());
+        p.teleportTo(level, x, startY, z, p.getYRot(), p.getXRot());
         p.setDeltaMovement(Vec3.ZERO);
         p.fallDistance = 0;
         level.getChunkSource().move(p);

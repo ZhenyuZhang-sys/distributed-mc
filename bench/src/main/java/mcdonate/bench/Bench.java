@@ -25,6 +25,7 @@ public final class Bench implements ModInitializer {
     public void onInitialize() {
         // 只给 OP 和控制台（RCON）用：
         //   /bench stats          计数，一行 JSON
+        //   /bench tick           做完的 tick 数和最近 20 个 tick 的 MSPT（START～END_SERVER_TICK 计时，演示面板用），一行 JSON
         //   /bench stages         各阶段计时，一行 JSON
         //   /bench timing on|off  阶段计时开关，默认关
         //   /bench reset          计数和计时都清零
@@ -32,6 +33,7 @@ public final class Bench implements ModInitializer {
         //   /bench chunk <x> <z>  这个 chunk 跑过几次 noise、features
         //   /bench view           每个玩家视距内已经做好（加载成成品）的 chunk 数，加上平均 MSPT（冒烟测试估虚空率用）
         //   /bench fly ...        第 4 步飞行测量：start / stop / status / ready，见 FlightCommands
+        //   /bench record ...     跟踪真人玩家：start / stop，只记录不移动（第 10 步 7.2），见 FlightCommands
         //   /bench mark <cx> <cz> donor <编号> | rejected   造一条来源事件（验证地图上色用），走 Provenance.report
         FlightCommands.registerEvents();
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
@@ -63,12 +65,18 @@ public final class Bench implements ModInitializer {
                                                     ctx.getSource().sendSuccess(() -> Component.literal(s), false);
                                                     return 1;
                                                 }))))
+                        .then(Commands.literal("tick").executes(ctx -> {
+                            String s = TickTimes.json(TickTimes.recent(), ctx.getSource().getServer().getAverageTickTimeNanos());
+                            ctx.getSource().sendSuccess(() -> Component.literal(s), false);
+                            return 1;
+                        }))
                         .then(Commands.literal("view").executes(ctx -> {
                             String s = view(ctx.getSource().getServer());
                             ctx.getSource().sendSuccess(() -> Component.literal(s), false);
                             return 1;
                         }))
                         .then(FlightCommands.node())
+                        .then(FlightCommands.recordNode())
                         .then(Commands.literal("mark")
                                 .then(Commands.argument("cx", IntegerArgumentType.integer())
                                         .then(Commands.argument("cz", IntegerArgumentType.integer())
