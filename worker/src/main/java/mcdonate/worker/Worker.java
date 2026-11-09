@@ -79,14 +79,20 @@ public final class Worker implements ModInitializer {
                                                         .executes(ctx -> exportBatch(ctx.getSource(),
                                                                 new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
                                                                         IntegerArgumentType.getInteger(ctx, "tz")),
-                                                                IntegerArgumentType.getInteger(ctx, "n"), 3))
+                                                                IntegerArgumentType.getInteger(ctx, "n"), 3, false))
                                                         // 间隔几个 tile（1 = 紧挨着，外圈互相重叠；11-09 并行导出的线程安全测试用）
                                                         .then(Commands.argument("step", IntegerArgumentType.integer(1, 8))
                                                                 .executes(ctx -> exportBatch(ctx.getSource(),
                                                                         new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
                                                                                 IntegerArgumentType.getInteger(ctx, "tz")),
                                                                         IntegerArgumentType.getInteger(ctx, "n"),
-                                                                        IntegerArgumentType.getInteger(ctx, "step")))))))))));
+                                                                        IntegerArgumentType.getInteger(ctx, "step"), false))
+                                                                // 排上以后马上撤掉每隔一个（去票、不导出），像转弯时 coordinator 撤任务；只导出剩下的
+                                                                .then(Commands.literal("churn").executes(ctx -> exportBatch(ctx.getSource(),
+                                                                        new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
+                                                                                IntegerArgumentType.getInteger(ctx, "tz")),
+                                                                        IntegerArgumentType.getInteger(ctx, "n"),
+                                                                        IntegerArgumentType.getInteger(ctx, "step"), true)))))))))));
         // 第 5 步：配了 coordinator（系统属性 mcdonate.coordinator=host:port）就连上去领任务
         // 客户端起的 worker：服务器起来之前把标准输入拿给控制通道，不让原版控制台读走（ControlStdin）
         InputStream control = mcdonate.common.Config.getLong("parentPid", -1) > 0 ? ControlStdin.claim() : null;
@@ -146,7 +152,7 @@ public final class Worker implements ModInitializer {
         return 1;
     }
 
-    private static int exportBatch(CommandSourceStack source, TilePos first, int n, int step) {
+    private static int exportBatch(CommandSourceStack source, TilePos first, int n, int step, boolean churn) {
         net.minecraft.server.level.ServerLevel level = source.getServer().overworld();
         long t0 = System.nanoTime();
         long[] split = new long[3];
@@ -156,6 +162,17 @@ public final class Worker implements ModInitializer {
                 tiles.add(new TilePos(first.x() + step * i, first.z()));
             }
             tiles.forEach(t -> TileExporter.prefetch(level, t));
+            if (churn) {
+                java.util.List<TilePos> kept = new java.util.ArrayList<>();
+                for (int i = 0; i < tiles.size(); i++) {
+                    if (i % 2 == 1) {
+                        TileExporter.release(level, tiles.get(i));
+                    } else {
+                        kept.add(tiles.get(i));
+                    }
+                }
+                tiles = kept;
+            }
             for (TilePos t : tiles) {
                 TileExporter.export(level, t);
                 for (int i = 0; i < 3; i++) {
