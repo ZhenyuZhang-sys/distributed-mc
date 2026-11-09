@@ -20,7 +20,8 @@ def prepare_mods(dest: Path, extra: list[Path] = ()) -> Path:
     return dest
 
 
-def run_client(name: str, seconds: int, mods: Path, out: Path, env: dict | None = None) -> dict:
+def run_client(name: str, seconds: int, mods: Path, out: Path, env: dict | None = None, service: str = "client") -> dict:
+    """service：client（有外网）或 client-offline（只能连测试服务器，9.2 用）。"""
     """进服挂 seconds 秒。返回 {"log": 客户端日志, "ps": 进程快照, "gamedir": 游戏目录列表, "mods": 装了什么}。"""
     out.mkdir(parents=True, exist_ok=True)
     saved = os.environ.copy()
@@ -29,7 +30,7 @@ def run_client(name: str, seconds: int, mods: Path, out: Path, env: dict | None 
         os.environ["MCD_CLIENT_OUT"] = str(out)
         # --build：run.sh 是打进镜像的，改了要重建（有缓存，很快）。第一次要下载客户端，慢
         extra = [a for k, v in (env or {}).items() for a in ("-e", f"{k}={v}")]
-        compose("run", "--rm", "--build", *extra, "client", name, str(seconds), timeout=2400)
+        compose("run", "--rm", "--build", *extra, service, name, str(seconds), timeout=2400)
     finally:
         os.environ.clear()
         os.environ.update(saved)

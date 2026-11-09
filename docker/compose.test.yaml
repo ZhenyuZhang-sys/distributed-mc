@@ -9,6 +9,8 @@ services:
       # 第 9 步：Docker 里的本地 worker 没有玩家、没有 token，测试里放行（正式默认不放）
       # publicHost：装了客户端 mod 的玩家进服时收到的 coordinator 地址（compose 网络里的主机名）。原版客户端收不到邀请（9.1 测这个）
       JVM_OPTS: "-Dmcdonate.demand=off -Dmcdonate.allowTokenless=true -Dmcdonate.publicHost=minecraft ${MCD_JVM_EXTRA:-}"
+    # 第 9 步 9.2：服务器也在 isolated 网络里（没有外网），给"不许联网"的客户端连
+    networks: [default, isolated]
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。
@@ -91,6 +93,19 @@ services:
       - client-cache:/cache
       - ${MCD_CLIENT_MODS:-./client-mods}:/mods:ro
       - ${MCD_CLIENT_OUT:-./client-out}:/out
+
+  # 第 9 步 9.2：同一个客户端，但只在 isolated 网络里（internal，不能上外网，只能连测试服务器）。
+  # 没同意时 mod 要是偷偷去下载，就会连不上、日志里有错误；同意后下载失败显示"准备失败"（正向对照）。
+  # 客户端本身的文件事先在 client（有外网）里下好，放在 client-cache 卷里。
+  client-offline:
+    profiles: ["client"]
+    extends:
+      service: client
+    networks: !override [isolated]
+
+networks:
+  isolated:
+    internal: true
 
 volumes:
   client-cache:

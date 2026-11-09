@@ -10,7 +10,7 @@
 
 import pytest
 
-from step9.headless_client import java_processes, prepare_mods, run_client, worker_names
+from step9.headless_client import TESTHOOKS_JAR, java_processes, prepare_mods, run_client, worker_names
 
 NAME = "noconsent1"
 
@@ -19,7 +19,8 @@ NAME = "noconsent1"
 def run(server, tmp_path_factory):
     base = server.artifact_dir or tmp_path_factory.mktemp("client")
     before = worker_names(server)
-    r = run_client(NAME, 40, prepare_mods(base / "client-mods-noconsent"), base / "client-noconsent")
+    # client-offline：只能连测试服务器、不能上外网（调度 11-09）。mod 要是偷偷去下载就会失败、日志里有错误
+    r = run_client(NAME, 40, prepare_mods(base / "client-mods-noconsent"), base / "client-noconsent", service="client-offline")
     r["new_workers"] = worker_names(server) - before
     return r
 
@@ -53,5 +54,20 @@ def test_no_new_worker_registered(run):
     assert not run["new_workers"], run["new_workers"]
 
 
-def test_no_mojang_download_without_consent():
-    pytest.skip("等客户端容器的网络记录（只放行测试服务器和一个记 DNS 请求的小代理）：确认没同意时没访问 piston-meta")
+DOWNLOAD_HOSTS = ("piston-meta.mojang.com", "piston-data.mojang.com", "meta.fabricmc.net", "maven.fabricmc.net")
+
+
+def test_no_download_attempt_without_consent(run):
+    # 没同意：mod 不去下载服务器 jar 和 Fabric 的东西。网络是隔离的，真去下载会失败、日志里有这些地址或"准备失败"
+    bad = [l for l in run["log"].splitlines() if any(h in l for h in DOWNLOAD_HOSTS) or "准备失败" in l]
+    assert not bad, bad[:5]
+
+
+def test_offline_network_really_blocks_downloads(server, tmp_path_factory):
+    # 正向对照：同一个隔离网络里同意了（测试小 mod 点同意），mod 去下载，必然失败、显示"准备失败"。
+    # 证明上面"没有下载"的检查真能抓到下载行为
+    base = server.artifact_dir or tmp_path_factory.mktemp("client")
+    r = run_client("offline2", 60, prepare_mods(base / "client-mods-offline2", extra=[TESTHOOKS_JAR]),
+                   base / "client-offline-consent", service="client-offline")
+    assert "玩家同意了" in r["log"], "测试钩子没点同意"
+    assert "worker 准备失败" in r["log"], [l for l in r["log"].splitlines() if "mcdonate" in l or "worker" in l][-10:]
