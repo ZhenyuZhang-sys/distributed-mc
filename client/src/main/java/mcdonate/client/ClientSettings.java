@@ -40,6 +40,13 @@ public record ClientSettings(boolean enabled, int threads, int memoryMb, int fra
         return new ClientSettings(enabled, v, memoryMb, frameTargetMs);
     }
 
+    /** 设置界面里帧时间目标的选项（毫秒）：33（30 帧）、50（20 帧，默认）、100、200。 */
+    public static final java.util.List<Integer> FRAME_TARGETS = java.util.List.of(33, 50, 100, 200);
+
+    public ClientSettings withFrameTargetMs(int v) {
+        return new ClientSettings(enabled, threads, memoryMb, v);
+    }
+
     public ClientSettings withMemoryMb(int v) {
         return new ClientSettings(enabled, threads, v, frameTargetMs);
     }

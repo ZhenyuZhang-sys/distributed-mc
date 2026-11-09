@@ -129,6 +129,10 @@ public final class ClientMod implements ClientModInitializer {
 
     /** 设置变了（设置界面、同意界面调）。 */
     static void settingsChanged() {
+        FrameThrottle t = throttle;
+        if (t != null) {
+            t.setTargetMs(ClientSettings.load(settingsFile()).frameTargetMs()); // 帧时间目标改了马上生效
+        }
         Minecraft.getInstance().execute(controller::onSettingsChanged);
     }
 

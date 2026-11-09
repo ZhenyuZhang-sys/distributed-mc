@@ -23,7 +23,7 @@ public final class FrameThrottle {
     static final long EVAL_EVERY_MS = 100;
     static final double RESUME_FRACTION = 0.8;
 
-    private final double targetMs;
+    private volatile double targetMs;
     private final ArrayDeque<long[]> frames = new ArrayDeque<>(); // [时间, 帧时间 × 1000（微秒）]
     private boolean paused;
     private long overSince = -1;
@@ -32,6 +32,15 @@ public final class FrameThrottle {
 
     public FrameThrottle(double targetMs) {
         this.targetMs = targetMs;
+    }
+
+    /** 设置里改了帧时间目标：马上生效（不重启 worker；暂停着的按新的恢复线判）。 */
+    public void setTargetMs(double ms) {
+        targetMs = ms;
+    }
+
+    public double targetMs() {
+        return targetMs;
     }
 
     /** 记一帧（nowMs：现在，frameMs：这一帧用了多久），返回要不要发 PAUSE / RESUME。 */
