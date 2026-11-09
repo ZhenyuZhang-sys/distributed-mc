@@ -267,7 +267,7 @@ final class CoordinatorServer {
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
                         est.add(new TaskQueue.DonorEstimate(throughput.latencyMs(c.workerId), throughput.ratePerMs(c.workerId),
-                                tasks.inFlight(c.workerId)));
+                                tasks.inFlight(c.workerId), slots(c)));
                     }
                 }
                 List<Long> hopeless = tasks.pruneHopeless(est);
@@ -289,7 +289,6 @@ final class CoordinatorServer {
                     }
                 }
             }
-            boolean thr = features.on(Features.THROUGHPUT);
             for (Connection c : workers.values()) {
                 if (now - c.lastSeen > DEAD_MS) {
                     LOG.info("worker {} 15 秒没有消息，断开", c.workerId);
@@ -299,22 +298,54 @@ final class CoordinatorServer {
                 if (c.paused) {
                     continue; // 第 9 步：玩家那边帧率低、worker 暂停了：不派新任务，手上的照常续租、等结果
                 }
-                // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
-                // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
-                int max = thr ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
-                java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
-                        ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
-                Optional<TaskQueue.Assignment> a;
-                while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
-                    TaskQueue.Assignment x = a.get();
-                    LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
-                    // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
-                    c.currentTask = x.taskId();
-                    c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
-                }
+                dispatch(c, now);
             }
         } catch (RuntimeException e) {
             LOG.warn("定时任务出错：{}", e.toString());
+        }
+    }
+
+    /** 这个 worker 同时能领几个：开 throughput 时按实测耗时（租约内能做完的个数，最多 maxConcurrency），关着时 1 个。 */
+    private int slots(Connection c) {
+        return features.on(Features.THROUGHPUT) ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
+    }
+
+    /** 给一个 worker 派到名额满（或者没有它能做的）。只在定时线程上调。 */
+    private void dispatch(Connection c, long now) {
+        // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
+        // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
+        // 11-09（正式服 hopeless 398）：还有空名额的马上开始，不按"前面几个 ÷ 速率"排队估
+        int max = slots(c);
+        boolean thr = features.on(Features.THROUGHPUT);
+        java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
+                ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), max, now, due) : due -> true;
+        Optional<TaskQueue.Assignment> a;
+        while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
+            TaskQueue.Assignment x = a.get();
+            LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
+            // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
+            c.currentTask = x.taskId();
+            c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
+        }
+    }
+
+    /**
+     * 11-09（正式服 hopeless 398）：收到一个结果就马上给这个 worker 补派，不等下一秒的定时：
+     * 一个 tile 0.7 秒做完，等定时最多空 1 秒，空档又让实测速率偏低。在定时线程上做（和 tick 不并发）。
+     */
+    private void dispatchSoon(Connection c) {
+        try {
+            timer.execute(() -> {
+                try {
+                    if (workers.get(c.workerId) == c && !c.paused) {
+                        dispatch(c, System.currentTimeMillis());
+                    }
+                } catch (RuntimeException e) {
+                    LOG.warn("补派出错：{}", e.toString());
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // coordinator 在停
         }
     }
 
@@ -390,6 +421,7 @@ final class CoordinatorServer {
             resultMeta.remove(r.taskId());
             waitDonor.release(r.taskId());
         }
+        dispatchSoon(c); // 空出一个名额：马上补派
     }
 
     /** 主线程上：校验 tile 并导入。出错就让任务回到队列。返回是否被接受。 */
@@ -549,6 +581,12 @@ final class CoordinatorServer {
                     .append(",\"inFlight\":").append(tasks.inFlight(c.workerId))
                     .append(",\"paused\":").append(c.paused)
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
+                    // 11-09（正式服 hopeless 398）：派活怎么估这个 donor
+                    .append(",\"latencyMs\":").append(throughput.latencyMs(c.workerId))
+                    .append(",\"ratePerSec\":").append(Math.round(throughput.ratePerMs(c.workerId) * 1e5) / 100.0)
+                    .append(",\"busyMs\":").append(throughput.busyMs(c.workerId))
+                    .append(",\"slots\":").append(slots(c))
+                    .append(",\"capacityPerSec\":").append(Math.round(throughput.capacityPerMs(c.workerId, slots(c)) * 1e5) / 100.0)
                     .append('}');
         }
         return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())

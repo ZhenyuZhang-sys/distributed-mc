@@ -73,9 +73,7 @@ class DonorThroughputTest {
         }
         assertEquals(4_000, t.latencyMs(1), "延迟取中位数");
         double rate = t.ratePerMs(1) * 1000;
-        // 11-09（正式服 hopeless 398）：按忙碌时间算，8 个做了 8.3 秒（两批的租期并起来），约 0.96 个/秒；
-        // 原来按完成间隔是 7/4.3 ≈ 1.6（窗口只看到半批，偏高）
-        assertTrue(rate > 0.9 && rate < 1.1, "按忙碌时间：8 个、8.3 秒，实际 " + rate);
+        assertTrue(rate > 1.5 && rate < 2.0, "按完成间隔：7 个间隔 4.3 秒，约 1.6 个/秒，实际 " + rate);
         long now = 100_000;
         assertTrue(t.canMeet(1, 3, now, now + 6_000), "手上 3 个、能并行：4 秒左右做完");
     }

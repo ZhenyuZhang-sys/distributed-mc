@@ -551,7 +551,12 @@ public final class TaskQueue {
     }
 
     /** 一个 donor 的估计：延迟（毫秒）、速率（个/毫秒）、手上在做几个。 */
-    public record DonorEstimate(long latencyMs, double ratePerMs, int inFlight) {}
+    public record DonorEstimate(long latencyMs, double ratePerMs, int inFlight, int slots) {
+        /** 不知道名额数：按 1 个（一个一个做）。 */
+        public DonorEstimate(long latencyMs, double ratePerMs, int inFlight) {
+            this(latencyMs, ratePerMs, inFlight, 1);
+        }
+    }
 
     /**
      * 11-09（codex-audit G5）：按每个 donor 分别估。排队的任务按派活顺序，依次假设给能最早做完的那个 donor
@@ -585,7 +590,7 @@ public final class TaskQueue {
                 if (d.ratePerMs() <= 0) {
                     continue;
                 }
-                double f = DonorThroughput.predictFinish(now, d.latencyMs(), d.ratePerMs(), ahead[i]);
+                double f = DonorThroughput.predictFinish(now, d.latencyMs(), d.ratePerMs(), ahead[i], d.slots());
                 if (f < finish) {
                     finish = f;
                     best = i;
