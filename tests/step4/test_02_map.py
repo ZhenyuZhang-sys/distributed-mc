@@ -120,3 +120,63 @@ def test_colors():
     assert color('donor', 7) == color('donor', 7)
     with pytest.raises(ValueError):
         color('alien', 0)
+
+
+def test_live_follows_latest_run_across_batches(runs):
+    # 用户 11-09 报："map 更新一次之后就不会再重新着色了"。原因：网页只在打开时读一次 run 列表，之后一直拉那一轮；
+    # 新开一轮（新的飞行、跟踪真人玩家）出不来。现在实时模式默认"跟最新一轮"：run=latest，带上 have=页面正在显示的那一轮
+    import os
+    import time as _time
+    server = make_server(runs, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f'http://127.0.0.1:{server.server_address[1]}'
+    try:
+        a = runs / 'flight-a'
+        os.utime(a / 'provenance.jsonl', (1_000, 1_000))
+        first = get(base + '/events?run=latest&have=&since=0')
+        assert first['run'] == 'flight-a' and first['reset'] and first['next'] == 3
+        # 第 2 批：同一轮追加，增量，不重置
+        with (a / 'provenance.jsonl').open('a') as f:
+            f.write(json.dumps(EVENTS[3]) + '\n')
+        second = get(base + f"/events?run=latest&have=flight-a&since={first['next']}")
+        assert second['run'] == 'flight-a' and not second['reset'] and [e['kind'] for e in second['events']] == ['rejected']
+        # 第 3 批：新开一轮，页面要清空、从头拉新的一轮
+        b = runs / 'flight-b'
+        b.mkdir()
+        (b / 'provenance.jsonl').write_text(json.dumps(dict(t_ms=5, cx=7, cz=7, kind='vanilla', donor=-1)) + '\n')
+        os.utime(b / 'provenance.jsonl', (_time.time(), _time.time()))
+        third = get(base + f"/events?run=latest&have=flight-a&since={second['next']}")
+        assert third['run'] == 'flight-b' and third['reset'] and third['next'] == 1
+        assert [(e['cx'], e['cz']) for e in third['events']] == [(7, 7)]
+        # 第 4 批：新的一轮里接着追加
+        with (b / 'provenance.jsonl').open('a') as f:
+            f.write(json.dumps(dict(t_ms=9, cx=8, cz=7, kind='donor', donor=2)) + '\n')
+        fourth = get(base + f"/events?run=latest&have=flight-b&since={third['next']}")
+        assert not fourth['reset'] and [(e['cx'], e['cz']) for e in fourth['events']] == [(8, 7)]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_live_run_gone_keeps_page_alive(runs):
+    # 飞完以后 layer2.fly 把这一轮归档并删掉 bench-runs 里的目录：实时模式不该报错停住，回"这一轮没了"，页面保留最后的样子
+    server = make_server(runs, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f'http://127.0.0.1:{server.server_address[1]}'
+    try:
+        gone = get(base + '/events?run=latest&have=flight-zzz&since=12')
+        assert gone['run'] == 'flight-a' and gone['reset']        # 有别的轮就换过去
+        import shutil
+        shutil.rmtree(runs / 'flight-a')
+        none = get(base + '/events?run=latest&have=flight-a&since=3')
+        assert none['run'] is None and none['events'] == [] and not none['reset']
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_page_follows_latest_by_default(base):
+    page = get(base + '/')
+    assert 'run=latest' in page and '跟最新一轮' in page and 'data.reset' in page
