@@ -59,4 +59,31 @@ class DonorThroughputTest {
         t.forget(1);
         assertEquals(DonorThroughput.DEFAULT_MS, t.averageMs(1));
     }
+
+    // ---- 11-09 codex-audit A15：并行后吞吐被低估（派出到收到含排队，canMeet 又乘在途数）----
+
+    @Test
+    void parallelDonorRateFromCompletions() {
+        // 4 个一批：每个派出到收到 4 秒，但每 100 ms 完成一个、每 4 秒一批 → 实际约 1 个/秒以上，不是 0.25
+        DonorThroughput t = new DonorThroughput();
+        for (int batch = 0; batch < 2; batch++) {
+            for (int i = 0; i < 4; i++) {
+                t.record(1, 4_000, 4_000 + batch * 4_000 + i * 100L);
+            }
+        }
+        assertEquals(4_000, t.latencyMs(1), "延迟取中位数");
+        double rate = t.ratePerMs(1) * 1000;
+        assertTrue(rate > 1.5 && rate < 2.0, "按完成间隔：7 个间隔 4.3 秒，约 1.6 个/秒，实际 " + rate);
+        long now = 100_000;
+        assertTrue(t.canMeet(1, 3, now, now + 6_000), "手上 3 个、能并行：4 秒左右做完");
+    }
+
+    @Test
+    void singleSampleStillConservative() {
+        // 只有一个样本：按 1/延迟估速率（和原来一样保守）
+        DonorThroughput t = new DonorThroughput();
+        t.record(1, 2_000, 50_000);
+        assertEquals(0.5, t.ratePerMs(1) * 1000, 1e-9);
+        assertFalse(t.canMeet(1, 2, 100_000, 105_000), "手上 2 个、一个一个做：6 秒");
+    }
 }
