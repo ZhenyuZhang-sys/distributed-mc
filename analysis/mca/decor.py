@@ -66,6 +66,7 @@ TERRAIN_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("sand", "water"),         # jungle 2 处，泉水或沙盘
     ("gravel", "water"),       # jungle 1 处
     ("lava", "stone"),         # 岩浆泉（mountain 1 处）
+    ("deepslate", "lava"),     # 岩浆泉（7.0b 原版对照 dark_forest tile [172,-441]，Y −21，1 处；fish f1 11-09 完整回归）
     ("dirt", "water"),         # 湖、泉水（fish 本地对照 Y 5～51）
     ("grass_block", "water"),  # 地表小湖（fish 本地对照 Y 79）
     # 湖：LakeFeature 挖出上空气、下水的坑（fish 本地对照，没导入部分 Y 48～49）。放进地形互换而不是整类放过：

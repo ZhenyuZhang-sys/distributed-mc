@@ -104,7 +104,8 @@ def collect(campaign) -> list[dict]:
             except (ValueError, FileNotFoundError, KeyError, json.JSONDecodeError):
                 continue
             r = json.loads((a / 'result.json').read_text())
-            out = {k: v for k, v in r['output'].items() if k != 'interference'}
+            # 删失的延迟在 JSON 里写成 'inf'（封存不许有无穷大），读回来变成无穷大
+            out = {k: math.inf if v == 'inf' else v for k, v in r['output'].items() if k != 'interference'}
             clash = set(out) & (PARAM_KEYS | META_KEYS)
             if clash:
                 raise ValueError(f'{cdir.name}：指标和参数同名 {sorted(clash)}，汇总会把它当成参数，驱动要改名')
@@ -149,7 +150,9 @@ def _flight_x_groups(rows):
     """X 用的那组 flight 轮：2 核、鞘翅、1 个假玩家、不加延迟。返回 (0 donor 的轮, {N: N donor 的轮}, 开关)。"""
     f = [r for r in rows if r['experiment'] == 'flight' and r.get('server_cpus') == 2 and r.get('speed') == 'elytra'
          and r.get('bots', 1) == 1 and r.get('latency_ms', 0) == 0]
-    features = 'all' if any(r.get('features') == 'all' for r in f if r['donors'] > 0) else 'v0'
+    # 有 donor 的那组用哪种开关：有全开用全开；只有一种就用它（演示矩阵只有 deadline）；否则 v0
+    seen = {r.get('features', 'v0') for r in f if r['donors'] > 0}
+    features = 'all' if 'all' in seen else seen.pop() if len(seen) == 1 else 'v0'
     base = [r for r in f if r['donors'] == 0]
     by_n = {}
     for r in f:
@@ -201,6 +204,7 @@ def _verdict(lo, hi, target, enough):
 
 # 用户 11-09 决定第 8 步（作弊检测）暂停：没有 verify 结果时，检出率和 Y 照样列出，判这个
 STEP8_PAUSED = '数据不足（第 8 步暂停）'
+Z_NO_GPU = '数据不足（要真显卡）'
 
 
 def hypotheses(rows) -> list[dict]:
@@ -244,8 +248,8 @@ def hypotheses(rows) -> list[dict]:
     zs = [r['z'] for r in rows if r['experiment'] == 'frametime' and r.get('z') is not None]
     lo, hi = t_interval(zs)
     out.append(dict(item='Z', value=statistics.mean(zs) if zs else None, ci_low=lo, ci_high=hi,
-                    verdict='已定' if len(zs) >= MIN_RUNS else '数据不足',
-                    rule=f'真实电脑上至少 {MIN_RUNS} 段挂机即给出数值', note='这台机器测不了（软件渲染）' if not zs else f'{len(zs)} 段'))
+                    verdict='已定' if len(zs) >= MIN_RUNS else Z_NO_GPU if not zs else '数据不足',
+                    rule=f'真实电脑上至少 {MIN_RUNS} 段挂机即给出数值', note='这台机器测不了（软件渲染），要有显卡的电脑' if not zs else f'{len(zs)} 段'))
     return out
 
 

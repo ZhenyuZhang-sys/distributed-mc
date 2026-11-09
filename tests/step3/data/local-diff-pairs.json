@@ -22,5 +22,6 @@
   {"a": "minecraft:cave_air", "b": "minecraft:dirt", "count": 15, "note": "7.0b"},
   {"a": "minecraft:air", "b": "minecraft:chain", "count": 10, "note": "7.0b"},
   {"a": "minecraft:grass_block", "b": "minecraft:stone", "count": 1, "note": "7.0b"},
-  {"a": "minecraft:cave_air", "b": "minecraft:gravel", "count": 6, "note": "kexu 11-09 第 3 步外圈原版互比，Y −5"}
+  {"a": "minecraft:cave_air", "b": "minecraft:gravel", "count": 6, "note": "kexu 11-09 第 3 步外圈原版互比，Y −5"},
+  {"a": "minecraft:deepslate", "b": "minecraft:lava", "count": 1, "note": "7.0b 原版对照 dark_forest tile [172,-441]，Y −21（fish f1 11-09）"}
  ]}

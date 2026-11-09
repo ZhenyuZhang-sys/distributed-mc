@@ -227,3 +227,20 @@ donor 要在窗口里完成：排队等派出 + 生成（第 3 步实测 4 核 1
 4. **计时类**全部标 slow（扫描耗时已经改了），只在单独跑 benchmark 时判；日常回归只断言功能（扫描跑了、读盘不超上限）。
 
 改动范围：第 3 步关卡、第 5 步 e2e、第 6 步的浸泡对照、第 7 步 7.0b 的树接缝实验。要等 7.8 查完再一起改，免得改两次。
+**11-09 已做第一部分（调度按 11-09 定的规矩："统计或原版比较类测试再因为噪声挂，就不再修补，挪到 slow"）**：
+这次挂的是 7.0b 树接缝实验的原版组严格层（f1 完整回归，dark_forest tile [172,-441] Y −21 一处 deepslate/lava，岩浆泉，已补进清单）。
+这是**测试分类的调整，不是放宽判据**：原版对原版的严格检查照旧要求 0，只是从日常回归挪到 slow（`scripts/test.sh stepN --slow`），
+挂了就是"清单缺项"，由人确认后入清单（同一提交导出 decor.json，附出处）。挪的是：
+
+| 测试 | 原来 | 现在 |
+| --- | --- | --- |
+| `tests/step3/test_05_gate.py::test_outer_rings_strict_zero`（外圈原版互比） | 日常 | slow |
+| `tests/step5/test_02_e2e.py` 没导入部分（服务器对 worker）的严格层 | 和导入部分在同一条断言里 | 拆出 `test_not_imported_strict_zero`，slow |
+| `tests/step7/test_00_seam_trees.py` 原版组（worker2 对 worker）的严格层 | 和导入组在同一条断言里 | 拆出 `test_seam_trees_vanilla_strict`，slow |
+
+日常回归里留着导入那一侧的严格检查：第 3 步 tile 和边界一圈严格层为 0、第 5 步 tile 和边界一圈两圈严格层为 0、tile 中间 2×2 和 worker 逐块一致、
+7.0b 导入组严格层为 0。第 6 步浸泡（`test_soak_30_minutes`）本来就是 slow，不动。统计层（二项检验、seam_guard）和第 2、3 条方案还没做。
+
+**11-09 又挪了一条（同一规矩）**：第 5 步 e2e 的边界护栏（seam_guard，导入边界一圈、两圈）拆成 `test_seam_guard`，slow。kexu 合 main 前的完整回归里挂过一次
+（边界装饰类 0.0318% > 没导入部分的 5 倍 0.0250%，单独重跑过），就是已知问题 7.8。日常回归里第 5 步 e2e 只留 tile 内部：严格层 0、tile 中间和 worker 逐块一致、
+二项检验。同时修了第 6 步两个 donor 的测试：等 worker2"做完一个"按这条测试开始时的 done 算（done 是连接累计的），头两个 tile 直接派给 worker2。

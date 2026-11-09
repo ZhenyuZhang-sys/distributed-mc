@@ -101,6 +101,19 @@ def sources(visits, provenance, end_ms):
     return out
 
 
+def donor_leads(provenance, seconds):
+    """donor 写入的每个 chunk，写入那一刻在玩家前方多少个 chunk（沿 +x，负数是在身后）。
+
+    玩家位置取写入时刻所在那一秒的逐秒行（t_s×1000 ≥ t_ms 的第一行，没有就取最后一行）；和 fish 第 7 步对比的 donor_lead 同一算法。
+    """
+    import bisect
+    ts = [s['t_s'] * 1000 for s in seconds]
+    xs = [s['x'] / 16 for s in seconds]
+    if not ts:
+        return []
+    return [e['cx'] - xs[min(bisect.bisect_left(ts, e['t_ms']), len(xs) - 1)] for e in provenance if e.get('kind') == 'donor']
+
+
 def _usage_at(samples, t_ns):
     for (ta, ua), (tb, ub) in zip(samples, samples[1:]):
         if ta <= t_ns <= tb:

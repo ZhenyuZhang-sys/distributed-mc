@@ -78,7 +78,7 @@ def test_tables_written(tmp_path):
     with (c / 'hypotheses.csv').open() as f:
         items = {r['item']: r for r in csv.DictReader(f)}
     assert {'X', 'MSPT<50ms', 'detect:ore', 'Y', 'Z'} <= set(items)
-    assert items['Z']['verdict'] == '数据不足'
+    assert items['Z']['verdict'] == '数据不足（要真显卡）'   # 调度 11-09 定的写法
 
 
 # ---- 判定规则（事先定好，见 docs/step10-plan.md 第 3 节） ----
@@ -120,7 +120,7 @@ def test_detection_and_y_verdicts():
     honest = [dict(experiment='verify', cheat='none', repeat=i, detected=False, y=0.08) for i in range(5)]
     assert verdict(honest, 'Y') == '已定'
     assert verdict(honest[:3], 'Y') == '数据不足'
-    assert verdict([], 'Z') == '数据不足'
+    assert verdict([], 'Z') == '数据不足（要真显卡）'
 
 
 def test_step8_paused_gives_insufficient_data():

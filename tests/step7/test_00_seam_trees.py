@@ -32,7 +32,8 @@ def area(tile):
     return tx * 4 - MARGIN, tz * 4 - MARGIN, 4 + 2 * MARGIN
 
 
-def test_seam_trees(server, worker, worker2, tmp_path_factory):
+@pytest.fixture(scope="module")
+def seam(server, worker, worker2, tmp_path_factory):
     assert len(SITES) >= 12, "至少 12 个位置"
     # 1. 每个位置：导入 + 三边生成
     for s in SITES:
@@ -87,9 +88,23 @@ def test_seam_trees(server, worker, worker2, tmp_path_factory):
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
         (server.artifact_dir / "seam-trees.json").write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n")
-    # 严格层：两组都必须是 0（导入组靠第 3 步的两层比较，原版组是清单完整性的复查）
-    assert all(r["strict"] == [0, 0] for r in rows), [(r["site"], r["strict"]) for r in rows if r["strict"] != [0, 0]]
+    return rows, verdict, sign, boot, summary
+
+
+def test_seam_trees(seam):
+    rows, verdict, sign, boot, summary = seam
+    # 严格层：导入组必须是 0。原版组（清单完整性的复查）11-09 起只在 slow 里查：test_seam_trees_vanilla_strict
+    assert all(r["strict"][0] == 0 for r in rows), [(r["site"], r["strict"]) for r in rows if r["strict"][0] != 0]
     if verdict == "suspicious":
         warnings.warn(f"7.0b 可疑：边界一圈树差异 {sign['higher']}/{sign['untied']} 个位置导入组更高，"
                       f"合计比值 {boot['ratio']:.2f}（95% 区间 {boot['low']:.2f}～{boot['high']:.2f}），写进'待你决定'")
     assert verdict != "problem", f"导入边界一圈的树差异系统性地高于原版：{json.dumps(summary, ensure_ascii=False)}"
+
+
+@pytest.mark.slow
+def test_seam_trees_vanilla_strict(seam):
+    # 原版组（worker2 对 worker，两个原版世界互比）严格层必须是 0，否则是装饰类清单缺项，由人确认后补进
+    # analysis/mca/decor.py（同一提交导出 decor.json）。调度 11-09 定的规矩：原版对原版的严格检查挪到 slow，
+    # 照旧严格，不进日常回归（11-09 f1 完整回归在 dark_forest 撞上 deepslate/lava 一处，挡住了无关的合并）。
+    rows = seam[0]
+    assert all(r["strict"][1] == 0 for r in rows), [(r["site"], r["strict"]) for r in rows if r["strict"][1] != 0]
