@@ -47,4 +47,21 @@ class ClientSettingsTest {
         assertEquals(100, ClientSettings.DEFAULTS.withFrameTargetMs(100).frameTargetMs());
         assertEquals(200, ClientSettings.DEFAULTS.withFrameTargetMs(500).frameTargetMs(), "最多 200");
     }
+    @Test
+    void splitsTotalBudgetsAndPersistsWorkerCount(@TempDir Path dir) throws Exception {
+        ClientSettings s = new ClientSettings(true, 8, 4096, 50);
+        assertEquals(2, s.effectiveWorkerCount());
+        assertEquals(4, s.forWorker(0).threads());
+        assertEquals(4, s.forWorker(1).threads());
+        assertEquals(2048, s.forWorker(0).memoryMb());
+        assertFalse(s.forWorker(2).enabled());
+        s = s.withWorkerCount(3).withMemoryMb(3072);
+        assertEquals(3, s.effectiveWorkerCount());
+        assertEquals(8, s.forWorker(0).threads() + s.forWorker(1).threads() + s.forWorker(2).threads());
+        assertEquals(3072, s.forWorker(0).memoryMb() + s.forWorker(1).memoryMb() + s.forWorker(2).memoryMb());
+        Path f = dir.resolve("settings.properties");
+        s.save(f);
+        assertEquals(s, ClientSettings.load(f));
+        assertEquals(1, ClientSettings.DEFAULTS.effectiveWorkerCount());
+    }
 }

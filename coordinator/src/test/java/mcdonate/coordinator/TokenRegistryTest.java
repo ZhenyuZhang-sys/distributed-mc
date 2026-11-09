@@ -86,4 +86,24 @@ class TokenRegistryTest {
         assertFalse(red.contains(t.substring(4)));
         assertTrue(red.endsWith("****"));
     }
+    @Test
+    void workerSlotsDoNotRevokeEachOther() {
+        String a = r.issue(alice, 0);
+        String b = r.issue(alice, 1);
+        String fresh = r.issue(alice, 1);
+        assertEquals(Optional.of(alice), r.consume(a));
+        assertEquals(Optional.empty(), r.consume(b));
+        assertEquals(Optional.of(alice), r.consume(fresh));
+        assertEquals(Optional.empty(), r.consume(fresh));
+    }
+
+    @Test
+    void leaveRevokesEverySlot() {
+        String a = r.issue(alice, 0), b = r.issue(alice, 1), c = r.issue(alice, 2);
+        r.revoke(alice);
+        assertTrue(r.consume(a).isEmpty());
+        assertTrue(r.consume(b).isEmpty());
+        assertTrue(r.consume(c).isEmpty());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> r.issue(alice, 3));
+    }
 }
