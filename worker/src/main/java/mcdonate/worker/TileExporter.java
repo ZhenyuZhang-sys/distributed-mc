@@ -40,7 +40,8 @@ final class TileExporter {
         String json() {
             StringBuilder sb = new StringBuilder("{\"tile\":[").append(tile.x()).append(',').append(tile.z())
                     .append("],\"file\":\"").append(file.getFileName()).append("\",\"chunks\":").append(chunks)
-                    .append(",\"ms\":").append(millis).append(",\"rings\":[");
+                    .append(",\"ms\":").append(millis).append(",\"genMs\":").append(LAST_SPLIT[0])
+                    .append(",\"serializeMs\":").append(LAST_SPLIT[1]).append(",\"rings\":[");
             for (int i = 0; i < rings.size(); i++) {
                 if (i > 0) {
                     sb.append(',');
@@ -88,7 +89,11 @@ final class TileExporter {
         return generate(level, tile, false);
     }
 
+    /** 上一次 generate 的两段（毫秒）：等生成、序列化（/donor export 的 JSON 里报，排查用）。只在主线程上读写。 */
+    static final long[] LAST_SPLIT = new long[2];
+
     static Generated generate(ServerLevel level, TilePos tile, boolean serial) {
+        long started = System.nanoTime();
         ServerChunkCache cache = level.getChunkSource();
 
         // 11-09：先把 16 个都排上（加票、排生成任务，不等），世界生成线程池同时做；原来一个一个同步要，
@@ -109,6 +114,7 @@ final class TileExporter {
             }
         }
 
+        long waited = System.nanoTime();
         int r = TileFile.MAX_RING;
         List<ExportedChunk> chunks = new ArrayList<>();
         List<Map<String, Integer>> rings = new ArrayList<>();
@@ -132,6 +138,8 @@ final class TileExporter {
             }
         }
 
+        LAST_SPLIT[0] = (waited - started) / 1_000_000;
+        LAST_SPLIT[1] = (System.nanoTime() - waited) / 1_000_000;
         TileFile file = new TileFile(SharedConstants.getCurrentVersion().getDataVersion().getVersion(),
                 level.getSeed(), WorldId.of(level.getServer()), tile, chunks);
         return new Generated(file, rings);

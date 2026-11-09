@@ -15,6 +15,7 @@ pytestmark = pytest.mark.long
 
 def export(worker, tx, tz, serial):
     r = json.loads(worker.rcon(f"donor export {tx} {tz}" + (" serial" if serial else "")))
+    print("serial" if serial else "parallel", tx, tz, {k: r.get(k) for k in ("ms", "genMs", "serializeMs")})
     return r["ms"]
 
 
