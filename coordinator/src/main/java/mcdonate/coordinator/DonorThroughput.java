@@ -74,7 +74,8 @@ final class DonorThroughput {
             return floor;
         }
         long[] at = d.stream().mapToLong(s -> s[1]).filter(t -> t != Long.MIN_VALUE).sorted().toArray();
-        if (at.length < 2 || at[at.length - 1] <= at[0]) {
+        // 首尾间隔比一个 tile 的延迟还短（同一批几乎同时到）时测不准，按 1/延迟（codex-audit F4：同毫秒到的一批会估成几十个/秒）
+        if (at.length < 2 || at[at.length - 1] - at[0] < latencyMs(worker)) {
             return floor;
         }
         return Math.max(floor, (at.length - 1) / (double) (at[at.length - 1] - at[0]));
@@ -94,7 +95,19 @@ final class DonorThroughput {
         if (deadlineMs == Long.MAX_VALUE) {
             return true;
         }
-        double finish = nowMs + Math.max(latencyMs(worker), (inFlight + 1) / ratePerMs(worker));
-        return finish <= deadlineMs;
+        Deque<long[]> d = samples.get(worker);
+        if (d == null || d.isEmpty()) {
+            // 冷启动：还没有样本，按默认延迟估一个、不乘在途数（codex-audit F5：原来 3/6/9/12 秒，少派就测不出并行）
+            return nowMs + DEFAULT_MS <= deadlineMs;
+        }
+        return predictFinish(nowMs, latencyMs(worker), ratePerMs(worker), inFlight) <= deadlineMs;
+    }
+
+    /**
+     * 派发和剪枝共用的完成预测（codex-audit F2）：前面还有 ahead 个（在做的加排在前面的），
+     * 这个在 now + max(延迟, (ahead + 1) / 速率) 做完。速率是个/毫秒。
+     */
+    static double predictFinish(long nowMs, long latencyMs, double ratePerMs, double ahead) {
+        return nowMs + Math.max(latencyMs, (ahead + 1) / ratePerMs);
     }
 }

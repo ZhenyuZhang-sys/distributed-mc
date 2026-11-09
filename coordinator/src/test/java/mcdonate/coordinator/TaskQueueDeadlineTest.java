@@ -1,6 +1,7 @@
 package mcdonate.coordinator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -289,7 +290,8 @@ class TaskQueueDeadlineTest {
             q.enqueue(i, 0);   // 没有 due（玩家不朝那边走）：永远不丢，也不挤占有 deadline 的位置
         }
         q.enqueue(9, 0);
-        q.setDue(9, 0, now.get() + 3_000, now.get() + 2_500);
+        // 第 0 位（没有截止的不占位置）：max(1, 2) = 2 秒 ≤ 3.5 − 1 秒，留（11-09 起派发和剪枝共用一个预测）
+        q.setDue(9, 0, now.get() + 4_000, now.get() + 3_500);
         assertEquals(List.of(), q.pruneHopeless(ONE_PER_2S, 1_000));
     }
 

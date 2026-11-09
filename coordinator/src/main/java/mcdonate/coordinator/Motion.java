@@ -13,7 +13,8 @@ import mcdonate.common.TilePos;
  * 不动、或者永远到不了（背向走）是正无穷，这时按距离排。
  */
 final class Motion {
-    static final long WINDOW_MS = Config.getLong("motionWindowMs", 3_000);
+    /** 11-09：3 秒 → 1.5 秒，转弯后方向跟得更快（codex-audit：32 格/秒时 3 秒要多飞约 6 个 chunk 才跟上）。 */
+    static final long WINDOW_MS = Config.getLong("motionWindowMs", 1_500);
     /** 最远预测多少秒。 */
     static final double HORIZON_S = Config.getDouble("motionHorizonS", 120);
     private static final double STEP_S = 0.25;

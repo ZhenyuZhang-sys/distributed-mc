@@ -238,7 +238,8 @@ public final class DemandScanner {
                 if (serverTiles.contains(tk)) {
                     continue;
                 }
-                boolean known = tasks.find(x, z) >= 0;
+                // 11-09（codex-audit F6）：丢掉过、冷却过了的 tile 需求重新成立时可以重新入队
+                boolean known = tasks.find(x, z) >= 0 && !tasks.canEnqueueAgain(x, z);
                 if (!known && queued < QUEUE_CAP) {
                     RegionRules.Enqueue e = decide(new TilePos(x, z), tk, chunkMap, access);
                     if (e.enqueue() && tasks.enqueue(x, z, e.world())) {

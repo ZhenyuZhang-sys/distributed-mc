@@ -99,6 +99,8 @@ public final class TaskQueue {
         long importBy = Long.MAX_VALUE;
         /** 入队时间（分段耗时用）。 */
         long enqueuedAt = -1;
+        /** 什么时候被丢掉的（DROPPED；重新入队要冷却，codex-audit F6）。 */
+        long droppedAt = Long.MIN_VALUE;
         /** 11-09：tile 离最近一个玩家飞行线多少个 chunk（取整；不知道是 Integer.MAX_VALUE）。派活先做走廊里的。 */
         int lateral = Integer.MAX_VALUE;
         /** 派出时离截止（importBy，不知道时 due）还有多少毫秒；不知道是 -1。 */
@@ -253,6 +255,7 @@ public final class TaskQueue {
         int worker = t.worker;
         leaseRemove(worker, taskId);
         t.state = State.DROPPED;
+        t.droppedAt = clock.getAsLong();
         t.worker = -1;
         t.hedged = true;
         hedgeCancelled++;
@@ -318,6 +321,7 @@ public final class TaskQueue {
                 Set<String> owners = territoryOwners(c);
                 if (owners.size() >= 2) {
                     c.state = State.DROPPED;
+                    c.droppedAt = clock.getAsLong();
                     it.remove();
                     continue;
                 }
@@ -398,6 +402,22 @@ public final class TaskQueue {
         return t == null ? -1 : t.slackAtLease;
     }
 
+    /** 丢掉的 tile 过多久才能重新入队（11-09，codex-audit F6；免得剪了又放、放了又剪）。 */
+    static final long REQUEUE_COOLDOWN_MS = Config.getLong("requeueCooldownMs", 5_000);
+
+    /**
+     * 找需求能不能把这个 tile（重新）放进队列：没有任务，或者任务被丢掉（DROPPED）已经过了冷却。
+     * 11-09（codex-audit F6）：原来丢掉的永远不再放回去，玩家转回来时需求重新成立也不复活。
+     */
+    public synchronized boolean canEnqueueAgain(int tx, int tz) {
+        Long id = byTile.get(tileKey(tx, tz));
+        if (id == null) {
+            return true;
+        }
+        Task t = tasks.get(id);
+        return t.state == State.DROPPED && clock.getAsLong() - t.droppedAt >= REQUEUE_COOLDOWN_MS;
+    }
+
     /**
      * 算进找需求队列上限的排队任务数：有截止时间的，加上还没算过的。找需求算过、玩家不会去的（侧后方）不算——
      * 它们不派（skipNoDeadline），原来占满上限后前方的新 tile 进不来（11-09）。
@@ -450,12 +470,14 @@ public final class TaskQueue {
             if (t.state == State.QUEUED) {
                 queue.remove(t.id);
                 t.state = State.DROPPED;
+                t.droppedAt = clock.getAsLong();
                 dropped.add(t.id);
                 staleDropped++;
             } else if (t.state == State.LEASED) {
                 int w = t.worker;
                 leaseRemove(w, t.id);
                 t.state = State.DROPPED;
+                t.droppedAt = clock.getAsLong();
                 t.worker = -1;
                 t.hedged = true; // 之后回来的结果作废
                 cancelled.add(new Cancelled(t.id, w));
@@ -537,11 +559,13 @@ public final class TaskQueue {
         order.sort(DISPATCH_ORDER);
         int position = 0;
         for (Task t : order) {
-            double start = now + (position + leased / 2.0) / tilesPerMs;
+            // 和派发一样的预测（codex-audit F2）：前面有 在租的 + 排在前面的 个
+            double finish = DonorThroughput.predictFinish(now, tileMs, tilesPerMs, leased + position);
             long limit = t.importBy != Long.MAX_VALUE ? t.importBy - IMPORT_MARGIN_MS : t.due;
-            if (start + tileMs > limit) {
+            if (finish > limit) {
                 queue.remove(t.id);
                 t.state = State.DROPPED;
+                t.droppedAt = now;
                 dropped.add(t.id);
                 hopeless++;
             } else {
@@ -566,6 +590,7 @@ public final class TaskQueue {
             }
             if (t.due < now || t.importBy < now) {
                 t.state = State.DROPPED;
+                t.droppedAt = now;
                 it.remove();
                 dropped.add(t.id);
             }
@@ -657,6 +682,7 @@ public final class TaskQueue {
                 t.orphanSince = now;
             } else if (now - t.orphanSince > ORPHAN_MS) {
                 t.state = State.DROPPED;
+                t.droppedAt = now;
                 queue.remove(t.id);
                 dropped.add(t.id);
             }
