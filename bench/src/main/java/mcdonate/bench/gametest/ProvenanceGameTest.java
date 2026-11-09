@@ -22,6 +22,26 @@ public class ProvenanceGameTest implements FabricGameTest {
         return FlightGameTest.lines(h, run, "provenance.jsonl");
     }
 
+    /**
+     * 部署环境没有 bench（docs/overlay-plan.md 2.1）：chunk 变成完整状态的钩子在 common 里，只挂 common 的 Provenance 监听
+     * （不经过 bench 的 Generation、不开飞行记录）也收得到强制生成的 chunk 的 VANILLA。
+     */
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
+    public void commonHookReportsVanillaWithoutBench(GameTestHelper h) {
+        java.util.Set<Long> seen = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        mcdonate.common.Provenance.Listener l = (cx, cz, kind, donor) -> {
+            if (kind == mcdonate.common.Provenance.Kind.VANILLA) seen.add(net.minecraft.world.level.ChunkPos.asLong(cx, cz));
+        };
+        mcdonate.common.gen.FullStatus.listen(l, () -> null);
+        ChunkPos c = h.getLevel().getChunkAt(h.absolutePos(net.minecraft.core.BlockPos.ZERO)).getPos();
+        int dz = 300 + Math.floorMod(UUID.randomUUID().hashCode(), 200);
+        h.getLevel().getChunk(c.x + 50, c.z + dz);
+        h.succeedWhen(() -> {
+            FlightGameTest.check(seen.contains(ChunkPos.asLong(c.x + 50, c.z + dz)), "common 的钩子没报强制生成的 chunk");
+            mcdonate.common.gen.FullStatus.unlisten(l, () -> null);
+        });
+    }
+
     /** 强制生成几个没生成过的 chunk：每个在 provenance.jsonl 里正好一条 vanilla；原版事件数等于计数的增量。 */
     @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
     public void generatedChunksAreVanilla(GameTestHelper h) {
