@@ -10,6 +10,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>分两类：玩家实体 tick（ServerPlayer.tick / doTick）里发生的算"玩家引起的"，测量时必须是 0；
  * 其余（原版流体 tick、chunk 变成可 tick 时的后处理读到还没做完的邻居……）算"world"，真实玩家的服务器也会有，只记录。
  *
+ * <p>只算调用时 chunk 还没在内存里的（mixin 先用 load=false 查一下）：2 核容器上主线程可能在 getChunk 里被调度走几毫秒，
+ * chunk 早就就绪了也会超过 1 毫秒，那不是同步加载（11-09 fish 第 7 步对比里的误报）。
+ *
  * <p>计时状态只在主线程上读写（mixin 里先判断线程）。getChunk 嵌套调用只算最外层；
  * 万一某次抛异常没走到 RETURN，每个 tick 开始时清一次（{@link #onTickStart}）。
  */
@@ -22,6 +25,7 @@ public final class SyncLoads {
     private static final List<Listener> LISTENERS = new CopyOnWriteArrayList<>();
     private static int depth, playerDepth;
     private static long start;
+    private static boolean counting;
 
     private SyncLoads() {}
 
@@ -49,9 +53,10 @@ public final class SyncLoads {
         }
     }
 
-    /** getChunk 开头（只在主线程、load=true 时调）。 */
-    public static void enter() {
+    /** getChunk 开头（只在主线程、load=true 时调）。present：这个 chunk 进来时已经在内存里（达到要的状态）。只看最外层。 */
+    public static void enter(boolean present) {
         if (depth++ == 0) {
+            counting = !present;
             start = System.nanoTime();
         }
     }
@@ -62,7 +67,7 @@ public final class SyncLoads {
             return;
         }
         long nanos = System.nanoTime() - start;
-        if (nanos < THRESHOLD_NANOS || LISTENERS.isEmpty()) {
+        if (!counting || nanos < THRESHOLD_NANOS || LISTENERS.isEmpty()) {
             return;
         }
         String stack = stack();

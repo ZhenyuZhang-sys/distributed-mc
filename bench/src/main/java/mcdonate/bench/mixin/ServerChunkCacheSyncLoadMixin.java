@@ -22,7 +22,8 @@ abstract class ServerChunkCacheSyncLoadMixin {
             at = @At("HEAD"))
     private void mcdonate$syncLoadStart(int x, int z, ChunkStatus status, boolean load, CallbackInfoReturnable<ChunkAccess> cir) {
         if (load && Thread.currentThread() == mainThread) {
-            SyncLoads.enter();
+            // 先不加载地查一下：已经在内存里的，慢了也不是同步加载（主线程被调度走之类）
+            SyncLoads.enter(((ServerChunkCache) (Object) this).getChunk(x, z, status, false) != null);
         }
     }
 
