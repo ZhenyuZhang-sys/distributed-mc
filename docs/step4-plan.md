@@ -58,7 +58,11 @@
 
 ### 2.4 飞行怎么动
 
-- 位置 = 起点 + 速度 × 起飞后的墙钟时间，每个 tick 开始时把假玩家放到这个位置。
+- **11-09 改（调度同意）**：模拟客户端，按速度积分前进，不越过没就绪的 chunk。每个 tick 开始时沿航线走 速度 × dt 格（墙钟模式 dt 是真实时间，tick 模式是 1/20 秒）；前面的 chunk 没就绪（`getChunkToSend()` 为空，客户端还没收到）就停在边界前面等，记为"卡住"。服务器卡的时候 dt 照算（客户端按自己的帧率走），但仍然只穿过已就绪的 chunk（`Flight.advance`）。
+  - 原因：原来按"起点 + 速度 × 墙钟时间"直接放玩家，假玩家能跑到生成前面。fish 6.6（2 核、0 donor、鞘翅）被看门狗杀掉，主线程栈：`EntityPlayerMPFake.tick` → `ServerPlayer.doTick` → `Entity.baseTick` → `updateInWaterStateAndDoFluidPushing` → `updateFluidHeightAndDoFluidPushing` → `Level.getFluidState` → `ServerChunkCache.getChunk(FULL, load=true)` → `managedBlock`，一个 tick 等满 60 秒。旁观模式也走这条。
+  - 真实玩家：`ServerGamePacketListenerImpl.tick` 每 tick 也调 `doTick`，但客户端 `LocalPlayer.tick` 先查 `Level.hasChunkAt`（1.21.1 字节码确认），自己所在的 chunk 没收到就不动，所以服务器上真实玩家脚下永远是已发的 chunk，不会同步生成。飞太快时原版的表现是在边缘停住。
+  - 新指标：每秒的 `stalled_ticks`，每轮的卡住时长、占比、实际距离对比理想距离（真实玩家最直接的感受，调度 11-09 要求和就绪 p95 并列）。守护计数 `sync_loads`：主线程 `getChunk(load=true)` ≥ 1 毫秒的次数、最长一次和调用栈，所有飞行都带，测量时必须是 0，否则这一轮无效重跑。`unready_ticks`（tick 结束时玩家在没就绪的 chunk 里）必须是 0。
+- 原定（已作废）：位置 = 起点 + 速度 × 起飞后的墙钟时间，每个 tick 开始时把假玩家放到这个位置。
 - DEV_PLAN 写的是"每 tick 前进固定距离"。这里改成按墙钟算：服务器卡到 10 TPS 时，按 tick 走的话玩家也跟着慢一半，虚空率反而被低估；真实客户端不会因为服务器卡就飞慢。**这一条请审阅者确认。**两种方式都实现，协议里选一个；默认墙钟。
 - 速度三档：走路 4.3、骑马 14、鞘翅 30 格/秒。方向固定 +x，高度固定 y=200，不受地形碰撞影响。
 - 每轮 120 秒，鞘翅一轮飞 3600 格，约 225 个 chunk。
