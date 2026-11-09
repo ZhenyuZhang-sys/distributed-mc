@@ -87,4 +87,20 @@ class WorkerFilesTest {
         assertTrue(p.contains("enable-rcon=false\n"));
         assertTrue(p.contains("view-distance=2\n"));
     }
+
+    @Test
+    void modsResyncedEveryStart(@TempDir Path dir) throws Exception {
+        // 11-09（distributed-mc-75 在用户 Mac 上查到）：prepare 只在没准备好时跑，客户端 jar 升级以后 worker 还用第一次解出来的旧 mod。
+        // 每次起 worker 前按客户端 jar 里带的重新放一遍：同名的覆盖，不在清单里的旧 jar 删掉，别的文件不动
+        WorkerFiles w = new WorkerFiles(dir.resolve("worker"));
+        w.prepare(fake(SERVER), BUNDLED);
+        Path mods = dir.resolve("worker/mods");
+        Files.writeString(mods.resolve("mcdonate-worker-0.1.0.jar"), "old build");
+        Files.writeString(mods.resolve("mcdonate-worker-0.0.9.jar"), "stale");
+        Files.writeString(mods.resolve("notes.txt"), "keep");
+        w.syncMods(BUNDLED);
+        assertEquals("worker", Files.readString(mods.resolve("mcdonate-worker-0.1.0.jar")));
+        assertFalse(Files.exists(mods.resolve("mcdonate-worker-0.0.9.jar")));
+        assertTrue(Files.exists(mods.resolve("notes.txt")));
+    }
 }
