@@ -73,7 +73,14 @@ public final class Worker implements ModInitializer {
                                                         .executes(ctx -> exportBatch(ctx.getSource(),
                                                                 new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
                                                                         IntegerArgumentType.getInteger(ctx, "tz")),
-                                                                IntegerArgumentType.getInteger(ctx, "n"))))))))));
+                                                                IntegerArgumentType.getInteger(ctx, "n"), 3))
+                                                        // 间隔几个 tile（1 = 紧挨着，外圈互相重叠；11-09 并行导出的线程安全测试用）
+                                                        .then(Commands.argument("step", IntegerArgumentType.integer(1, 8))
+                                                                .executes(ctx -> exportBatch(ctx.getSource(),
+                                                                        new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
+                                                                                IntegerArgumentType.getInteger(ctx, "tz")),
+                                                                        IntegerArgumentType.getInteger(ctx, "n"),
+                                                                        IntegerArgumentType.getInteger(ctx, "step")))))))))));
         // 第 5 步：配了 coordinator（系统属性 mcdonate.coordinator=host:port）就连上去领任务
         // 客户端起的 worker：服务器起来之前把标准输入拿给控制通道，不让原版控制台读走（ControlStdin）
         InputStream control = mcdonate.common.Config.getLong("parentPid", -1) > 0 ? ControlStdin.claim() : null;
@@ -133,13 +140,13 @@ public final class Worker implements ModInitializer {
         return 1;
     }
 
-    private static int exportBatch(CommandSourceStack source, TilePos first, int n) {
+    private static int exportBatch(CommandSourceStack source, TilePos first, int n, int step) {
         net.minecraft.server.level.ServerLevel level = source.getServer().overworld();
         long t0 = System.nanoTime();
         try {
             java.util.List<TilePos> tiles = new java.util.ArrayList<>();
             for (int i = 0; i < n; i++) {
-                tiles.add(new TilePos(first.x() + 3 * i, first.z()));
+                tiles.add(new TilePos(first.x() + step * i, first.z()));
             }
             tiles.forEach(t -> TileExporter.prefetch(level, t));
             for (TilePos t : tiles) {

@@ -43,3 +43,13 @@ def test_several_tiles_at_once(worker):
     print(f"4 个 tile：一个一个要共 {serial_ms} ms；一起排上共 {r['ms']} ms，快 {serial_ms / r['ms']:.2f} 倍")
     assert r["ms"] <= serial_ms, (serial_ms, r)
 
+
+@pytest.mark.slow
+def test_adjacent_tiles_export_safely(worker):
+    """11-09 用户真机（9008deb）：任务在 worker 上失败，"Accessing PalettedContainer from multiple threads"——主线程序列化
+    tile A 外圈的 chunk 时，生成线程正在写它（相邻 tile B 先排上了生成，B 的地物写进 A 的外圈）。
+    几个紧挨着的 tile（外圈互相重叠）一起排上再一个一个导出，跑几遍，都要成功。"""
+    for row in range(3):
+        r = worker.rcon(f"donor export 6000 {-6000 - 10 * row} batch 6 1")
+        assert r.startswith("{"), f"第 {row} 遍失败：{r}"
+
