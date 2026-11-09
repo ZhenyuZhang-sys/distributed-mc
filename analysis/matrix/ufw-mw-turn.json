@@ -1,0 +1,131 @@
+{
+ "name": "ufw-mw-turn",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  },
+  "1x4": {
+   "donors": 1,
+   "env": {}
+  },
+  "2x4": {
+   "donors": 2,
+   "env": {}
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09：多世界（fish-mw 6b63414）。用户同款 2 核服务器，烟花 33.5 格/秒，三臂：原版 / 1×8（worker 拼 8 核，worker2 不起）/ 2×4（worker、worker2 各 4 核，territory 开；从服务器看就是一台 8 核 donor 跑 2 个世界），每臂 3 轮。也是计划里\"2 个 donor\"那一步。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "mw-turn",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ]
+   },
+   {
+    "group": "mw-turn",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ]
+   },
+   {
+    "group": "mw-turn",
+    "donors": [
+     2
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "2x4"
+    ],
+    "lookahead": [
+     16
+    ]
+   }
+  ]
+ }
+}
