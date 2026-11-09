@@ -28,6 +28,13 @@ ls -la "$GAME/mods" > /out/mods.txt
 # 3. 启动，挂 SECONDS_TO_STAY 秒；期间每 5 秒记一次进程（看有没有 worker 子进程）
 "${HMC[@]}" --command "launch $PROFILE -lwjgl -offline" > /out/launcher.log 2>&1 &
 LAUNCHER=$!
+# 第一次启动要下载资源文件（约 4000 个，11-09 实测 40 秒只下了 70%）：先等到客户端真的开始连服务器，再开始计时
+for ((w = 0; w < 1200; w += 5)); do
+  grep -qs "Connecting to" "$GAME/logs/latest.log" && break
+  kill -0 "$LAUNCHER" 2>/dev/null || break
+  sleep 5
+done
+echo "waited ${w}s for the client to start connecting" >> /out/launcher.log
 for ((i = 0; i < SECONDS_TO_STAY; i += 5)); do
   sleep 5
   { echo "== t=$((i + 5))"; ps -eo pid,ppid,args --width 300; } >> /out/ps.txt
