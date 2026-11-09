@@ -235,6 +235,19 @@ final class CoordinatorServer {
                 if (!stale.dropped().isEmpty() || !stale.cancelled().isEmpty()) {
                     LOG.info("玩家已经飞过的 tile：删掉排队的 {} 个，撤回派出的 {} 个", stale.dropped().size(), stale.cancelled().size());
                 }
+                // 11-09：按在线 donor 的实测吞吐估每个排队任务什么时候做完，来不及的现在就丢掉，交给服务器
+                double rate = 0;
+                int n = 0;
+                for (Connection c : workers.values()) {
+                    if (!c.paused) {
+                        rate += 1.0 / Math.max(1, throughput.averageMs(c.workerId));
+                        n++;
+                    }
+                }
+                List<Long> hopeless = tasks.pruneHopeless(rate, n == 0 ? 0 : (long) (n / rate));
+                if (!hopeless.isEmpty()) {
+                    LOG.info("排队的 {} 个 tile 按现在的吞吐来不及，丢掉，交给服务器", hopeless.size());
+                }
             }
             if (features.on(Features.HEDGE)) {
                 // 7.4：预计做完时玩家已经看到了的，撤回，交给服务器

@@ -318,8 +318,8 @@ public final class TaskQueue {
                 t = c; // 先进先出：第一个合适的
                 break;
             }
-            if (t == null || c.due < t.due) {
-                t = c; // 7.2：玩家最先看到的先派
+            if (t == null || deadlineKey(c) < deadlineKey(t)) {
+                t = c; // 7.2：最急的先派（11-09：知道前沿时按 importBy，和 pruneHopeless 的顺序一致）
             }
         }
         if (t == null) {
@@ -435,10 +435,57 @@ public final class TaskQueue {
     }
 
     public synchronized String staleJson() {
-        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + ",\"import_late\":" + importLate + "}";
+        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + ",\"import_late\":" + importLate + ",\"hopeless\":" + hopeless + "}";
     }
 
     private int importLate;
+    private int hopeless;
+
+    /** 排序和"来得及吗"用的截止时间：知道前沿时用 importBy，否则用 due（都不知道是 Long.MAX_VALUE）。 */
+    private static long deadlineKey(Task t) {
+        return t.importBy != Long.MAX_VALUE ? t.importBy : t.due;
+    }
+
+    /**
+     * 11-09：排队太久的现在就丢掉，交给服务器（f2 实测入队→派出 p50 4～10 秒、p90 22～43 秒，派出→交回约 1.4 秒）。
+     * 排队的任务按截止时间从早到晚排（和 assign 的顺序一致），第 i 个（只数留下的）大约在
+     * now + (i + 在租数 / 2) / 总吞吐 开始，再过 tileMs 做完；做完晚于截止时间 − 余量的丢掉。
+     * 截止时间不知道的不丢。只在开 deadline 时动；总吞吐不大于 0（没有 donor）时估不了，不动。
+     *
+     * @param tilesPerMs 所有在线、没暂停的 donor 加起来每毫秒做几个 tile（按实测耗时）
+     * @param tileMs 一个 tile 从派出到交回的毫秒数（按实测）
+     */
+    public synchronized List<Long> pruneHopeless(double tilesPerMs, long tileMs) {
+        List<Long> dropped = new ArrayList<>();
+        if (!features.on(Features.DEADLINE) || tilesPerMs <= 0) {
+            return dropped;
+        }
+        long now = clock.getAsLong();
+        int leased = (int) tasks.values().stream().filter(t -> t.state == State.LEASED).count();
+        List<Task> order = new ArrayList<>();
+        for (long id : queue) {
+            Task t = tasks.get(id);
+            if (deadlineKey(t) != Long.MAX_VALUE) {
+                order.add(t);
+            }
+        }
+        order.sort(java.util.Comparator.comparingLong(TaskQueue::deadlineKey).thenComparingLong(t -> t.id));
+        int position = 0;
+        for (Task t : order) {
+            double start = now + (position + leased / 2.0) / tilesPerMs;
+            long limit = t.importBy != Long.MAX_VALUE ? t.importBy - IMPORT_MARGIN_MS : t.due;
+            if (start + tileMs > limit) {
+                queue.remove(t.id);
+                t.state = State.DROPPED;
+                dropped.add(t.id);
+                hopeless++;
+            } else {
+                position++;
+            }
+        }
+        dropped.sort(null);
+        return dropped;
+    }
 
     /**
      * 7.2：还在排队、玩家已经看到了（due 已过）的任务丢掉，交给服务器。

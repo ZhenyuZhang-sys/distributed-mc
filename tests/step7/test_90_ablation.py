@@ -87,6 +87,8 @@ def counters(s: dict) -> dict:
         "stale_dropped": s.get("stale", {}).get("dropped", 0), "stale_cancelled": s.get("stale", {}).get("cancelled", 0),
         # 11-09：区域已进服务器前沿、还没派出去就丢掉的（交回也会被整个丢弃）
         "import_late": s.get("stale", {}).get("import_late", 0),
+        # 11-09：按实测吞吐算排队来不及、提前丢掉的
+        "hopeless": s.get("stale", {}).get("hopeless", 0),
         "donor_tiles": {w["name"]: w["done"] for w in s["workers"]},
         # 主线程上导入用了多久（coordinator 11-09 加的计时；旧版没有就是 0）
         "import_ms": s.get("import", {}).get("totalMs", 0), "imports_timed": s.get("import", {}).get("count", 0),
@@ -269,7 +271,7 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "ring_overhead": (n + 2) ** 2 / n ** 2 - 1,
                 **{k: d[k] for k in ("hedge_cancelled", "hedge_wasted_tiles", "waitdonor_hits", "waitdonor_timeouts",
                                      "waitdonor_abandoned", "donor_tiles", "import_ms", "imports_timed",
-                                     "stale_dropped", "stale_cancelled", "import_late")},
+                                     "stale_dropped", "stale_cancelled", "import_late", "hopeless")},
                 "main": main_metrics(summary), "sync_loads": flight_guard(out), "lead": donor_lead(out),
                 # coordinator 这一轮报出的 donor / rejected 事件数（和飞行记录里的对照）
                 "coordinator_reports": {k: prov_after.get(k, {}).get("count", 0) - prov_before.get(k, {}).get("count", 0)
