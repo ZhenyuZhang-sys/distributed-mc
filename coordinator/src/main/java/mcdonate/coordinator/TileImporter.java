@@ -147,7 +147,11 @@ final class TileImporter {
     }
 
     /** workerId：交这个结果的 worker（账本、来源事件用），不知道是 -1。player：donor 的玩家 UUID（第 9 步），本地 worker 是空串。 */
+    /** 上一次 importStrict 的两段（纳秒）：查区域（含读存档）、写入（11-09 主线程导入要拆开看时间花在哪）。只在主线程上读写。 */
+    static final long[] LAST_SPLIT_NS = new long[2];
+
     static StrictResult importStrict(ServerLevel level, TileFile file, int workerId, String player) {
+        long t0 = System.nanoTime();
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         Map<Long, RegionRules.ChunkInfo> current = new HashMap<>();
@@ -161,6 +165,9 @@ final class TileImporter {
             byPos.put(key, c);
         }
         RegionRules.ImportPlan<Long> plan = RegionRules.importPlan(current, file.worldId(), incoming);
+        long t1 = System.nanoTime();
+        LAST_SPLIT_NS[0] = t1 - t0;
+        LAST_SPLIT_NS[1] = 0;
         if (!plan.accepted()) {
             // 实时地图：这个 tile 的结果被整个丢弃（只报 tile 里的 chunk，外圈是借来的）
             TilePos t = file.tile();
@@ -190,6 +197,7 @@ final class TileImporter {
             DemandScanner.diskChanged(e.getKey(), ChunkStatus.byName(c.status()).getIndex());
         }
         Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), workerId, player, recorded, System.currentTimeMillis());
+        LAST_SPLIT_NS[1] = System.nanoTime() - t1;
         // 实时地图：这些 chunk 是 donor 生成的（第 4 步 4.3 的来源事件）
         for (long k : recorded) {
             Provenance.report((int) k, (int) (k >>> 32), Provenance.Kind.DONOR, workerId);

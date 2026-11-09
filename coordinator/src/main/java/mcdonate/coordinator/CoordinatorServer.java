@@ -376,7 +376,9 @@ final class CoordinatorServer {
     private boolean importResultTimed(Connection c, Result r, long importStart) {
         int workerId = c.workerId;
         try {
+            long p0 = System.nanoTime();
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
+            long parseNs = System.nanoTime() - p0;
             String tile = "[" + file.tile().x() + "," + file.tile().z() + "]";
             if (strict) {
                 TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file, workerId,
@@ -398,6 +400,9 @@ final class CoordinatorServer {
                         + ",\"bytes\":" + (meta == null ? -1 : meta[0]) + ",\"wire_bytes\":" + (meta == null ? -1 : meta[2])
                         + ",\"ms\":" + (meta == null ? -1 : meta[1])
                         + ",\"slack_ms\":" + (meta == null ? -1 : meta[10])
+                        // 主线程导入的三段（毫秒，小数）：解析 NBT、查区域（含读存档）、写入
+                        + ",\"imp\":{\"parse\":" + parseNs / 100_000 / 10.0 + ",\"check\":" + TileImporter.LAST_SPLIT_NS[0] / 100_000 / 10.0
+                        + ",\"write\":" + TileImporter.LAST_SPLIT_NS[1] / 100_000 / 10.0 + "}"
                         + ",\"seg\":" + (meta == null ? "null" : TaskTimeline.json(meta[3], meta[4],
                                 meta[6] < 0 ? null : new long[] {meta[6], meta[7], meta[8], meta[9]},
                                 meta[5], importStart, System.currentTimeMillis())) + "}");
