@@ -27,7 +27,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `demandInnerMargin` | 1 | inner = 视距 + 原版占内存的圈数（约 11）+ 这个数 | 看 `/donor status` 的 `discarded.late`：来晚了的多，说明 inner 太靠里，调大 |
 | `demandQueueCap` | 256 | 找需求时队列里最多放几个 tile | 玩家多时调大 |
 | `demandReadsPerScan` | 256 | 每次找需求最多发起几次读存档（查 chunk 在存档里的状态） | 刚开始或玩家传送后，周围几千个 chunk 状态未知；调大会让那几次扫描变慢，调小要多扫几次才能派活 |
-| `demandScanBudgetMicros` | 500 | 每次找需求最多占主线程多少微秒，没查完的 tile 下一次再查（近的先查） | 服务器 MSPT 紧时调小；调小后离玩家远的 tile 要多等几秒才入队 |
+| `demandScanBudgetMicros` | 500 | 每次找需求最多占主线程多少微秒，没查完的 tile 下一次再查（近的先查） | **deploy/ 的 `.env.example` 设 2000**（11-09 codex-server 同 2 核、1 个 4 核 donor 烟花直飞 A/B：卡住 17.2% → 3.8%，前方就绪 21 → 50 格；转弯 22.3% → 11.7%，1 轮）。服务器 MSPT 紧时调小；调小后离玩家远的 tile 要多等几秒才入队 |
 | `scanTicks` | 20 | 每隔几个 tick 找一次需求（20 = 1 秒） | `scan` 里扫描耗时大、服务器 MSPT 紧时调大 |
 | `leaseMs` | 30000 | 任务租约，超时收回重派 | 比最慢的 donor 做一个 tile 的时间长几倍 |
 | `heartbeatMs` | 5000 | 心跳间隔（donor 端同名配置也要一致） | 一般不动 |
@@ -46,7 +46,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `corridorChunks` | 6 | 开 deadline 时，tile 中心离飞行线不超过这么多 chunk 的先派（前方走廊），其余后派 | 11-09 kexu 烟花直线：donor 写入只有 26% 在前方；服务器只有 2 核时 donor 要先包下路线 |
 | `skipNoDeadline` | true | 开 deadline 时，找需求算过、玩家不会去的 tile（侧后方，没有截止时间）不派 | false 退回原来的（donor 空着时也派），对照用 |
 | `maxLeaseTotalMs` | 120000 | 一个任务从派出起，心跳最多续租到多久，过了收回重派 | 11-09：worker 卡死时心跳照发，原来能无限续租 |
-| `importBudgetMs` | 10 | 每个 tick 结束时导入最多用多少毫秒（至少做一个），其余留到下个 tick | 11-09 codex-audit A10：几个结果一起到时同一 tick 里做完，MSPT 最大 305 ms |
+| `importBudgetMs` | 10 | 软预算：每个 tick 结束时导入用到这么多毫秒就停，其余留到下个 tick。每个 tick 至少提交 1 个 tile，单个 tile 本身就可能超过 10 ms，所以**不保证导入那一 tick 的 MSPT 在 10 ms 以内**，只是不再几个 tile 挤在同一 tick 里 | 11-09 codex-audit A10：几个结果一起到时同一 tick 里做完，MSPT 最大 305 ms |
 | `requeueCooldownMs` | 5000 | 丢掉的 tile 过多久、需求重新成立时才能重新入队 | 11-09 codex-audit F6 |
 | `tokenTtlMs` | 60000 | 发给客户端的一次性 token 多久作废 | |
 | `allowTokenless` | false | 没带 token 的 worker 放不放进来。测试的 compose 里设 true（Docker 里的本地 worker 没有玩家）；正式部署保持 false | 第 9 步 |

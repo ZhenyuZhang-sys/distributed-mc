@@ -182,6 +182,27 @@ final class TileExporter {
                 net.minecraft.server.MinecraftServer::throwIfFatalException);
     }
 
+    /**
+     * holder 里已经做出来的、状态最靠后的 chunk；纯查找，不加票、不排任务。
+     * 原版的 getLatestChunk 只看"开始做的状态"和它的上一层，开始做了但还没做完两层以上、或者从没开始（只有票）时返回 null，
+     * 这里退回从 full 往下一层层找。
+     */
+    static ChunkAccess latest(net.minecraft.server.level.ChunkHolder holder) {
+        if (holder == null) {
+            return null;
+        }
+        ChunkAccess chunk = holder.getLatestChunk();
+        if (chunk != null) {
+            return chunk;
+        }
+        for (ChunkStatus s = ChunkStatus.FULL; ; s = s.getParent()) {
+            chunk = holder.getChunkIfPresentUnchecked(s);
+            if (chunk != null || s == ChunkStatus.EMPTY) {
+                return chunk;
+            }
+        }
+    }
+
     /** 测试用：下一个 tile 多等一个永远不会完成的 chunk（/donor stallnext）。 */
     static volatile boolean STALL_NEXT;
 
@@ -231,6 +252,16 @@ final class TileExporter {
                 futures.add(inv.mcdonate$schedule(x, z, ChunkStatus.INITIALIZE_LIGHT, true));
             }
         }
+        // 11-09（kexu k2 完整 step10，任务 47）：这个 tile 以前做过、存了盘时，16 个 chunk 直接从盘里读，原版不碰邻居，
+        // 外圈只有 holder、没加载，下面的纯查找拿不到。外圈也要到 empty（在内存里就马上完成；不在就从盘里读，盘里也没有是空的）
+        int ring = TileFile.MAX_RING;
+        for (int x = tile.minChunkX() - ring; x <= tile.maxChunkX() + ring; x++) {
+            for (int z = tile.minChunkZ() - ring; z <= tile.maxChunkZ() + ring; z++) {
+                if (tile.ring(x, z) > 0) {
+                    futures.add(inv.mcdonate$schedule(x, z, ChunkStatus.EMPTY, true));
+                }
+            }
+        }
         if (STALL_NEXT) {
             // 测试钩子（/donor stallnext）：多等一个永远不会完成的 chunk，模拟生成被异常打断（用户真机 11-09）
             STALL_NEXT = false;
@@ -269,7 +300,7 @@ final class TileExporter {
                 // getChunk 的 managedBlock 万一 poll 到排着的任务、建了新的生成任务，序列化时就会撞上）
                 net.minecraft.server.level.ChunkHolder holder =
                         ((mcdonate.worker.mixin.ChunkMapInvoker) cache.chunkMap).mcdonate$holder(net.minecraft.world.level.ChunkPos.asLong(x, z));
-                ChunkAccess chunk = holder == null ? null : holder.getLatestChunk();
+                ChunkAccess chunk = latest(holder);
                 if (chunk == null) {
                     throw new IllegalStateException("chunk (" + x + ", " + z + ") 不在内存里，生成依赖和预期不符");
                 }
