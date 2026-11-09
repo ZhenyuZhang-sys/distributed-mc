@@ -17,6 +17,9 @@ SECTOR = 4096
 
 def locations(path: Path) -> dict[int, tuple[int, int]]:
     size = path.stat().st_size
+    if size == 0:
+        # 原版读还没有的 region 时会留下 0 字节的文件，RegionFile 读到 EOF 就当没有 chunk（只有读到一部分头部才警告）
+        return {}
     with path.open("rb") as stream:
         header = stream.read(2 * SECTOR)
     if len(header) != 2 * SECTOR:
