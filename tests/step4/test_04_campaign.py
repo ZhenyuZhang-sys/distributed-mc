@@ -185,3 +185,29 @@ def test_campaign_refuses_changed_protocol(tmp_path):
     lc.run_campaign(p, tmp_path / 'c', fly_slot)
     with pytest.raises(ValueError, match='协议'):
         lc.run_campaign(lc.validate(proto(seconds=60)), tmp_path / 'c', fly_slot)
+
+
+# ---- 用户 11-09："跑个大概测试，直接跑"：允许并行，有并发的轮次照常算 ----
+
+def test_selfcheck_concurrency_counts_when_protocol_says_so():
+    rs = dict(pregen=r(.002, 300, ['mc-test-fish start']), one_core=r(.25, 9000))
+    v = lc.selfcheck_verdict(rs, CRIT, concurrency_counts=True)
+    assert v['pregen']['status'] == 'passed' and v['one_core']['status'] == 'passed'
+    assert v['pregen']['concurrent'] == ['mc-test-fish start']  # 并发照样列出来
+    assert lc.selfcheck_verdict(rs, CRIT)['pregen']['status'] == 'reference'  # 默认仍是参考（部署机器上跑满用）
+
+
+def test_shipped_protocol_records_user_decision():
+    p = lc.load_protocol(PROTOCOL)
+    assert p['selfcheck_concurrency_counts'] is True and p['rerun_on_interference'] is False
+    assert '允许并行' in p['user_decision']
+
+
+def test_resume_ignores_documentation_only_keys(tmp_path):
+    # 只记录决定、不改变怎么飞的字段（user_decision、selfcheck_concurrency_counts、note）变了，照样能续跑和重新发布
+    p = lc.validate(proto(user_decision='旧', selfcheck_concurrency_counts=False))
+    fly_slot, _ = fake({s['slot']: [dict(concurrent=[])] for s in lc.slots(p)})
+    lc.run_campaign(p, tmp_path / 'c', fly_slot)
+    again, calls = fake({s['slot']: [] for s in lc.slots(p)})
+    out = lc.run_campaign(lc.validate(proto(user_decision='新', selfcheck_concurrency_counts=True, note='x')), tmp_path / 'c', again)
+    assert calls == [] and out['failed'] == 0
