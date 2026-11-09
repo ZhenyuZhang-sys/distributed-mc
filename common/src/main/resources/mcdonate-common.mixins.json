@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "mcdonate.common.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ProtoChunkFromDiskMixin",
+    "ChunkSerializerFromDiskMixin",
+    "ChunkStatusTasksFullStatusMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

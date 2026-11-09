@@ -1,64 +1,50 @@
 package mcdonate.bench;
 
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import mcdonate.common.Provenance;
+import mcdonate.common.gen.FullStatus;
 
 /**
  * chunk 变成完整状态时：计数（Counters）和来源事件（Provenance）一起发（docs/step4-plan.md 3.3、4.3）。
  *
- * <p>生成线程上报时拿读锁，计数加一和发事件在同一把读锁里；开始 / 停止监听时拿写锁并读计数快照。
- * 所以一个监听器在 listen 和 unlisten 之间收到的每类事件数，严格等于两个快照之间对应计数的增量。
- * 三类一一对应（fish 11-09）：GENERATED → VANILLA，RESUMED → RESUMED（导入的半成品被接着做完），LOADED → LOADED。
+ * <p>同一把锁和钩子在 common 的 {@link FullStatus}（overlay 计划 2.1：部署时没有 bench 也要有来源事件）；
+ * 这里把 Counters 注册成它的计数，并按 Counters 的口径给出快照。一个监听器在 listen 和 unlisten 之间收到的每类事件数，
+ * 严格等于两个快照之间对应计数的增量：GENERATED → VANILLA，RESUMED → RESUMED，LOADED → LOADED。
  */
 public final class Generation {
     /** 三个完整状态计数的快照。 */
     public record Snapshot(long generated, long loaded, long resumed) {}
 
-    private static final ReentrantReadWriteLock LOCK = new ReentrantReadWriteLock();
+    static {
+        FullStatus.setCounter(k -> Counters.onFull(switch (k) {
+            case GENERATED -> Counters.FullKind.GENERATED;
+            case LOADED -> Counters.FullKind.LOADED;
+            case RESUMED -> Counters.FullKind.RESUMED;
+        }));
+    }
 
     private Generation() {}
 
+    /** bench 初始化时调一次：注册计数（类初始化时完成）。 */
+    public static void install() {}
+
     public static void onFull(Counters.FullKind kind, int cx, int cz) {
-        LOCK.readLock().lock();
-        try {
-            Counters.onFull(kind);
-            Provenance.report(cx, cz, switch (kind) {
-                case GENERATED -> Provenance.Kind.VANILLA;
-                case RESUMED -> Provenance.Kind.RESUMED;
-                case LOADED -> Provenance.Kind.LOADED;
-            }, -1);
-        } finally {
-            LOCK.readLock().unlock();
-        }
+        FullStatus.onFull(switch (kind) {
+            case GENERATED -> FullStatus.Kind.GENERATED;
+            case LOADED -> FullStatus.Kind.LOADED;
+            case RESUMED -> FullStatus.Kind.RESUMED;
+        }, cx, cz);
     }
 
     public static Snapshot listen(Provenance.Listener l) {
-        LOCK.writeLock().lock();
-        try {
-            Provenance.addListener(l);
-            return read();
-        } finally {
-            LOCK.writeLock().unlock();
-        }
+        return FullStatus.listen(l, Generation::read);
     }
 
     public static Snapshot unlisten(Provenance.Listener l) {
-        LOCK.writeLock().lock();
-        try {
-            Provenance.removeListener(l);
-            return read();
-        } finally {
-            LOCK.writeLock().unlock();
-        }
+        return FullStatus.unlisten(l, Generation::read);
     }
 
     public static Snapshot snapshot() {
-        LOCK.writeLock().lock();
-        try {
-            return read();
-        } finally {
-            LOCK.writeLock().unlock();
-        }
+        return FullStatus.snapshot(Generation::read);
     }
 
     private static Snapshot read() {
