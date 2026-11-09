@@ -118,3 +118,18 @@ def test_recompute_after_exit_from_archive(tmp_path):
     (raw / 'seconds.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in rows))
     m = firework.recompute(tmp_path / 'cell' / 'attempt-001', dict(scenario='firework', speed='elytra', cache_radius=16))
     assert m['exit_s'] == 8 and m['speed_ratio_after_exit'] == pytest.approx(1.0)
+
+
+def test_driver_sets_view_distance(tmp_path):
+    from step10.test_08_scenarios import real_rig
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    cell = dict(experiment='flight', repeat=1, params=dict(donors=0, speed='elytra', server_cpus=4, bots=1, features='v0',
+                                                          latency_ms=0, duration_s=60, scenario='firework', view_distance=16))
+    drive(cell, tmp_path / 'c')
+    cmds = [c[1] for c in runner.calls if c[0] == 'rcon']
+    assert 'bench viewdistance 16' in cmds
+    from analysis import run_matrix
+    run_matrix._check_value('flight', 'view_distance', 16)
+    with pytest.raises(ValueError):
+        run_matrix._check_value('flight', 'view_distance', 40)
