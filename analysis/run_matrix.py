@@ -29,14 +29,16 @@ CHEATS = ('none', 'ore', 'flatten', 'random', 'flat', 'collude')
 
 # 每种实验：哪些键是维度（配置里给列表，逐个展开）、哪些是固定参数、哪些必须有。
 SCHEMA = {
-    'flight': dict(dims={'donors', 'speed', 'server_cpus', 'latency_ms', 'features', 'bots', 'tile_size'},
-                   fixed={'duration_s', 'jitter_ms', 'repeats', 'estimate_minutes'}, required={'donors', 'speed', 'server_cpus', 'duration_s'}),
+    'flight': dict(dims={'donors', 'speed', 'server_cpus', 'latency_ms', 'features', 'bots', 'tile_size', 'lookahead'},
+                   fixed={'duration_s', 'jitter_ms', 'repeats', 'estimate_minutes', 'group'}, required={'donors', 'speed', 'server_cpus', 'duration_s'}),
     'capacity': dict(dims={'donors', 'features', 'server_cpus'},
                      fixed={'repeats', 'estimate_minutes', 'max_bots'}, required={'donors', 'server_cpus'}),
     'verify': dict(dims={'cheat', 'check_rate', 'donors'},
                    fixed={'duration_s', 'repeats', 'estimate_minutes'}, required={'cheat', 'duration_s'}),
 }
-TOP = {'name', 'seed', 'repeats', 'experiments', 'server_cpuset', 'donor_cpuset', 'rerun_on_interference', 'frametime_import', 'note'}
+TOP = {'name', 'seed', 'repeats', 'experiments', 'server_cpuset', 'donor_cpuset', 'rerun_on_interference', 'frametime_import', 'note',
+       'order', 'donor_env'}
+ORDERS = ('shuffle', 'paired')
 # 每轮估计分钟数的默认值（第 6 节的估计）：起服、预热、停服归档的开销 + 实验本身。
 OVERHEAD_MIN = {'flight': 4, 'verify': 5}
 CAPACITY_MIN = 60
@@ -53,6 +55,7 @@ def _check_value(exp, key, v):
         'tile_size': lambda x: x in (1, 2, 4, 8),
         'cheat': lambda x: x in CHEATS,
         'check_rate': lambda x: type(x) in (int, float) and 0 < x <= 1,
+        'lookahead': lambda x: type(x) is int and 1 <= x <= 64,
     }[key]
     if not ok(v):
         raise ValueError(f'{exp}.{key} 的值不合法：{v!r}')
@@ -68,6 +71,10 @@ def validate(config: dict) -> dict:
             raise ValueError(f'缺少 {key}')
     if type(config['repeats']) is not int or config['repeats'] < 1:
         raise ValueError('repeats 至少是 1')
+    if config.get('order', 'shuffle') not in ORDERS:
+        raise ValueError(f'order 只能是 {list(ORDERS)}')
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in config.get('donor_env', {}).items()):
+        raise ValueError('donor_env 是字符串到字符串的映射（给 compose 的环境变量）')
     for exp, grids in config['experiments'].items():
         if exp not in SCHEMA:
             raise ValueError(f'不认识的实验：{exp}')
@@ -112,6 +119,7 @@ def _normalize(exp: str, params: dict) -> dict:
             p['latency_ms'] = 0
         p.pop('tile_size', None)
         p.pop('jitter_ms', None)
+        p.pop('lookahead', None)
     return p
 
 
@@ -132,9 +140,16 @@ def expand(config: dict) -> list[dict]:
     return [cells[k] for k in sorted(cells)]
 
 
-def order(cells: list[dict], seed: int) -> list[dict]:
-    """按种子打乱跑的顺序（同第 1 步），避免时间漂移混进某一种配置。"""
+def order(cells: list[dict], seed: int, mode: str = 'shuffle') -> list[dict]:
+    """跑的顺序。shuffle：按种子打乱（同第 1 步），避免时间漂移混进某一种配置。
+    paired（调度 11-09，演示用）：原版的数随机器负载变，同一组（group）同一次（repeat）的单元紧挨着跑，原版先跑。"""
     out = sorted(cells, key=cell_id)
+    if mode == 'paired':
+        def key(c):
+            p = c['params']
+            return (str(p.get('group', '')), c['repeat'], p.get('donors', 0) > 0, p.get('latency_ms', 0),
+                    p.get('lookahead') or 0, p.get('donors', 0), cell_id(c))
+        return sorted(out, key=key)
     random.Random(seed).shuffle(out)
     return out
 
@@ -220,7 +235,7 @@ def _attempt(cell, cid, cdir, driver, lock, rerun_on_interference) -> str:
 def run(config: dict, drivers: dict, root, lock=contextlib.nullcontext, max_attempts: int = MAX_ATTEMPTS) -> dict:
     """按配置跑矩阵，能断点续跑。drivers：实验名 → driver(cell, 输出目录) -> dict（可带 interference 列表）。
     lock：每个真正执行的单元拿一次（单元之间放锁）。"""
-    cells = order(expand(config), config['seed'])
+    cells = order(expand(config), config['seed'], config.get('order', 'shuffle'))
     missing = {c['experiment'] for c in cells} - set(drivers)
     if missing:
         raise ValueError(f'没有驱动：{sorted(missing)}')
@@ -272,7 +287,7 @@ def run_real(config: dict, root: Path) -> dict:
     poller = Poller(runner, runs_dir=TEST_DATA / 'bench-runs')
     flyer = Flyer(runner, poller, ROOT / 'artifacts' / 'demo')
     controller = Controller(runner, poller, flyer)
-    result = run(config, {'flight': make_flight_driver(runner, controller, flyer)}, root)
+    result = run(config, {'flight': make_flight_driver(runner, controller, flyer, donor_env=config.get('donor_env'))}, root)
     campaign = Path(result['campaign'])
     write_tables(campaign)
     result['figures'] = demo_figures.draw_all(campaign, campaign / 'figures')

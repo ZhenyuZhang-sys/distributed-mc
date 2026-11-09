@@ -22,8 +22,14 @@ class Runner:
     def rcon(self, command: str) -> str:
         return _COLOR.sub('', run(str(SCRIPTS / 'rcon.sh'), command, timeout=30)).strip()
 
-    def compose(self, *args, timeout=120) -> str:
-        return compose(*args, timeout=timeout)
+    def compose(self, *args, timeout=120, env=None) -> str:
+        if not env:
+            return compose(*args, timeout=timeout)
+        r = subprocess.run(['bash', '-c', 'source "$1"; shift; tc "$@"', 'bash', str(SCRIPTS / 'lib.sh'), *args],
+                           env={**os.environ, **env}, capture_output=True, text=True, timeout=timeout)
+        if r.returncode:
+            raise RuntimeError(f'compose {" ".join(args)} 退出码 {r.returncode}：{(r.stderr or r.stdout)[-400:]}')
+        return r.stdout
 
     def slot_cpuset(self) -> str:
         """这个槽位服务器的核：环境变量 > docker/.env.local > docker/n100.env（和 lib.sh 的 test_cpuset 一样）。"""

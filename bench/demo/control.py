@@ -17,7 +17,7 @@ from bench.server import wait_until
 SPEEDS = {'walk': 4.3, 'horse': 14.0, 'elytra': 30.0}
 FEATURES = ('territory', 'deadline', 'throughput', 'hedge', 'waitdonor')
 DONORS = ('worker', 'worker2')
-ALL_WORKERS = ('worker', 'worker2', 'worker3')
+ALL_WORKERS = ('worker', 'worker2', 'worker3')   # compose 里最多这三个 donor 服务；第 4 个要在 compose 里加
 NETEM_ARGS = ('35ms', '1%', '20mbit')   # 延迟、丢包、限速（fish 的 netem.sh：on [延迟] [丢包] [限速]）
 SECONDS_RANGE = (10, 600)
 SERVER_CPUS = (1, 2, 4)   # A/B 时服务器几个核；默认 2（调度 11-09：和第 4 步基线、第 10 步 X 的配置一样）
@@ -68,6 +68,7 @@ class Controller:
     def __init__(self, runner, poller, flyer, wait_timeout=600, wait_interval=2, tracker=None):
         self.runner, self.poller, self.flyer = runner, poller, flyer
         self.tracker = tracker or Tracker(runner, poller)
+        self.active = DONORS   # 现在开着的 donor 服务（模拟网络加在它们上）
         self.wait_timeout, self.wait_interval = wait_timeout, wait_interval
         self._lock = threading.Lock()
         self.current = None
@@ -135,10 +136,18 @@ class Controller:
     def _wait(self, check, what):
         wait_until(check, self.wait_timeout, self.wait_interval, what)
 
-    def donor_on(self) -> list:
-        """起 worker、worker2，等两个都连上 coordinator，再开找需求。"""
-        self.runner.compose('up', '-d', '--wait', '--wait-timeout', '600', *DONORS, timeout=660)
-        self._wait(lambda: len(self.status().get('workers', [])) >= len(DONORS), 'donor 都连上')
+    def donor_on(self, n=len(DONORS), env=None) -> list:
+        """起前 n 个 donor 服务（worker、worker2、worker3），多的停掉；等它们都连上 coordinator，再开找需求。
+        env：给 compose 的环境变量（比如 worker3 的核数 WORKER3_CPUS、WORKER3_CPUSET）。"""
+        if not 1 <= n <= len(ALL_WORKERS):
+            raise BadRequest(f'donor 个数只能是 1～{len(ALL_WORKERS)}（compose 里只有 {", ".join(ALL_WORKERS)}）')
+        want = ALL_WORKERS[:n]
+        extra = [w for w in ALL_WORKERS[n:] if w in set(self.runner.services())]
+        if extra:
+            self.runner.compose('stop', *extra, timeout=300)
+        self.runner.compose('up', '-d', '--wait', '--wait-timeout', '600', *want, timeout=660, **({'env': env} if env else {}))
+        self._wait(lambda: len(self.status().get('workers', [])) >= n, 'donor 都连上')
+        self.active = want
         self.runner.rcon('donor demand on')
         return self.worker_ids()
 
@@ -154,7 +163,7 @@ class Controller:
         self.runner.rcon(f"donor feature {name} {'on' if on else 'off'}")
 
     def netem(self, on):
-        for s in DONORS:
+        for s in self.active:
             if on:
                 self.runner.script('netem.sh', 'on', *NETEM_ARGS, env={'NETEM_SERVICE': s})
             else:
