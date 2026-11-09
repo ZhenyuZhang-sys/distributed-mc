@@ -349,6 +349,12 @@ public final class TaskQueue {
     /** 一个租出去、知道 due 的任务（7.4 对冲判断用）。 */
     public record Lease(long taskId, int worker, long leasedAt, long due) {}
 
+    /** 这个任务正租着的话，租给谁、什么时候派的（7.6 等 donor 用）。 */
+    public synchronized Optional<Lease> lease(long taskId) {
+        Task t = tasks.get(taskId);
+        return t != null && t.state == State.LEASED ? Optional.of(new Lease(t.id, t.worker, t.leasedAt, t.due)) : Optional.empty();
+    }
+
     public synchronized List<Lease> leasesWithDue() {
         List<Lease> out = new ArrayList<>();
         for (Task t : tasks.values()) {

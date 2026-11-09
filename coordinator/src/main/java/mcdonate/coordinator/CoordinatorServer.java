@@ -20,6 +20,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import mcdonate.common.TileFile;
+import mcdonate.coordinator.mixin.ChunkMapAccessor;
 import mcdonate.common.proto.Cancel;
 import mcdonate.common.proto.Frame;
 import mcdonate.common.proto.FrameDecoder;
@@ -54,6 +55,8 @@ final class CoordinatorServer {
     final Features features = Features.fromSystemProperty();
     /** 7.3：每个 worker 做一个 tile 的实测耗时。 */
     final DonorThroughput throughput = new DonorThroughput();
+    /** 7.6：等 donor。 */
+    final WaitDonor waitDonor;
     final TaskQueue tasks = new TaskQueue(System::currentTimeMillis, LEASE_MS, MAX_ATTEMPTS, features);
     private final Map<Integer, Connection> workers = new ConcurrentHashMap<>();
     private final AtomicInteger nextWorkerId = new AtomicInteger(1);
@@ -82,6 +85,8 @@ final class CoordinatorServer {
         this.server = server;
         this.port = port;
         this.demand = new DemandScanner(server, tasks, features);
+        this.waitDonor = new WaitDonor(features, tasks, throughput);
+        WaitDonor.instance = waitDonor;
     }
 
     /** 找需求开着没有：没有 donor 连着就不扫，服务器和原版一样。 */
@@ -166,6 +171,7 @@ final class CoordinatorServer {
                 for (TaskQueue.Lease l : tasks.leasesWithDue()) {
                     if (Hedge.shouldHedge(l.leasedAt(), throughput.averageMs(l.worker()), now, l.due())) {
                         int w = tasks.hedgeToServer(l.taskId());
+                        waitDonor.release(l.taskId());
                         Connection c = workers.get(w);
                         if (c != null) {
                             c.send(new Cancel(l.taskId()));
@@ -221,16 +227,36 @@ final class CoordinatorServer {
         switch (d.action()) {
             case IMPORT -> {
                 d.cancelWorker().map(workers::get).ifPresent(other -> other.send(new Cancel(r.taskId())));
-                server.execute(() -> importResult(c, r));
+                if (waitDonor.hasGate(r.taskId())) {
+                    // 7.6：有 chunk 在等这个结果。导入提交到 chunk 缓存自己的队列：主线程同步等 chunk 时
+                    // （getChunk 的 managedBlock）只执行这个队列，server.execute 的要等它结束，闸门只能等到超时。
+                    java.util.concurrent.Executor ex = waitDonor.importViaChunkCache
+                            ? ((ChunkMapAccessor) server.overworld().getChunkSource().chunkMap).mcdonate$mainThreadExecutor()
+                            : server;
+                    ex.execute(() -> {
+                        try {
+                            if (importResult(c, r)) {
+                                waitDonor.hits.incrementAndGet();
+                            }
+                        } finally {
+                            waitDonor.release(r.taskId());
+                        }
+                    });
+                } else {
+                    server.execute(() -> importResult(c, r));
+                }
             }
             case REQUEUE -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
             case FAIL -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
             case DISCARD -> LOG.info("丢弃 worker {} 的结果：{}", c.workerId, d.reason());
         }
+        if (d.action() != TaskQueue.Action.IMPORT) {
+            waitDonor.release(r.taskId());
+        }
     }
 
-    /** 主线程上：校验 tile 并导入。出错就让任务回到队列。 */
-    private void importResult(Connection c, Result r) {
+    /** 主线程上：校验 tile 并导入。出错就让任务回到队列。返回是否被接受。 */
+    private boolean importResult(Connection c, Result r) {
         int workerId = c.workerId;
         try {
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
@@ -250,16 +276,19 @@ final class CoordinatorServer {
                 }
                 imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":" + res.accepted()
                         + ",\"written\":" + (res.written() + res.overwritten()) + "}");
+                return res.accepted();
             } else {
                 TileImporter.Result res = TileImporter.importTile(server.overworld(), file, "task " + r.taskId());
                 LOG.info("导入任务 {}（worker {}，旧规则）：written={} loaded={} exists={}", r.taskId(), workerId,
                         res.written(), res.loaded(), res.exists());
                 imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":true,\"written\":"
                         + res.written() + "}");
+                return true;
             }
         } catch (RuntimeException e) {
             LOG.warn("导入任务 {} 失败，重新排队：{}", r.taskId(), e.toString());
             tasks.importFailed(r.taskId());
+            return false;
         }
     }
 
@@ -283,6 +312,7 @@ final class CoordinatorServer {
                 + ",\"motionWindowMs\":" + Motion.WINDOW_MS
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
+                + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
                 + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))
                 + "}";
@@ -313,7 +343,8 @@ final class CoordinatorServer {
                 .append(",\"server\":").append(discardedBy.get(RegionRules.Discard.SERVER).get())
                 .append("},\"accepted\":").append(acceptedImports.get())
                 .append(",\"hedge\":{\"cancelled\":").append(tasks.hedgeCancelled()).append(",\"wasted\":").append(tasks.hedgeWasted())
-                .append("},\"ledger\":").append(Ownership.LEDGER.size()).append('}').toString();
+                .append("},\"ledger\":").append(Ownership.LEDGER.size())
+                .append(",\"waitdonor\":").append(waitDonor.json()).append('}').toString();
     }
 
     /** 跨 donor 冲突被整个丢弃的结果占所有严格导入结果的比例（donor 白干的比例）。第 7 步要压低它。 */

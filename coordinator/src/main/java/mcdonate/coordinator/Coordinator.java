@@ -36,6 +36,8 @@ public final class Coordinator implements ModInitializer {
         //   /donor rules strict|legacy        测试用：导入规则（默认 strict；legacy 是第 3 步的旧规则）
         //   /donor demand on|off    自动找需求的开关（正式默认开；测试服务器默认关）
         //   /donor feature <名字> on|off  第 7 步的开关（territory、deadline、throughput、hedge、waitdonor）
+        //   /donor syncload <x> <z>  测试用：在主线程上同步要这个 chunk（FULL），回复用了多少毫秒（7.6a）
+        //   /donor waitimport chunkcache|server  测试用：等 donor 的导入走哪个队列（7.6a，正确的是 chunkcache）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
@@ -67,6 +69,18 @@ public final class Coordinator implements ModInitializer {
                                                 StringArgumentType.getString(ctx, "name"), true)))
                                         .then(Commands.literal("off").executes(ctx -> setFeature(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name"), false)))))
+                        .then(Commands.literal("syncload")
+                                .then(Commands.argument("x", IntegerArgumentType.integer())
+                                        .then(Commands.argument("z", IntegerArgumentType.integer())
+                                                .executes(ctx -> {
+                                                    long t0 = System.nanoTime();
+                                                    ctx.getSource().getServer().overworld().getChunk(
+                                                            IntegerArgumentType.getInteger(ctx, "x"), IntegerArgumentType.getInteger(ctx, "z"));
+                                                    return reply(ctx.getSource(), "syncload " + (System.nanoTime() - t0) / 1_000_000 + " ms");
+                                                }))))
+                        .then(Commands.literal("waitimport")
+                                .then(Commands.literal("chunkcache").executes(ctx -> setWaitImport(ctx.getSource(), true)))
+                                .then(Commands.literal("server").executes(ctx -> setWaitImport(ctx.getSource(), false))))
                         .then(Commands.literal("rules")
                                 .then(Commands.literal("strict").executes(ctx -> setStrict(ctx.getSource(), true)))
                                 .then(Commands.literal("legacy").executes(ctx -> setStrict(ctx.getSource(), false))))
@@ -162,6 +176,13 @@ public final class Coordinator implements ModInitializer {
     private static int reply(CommandSourceStack source, String text) {
         source.sendSuccess(() -> Component.literal(text), false);
         return 1;
+    }
+
+    private static int setWaitImport(CommandSourceStack source, boolean chunkCache) {
+        if (network != null) {
+            network.waitDonor.importViaChunkCache = chunkCache;
+        }
+        return reply(source, "waitimport " + (chunkCache ? "chunkcache" : "server"));
     }
 
     private static int setFeature(CommandSourceStack source, String name, boolean on) {

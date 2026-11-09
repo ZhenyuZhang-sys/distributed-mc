@@ -179,7 +179,15 @@ final class TileImporter {
 
     /** 一个 chunk 现在的情况：在内存里、空、归属某个 donor 世界、服务器的。在主线程上调用。 */
     static RegionRules.ChunkInfo chunkInfo(ChunkMap chunkMap, ChunkMapAccessor access, long key) {
-        if (access.mcdonate$getUpdatingChunkIfPresent(key) != null || access.mcdonate$pendingUnloads().containsKey(key)) {
+        // 7.6（开关开着时）：有 holder 但还没开始读存档的（包括正在等 donor 的）不算在内存里——
+        // 之后读存档时读请求排在这次写后面，读到的就是导入的数据。开关关着照旧：有 holder 就算。
+        // holder 里已经有 chunk 对象的一律算（开关打开之前就加载的 chunk 不在 STARTED 里）。
+        net.minecraft.server.level.ChunkHolder holder = access.mcdonate$getUpdatingChunkIfPresent(key);
+        boolean inMemory = WaitDonor.on()
+                ? access.mcdonate$pendingUnloads().containsKey(key)
+                        || (holder != null && (holder.getLatestChunk() != null || WaitDonor.loadStarted(key)))
+                : holder != null || access.mcdonate$pendingUnloads().containsKey(key);
+        if (inMemory) {
             return RegionRules.ChunkInfo.loaded();
         }
         // 主线程上等读取结果；第 6.3 步找需求时换成只看 region 文件头
