@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** 第 7 步 7.3：按实测算力分配。 */
@@ -64,18 +66,22 @@ class DonorThroughputTest {
 
     @Test
     void parallelDonorRateFromCompletions() {
-        // 4 个一批：每个派出到收到 4 秒，但每 100 ms 完成一个、每 4 秒一批 → 实际约 1 个/秒以上，不是 0.25
+        // 4 个一批：每个派出到收到 4 秒、每 100 ms 错开一个，一批接一批 → 手上一直约 4 个，约 1 个/秒，不是 0.25。
+        // 11-09（codex-audit 第十五节 V1）：原来按完成间隔估成 1.6（窗口只看到半批，偏高），这里锁的是偏高的值；
+        // 改成实测并行度（在途数对忙碌时间的平均）÷ 延迟
         DonorThroughput t = new DonorThroughput();
+        List<long[]> iv = new ArrayList<>();
         for (int batch = 0; batch < 2; batch++) {
             for (int i = 0; i < 4; i++) {
-                t.record(1, 4_000, 4_000 + batch * 4_000 + i * 100L);
+                iv.add(new long[] {batch * 4_000 + i * 100L, 4_000 + batch * 4_000 + i * 100L});
             }
         }
+        feed(t, iv);
         assertEquals(4_000, t.latencyMs(1), "延迟取中位数");
         double rate = t.ratePerMs(1) * 1000;
-        assertTrue(rate > 1.5 && rate < 2.0, "按完成间隔：7 个间隔 4.3 秒，约 1.6 个/秒，实际 " + rate);
+        assertTrue(rate > 0.85 && rate < 1.05, "约 1 个/秒，实际 " + rate);
         long now = 100_000;
-        assertTrue(t.canMeet(1, 3, now, now + 6_000), "手上 3 个、能并行：4 秒左右做完");
+        assertTrue(t.canMeet(1, 3, now, now + 6_000), "手上 3 个、实测能并行 3～4 个：4 秒左右做完");
     }
 
     @Test
@@ -98,13 +104,16 @@ class DonorThroughputTest {
 
     @Test
     void sameMillisecondBatchDoesNotExplodeRate() {
-        // codex-audit F4：同一批几乎同时到（间隔 0～几毫秒），速率不能估成几十个/秒。
-        // 11-09 起按忙碌时间：4 个一起做了 4 秒，就是 1 个/秒（原来按 1/延迟估 0.25，太保守）
+        // codex-audit F4：同一批几乎同时到（间隔 0～几毫秒），速率不能估成几十个/秒：没有在途记录时按 1/延迟（保守）
         DonorThroughput t = new DonorThroughput();
         for (int i = 0; i < 4; i++) {
             t.record(1, 4_000, 50_000 + i);
         }
-        assertEquals(1.0, t.ratePerMs(1) * 1000, 0.01);
+        assertEquals(0.25, t.ratePerMs(1) * 1000, 1e-9);
+        // 有在途记录：4 个一起做了 4 秒，1 个/秒
+        DonorThroughput m = new DonorThroughput();
+        feed(m, List.of(new long[] {46_000, 50_000}, new long[] {46_001, 50_001}, new long[] {46_002, 50_002}, new long[] {46_003, 50_003}));
+        assertEquals(1.0, m.ratePerMs(1) * 1000, 0.01);
     }
 
     @Test
@@ -116,28 +125,126 @@ class DonorThroughputTest {
     // ---- 11-09 正式服（f19d087、用户 M5）：inFlight 0、队里 37～40 个，启动以来 hopeless 398 ----
     // 速率按最近 10 个的完成间隔算，donor 等派活的空档也算进去，速率被低估；剪枝和 canMeet 按低估的速率
     // 把能做完的判来不及 → 派得更少 → 空档更多 → 速率更低（distributed-mc-75 读代码发现的循环）。
+    // codex-audit 第十五节审 0dfd6c9：V1 忙碌窗口和完成数不配（跨批次高估），V2 把租约名额当成计算并行。
+    // 改成：在途数随时间记（LoadMeter），速率 = 窗口里的平均在途数（只算手上有活的时间）÷ 延迟。
 
-    @Test
-    void idleGapsDoNotLowerRate() {
-        // 每批 2 个并行（700 ms），批与批之间 donor 空等 1.2 秒（等下一秒的派活）：忙的时候约 2.7 个/秒
-        DonorThroughput t = new DonorThroughput();
-        for (int k = 0; k < 5; k++) {
-            long s0 = 10_000 + k * 1_900L;
-            t.record(1, 700, s0 + 700);
-            t.record(1, 700, s0 + 750);
+    /** 按真实的租期喂：在途表按开始、结束事件走，每个完成时记下在途表的读数。 */
+    static void feed(DonorThroughput t, List<long[]> intervals) {
+        LoadMeter meter = new LoadMeter();
+        List<long[]> ev = new ArrayList<>();
+        for (int i = 0; i < intervals.size(); i++) {
+            ev.add(new long[] {intervals.get(i)[0], 1, i});
+            ev.add(new long[] {intervals.get(i)[1], 0, i});   // 同一时刻先结束再开始
         }
-        double rate = t.ratePerMs(1) * 1000;
-        assertTrue(rate > 2.5, "空档不算进去：10 个、忙 3.75 秒，实际 " + rate);
+        ev.sort((x, y) -> x[0] != y[0] ? Long.compare(x[0], y[0]) : Long.compare(x[1], y[1]));
+        for (long[] e : ev) {
+            if (e[1] == 1) {
+                meter.start(e[0]);
+            } else {
+                long[] r = meter.read(e[0]);
+                long[] in = intervals.get((int) e[2]);
+                t.record(1, in[1] - in[0], in[1], r[0], r[1]);
+                meter.end(e[0]);
+            }
+        }
     }
 
     @Test
-    void freeSlotStartsNow() {
-        // donor 还有空名额：再给它一个，马上就开始做，延迟后做完；不按"前面还有几个 ÷ 速率"排队
+    void idleGapsDoNotLowerRate() {
+        // 每批 2 个并行（700 ms，错开 50 ms），批与批之间 donor 空等 1.2 秒（等下一秒的派活）：忙的时候约 2.7 个/秒
         DonorThroughput t = new DonorThroughput();
-        t.record(1, 700, 50_000);     // 只有一个样本：速率按 1/延迟，最保守
+        List<long[]> iv = new ArrayList<>();
+        for (int k = 0; k < 5; k++) {
+            long s0 = 10_000 + k * 1_900L;
+            iv.add(new long[] {s0, s0 + 700});
+            iv.add(new long[] {s0 + 50, s0 + 750});
+        }
+        feed(t, iv);
+        double rate = t.ratePerMs(1) * 1000;
+        assertTrue(rate > 2.4 && rate < 2.95, "空档不算进去：约 2.7 个/秒，实际 " + rate);
+    }
+
+    @Test
+    void twoExactBatchesNotOverestimated() {
+        // V1：第一批 4 个 [10000,14000] 一起交回，空等后第二批 4 个 [100000,104000]：1 个/秒（0dfd6c9 估成 1.75）
+        DonorThroughput t = new DonorThroughput();
+        List<long[]> iv = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            iv.add(new long[] {10_000, 14_000});
+        }
+        for (int i = 0; i < 4; i++) {
+            iv.add(new long[] {100_000, 104_000});
+        }
+        feed(t, iv);
+        assertEquals(1.0, t.ratePerMs(1) * 1000, 0.05);
+    }
+
+    @Test
+    void fullRollingWindowNotOverestimated() {
+        // V1：再来第三批，窗口 10 个截掉第一批的 2 个：还是 1 个/秒（0dfd6c9 估成 1.125）
+        DonorThroughput t = new DonorThroughput();
+        List<long[]> iv = new ArrayList<>();
+        for (long s0 : new long[] {10_000, 100_000, 200_000}) {
+            for (int i = 0; i < 4; i++) {
+                iv.add(new long[] {s0, s0 + 4_000});
+            }
+        }
+        feed(t, iv);
+        assertEquals(1.0, t.ratePerMs(1) * 1000, 0.05);
+    }
+
+    @Test
+    void steadyPipelineIsOnePerSecond() {
+        // 手上一直 4 个、每秒交回一个、每个 4 秒：1 个/秒（窗口左边的预热不能把它压低）
+        DonorThroughput t = new DonorThroughput();
+        List<long[]> iv = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            iv.add(new long[] {10_000 + i * 1_000L, 14_000 + i * 1_000L});
+        }
+        feed(t, iv);
+        assertEquals(1.0, t.ratePerMs(1) * 1000, 0.05);
+        assertEquals(4, t.lanes(1));
+    }
+
+    @Test
+    void measuredLanesStartNow() {
+        // 实测能并行 4 个（延迟 700 ms）：手上 2 个时再给一个，马上开始，0.7 秒做完；手上 4 个才排队
+        DonorThroughput t = new DonorThroughput();
+        List<long[]> iv = new ArrayList<>();
+        for (int k = 0; k < 3; k++) {
+            for (int i = 0; i < 4; i++) {
+                iv.add(new long[] {10_000 + k * 700L, 10_700 + k * 700L});
+            }
+        }
+        feed(t, iv);
+        assertEquals(4, t.lanes(1));
         long now = 100_000;
-        assertTrue(t.canMeet(1, 2, 4, now, now + 1_000), "4 个名额用了 2 个：0.7 秒做完");
-        assertFalse(t.canMeet(1, 4, 4, now, now + 1_000), "名额满了才排队");
-        assertFalse(t.canMeet(1, 2, now, now + 1_000), "不给名额数时照旧（一个一个）");
+        assertTrue(t.canMeet(1, 2, now, now + 1_000));
+        assertFalse(t.canMeet(1, 4, now, now + 1_000), "实测的并行都占满了才排队");
+    }
+
+    @Test
+    void serialDonorWithSpareLeaseSlotsRejectsImpossibleDeadline() {
+        // V2：一个一个做、每个 700 ms 的 donor（租约名额有 4 个，但那不是计算并行）：手上 2 个时第 3 个约 2.1 秒才回来
+        DonorThroughput t = new DonorThroughput();
+        List<long[]> iv = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            iv.add(new long[] {10_000 + i * 700L, 10_700 + i * 700L});
+        }
+        feed(t, iv);
+        assertEquals(1.0 / 0.7, t.ratePerMs(1) * 1000, 0.05);
+        assertEquals(1, t.lanes(1));
+        long now = 100_000;
+        assertFalse(t.canMeet(1, 2, now, now + 1_000), "1 秒截止赶不上");
+        assertTrue(t.canMeet(1, 0, now, now + 1_000), "空着的照样能接");
+    }
+
+    @Test
+    void singleSampleIsOneLane() {
+        // 只有一个样本：不按最大并发推断并行度（codex-audit V2）
+        DonorThroughput t = new DonorThroughput();
+        feed(t, List.of(new long[] {49_300, 50_000}));
+        assertEquals(1, t.lanes(1));
+        assertEquals(DonorThroughput.MAX_CONCURRENCY, new DonorThroughput().lanes(9), "冷启动：按最大并发探路（F5/G4）");
     }
 }

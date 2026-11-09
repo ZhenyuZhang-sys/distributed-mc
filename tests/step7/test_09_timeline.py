@@ -37,8 +37,9 @@ def test_status_reports_frontier(server):
 
 
 def test_status_reports_worker_rate(server, worker):
-    # 11-09 正式服 hopeless 398：每个 worker 的实测速率、延迟、在途、名额和能力估计写进 /donor status，排查派活用
+    # 11-09 正式服 hopeless 398：每个 worker 的实测速率、延迟、在途、租约名额、实测并行度写进 /donor status，排查派活用
+    # （codex-audit 第十五节：不报 slots/延迟 这种乐观推算的"能力"）
     worker_id(server, "worker")
     w = json.loads(server.rcon("donor status"))["workers"][0]
-    assert {"ratePerSec", "latencyMs", "inFlight", "slots", "capacityPerSec", "busyMs"} <= set(w), w
-    assert w["slots"] >= 1 and w["capacityPerSec"] > 0, w
+    assert {"ratePerSec", "latencyMs", "inFlight", "slots", "parallelism", "lanes", "busyMs"} <= set(w), w
+    assert w["slots"] >= 1 and w["lanes"] >= 1 and w["ratePerSec"] > 0, w

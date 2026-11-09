@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -499,9 +500,52 @@ class TaskQueueDeadlineTest {
             q.enqueue(i * 2, 0);
             q.setDue(i * 2, 0, now.get() + 3_000, now.get() + 2_000, 1);   // 留出 1 秒余量后限 1 秒
         }
-        // donor 延迟 0.7 秒、速率被低估成 1/0.7 秒、手上 0 个、4 个名额
-        List<Long> dropped = q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(700, 1.0 / 700, 0, 4)));
+        // donor 延迟 0.7 秒、实测能并行 4 个（速率 4/0.7 秒）、手上 0 个
+        List<Long> dropped = q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(700, 4.0 / 700, 0, 4)));
         assertEquals(1, dropped.size(), "前 4 个马上能开始、0.7 秒做完，不剪；第 5 个要排队才剪：" + dropped);
         assertEquals(q.find(8, 0), dropped.get(0));
+    }
+
+    @Test
+    void serialDonorStillPrunesWhatItCannotDo() {
+        // codex-audit 第十五节 V2：一个一个做的 donor（实测并行 1），4 个都限 1 秒：只做得完第 1 个，剪 3 个
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 4; i++) {
+            q.enqueue(i * 2, 0);
+            q.setDue(i * 2, 0, now.get() + 3_000, now.get() + 2_000, 1);
+        }
+        assertEquals(3, q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(700, 1.0 / 700, 0, 1))).size());
+    }
+
+    @Test
+    void loadMeterFollowsLeases() {
+        // 在途数随时间记：两个一起做 1 秒（忙 1 秒、在途·时间 2 秒），交回一个，再 1 秒
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(2, 0);
+        long a = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        q.assign(1, 4, d -> true).orElseThrow();
+        now.addAndGet(1_000);
+        assertArrayEquals(new long[] {1_000, 2_000}, q.load(1));
+        q.onResult(1, a, true);
+        now.addAndGet(1_000);
+        assertArrayEquals(new long[] {2_000, 3_000}, q.load(1));
+        assertArrayEquals(new long[] {0, 0}, q.load(7), "没派过的 worker");
+    }
+
+    @Test
+    void lateOldResultGivesNoLatencySample() {
+        // codex-audit 第十五节 V4：worker1 的租约过期、同一个任务重派给 worker2；worker1 的旧结果这时回来，
+        // 不能拿 worker2 的派出时间算 worker1 的延迟（会把 1 秒多记成 1 毫秒）
+        TaskQueue q = new TaskQueue(now::get, 1_000, 3, new Features("deadline"));
+        q.enqueue(0, 0);
+        long id = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        assertEquals(now.get(), q.sampleLeasedAt(1, id), "第一次派出：正常取样");
+        now.addAndGet(1_001);
+        q.expireLeases();
+        assertEquals(id, q.assign(2, 4, d -> true).orElseThrow().taskId());
+        now.addAndGet(1);
+        assertEquals(-1, q.sampleLeasedAt(1, id), "不是它手上的");
+        assertEquals(-1, q.sampleLeasedAt(2, id), "重派过：分不清是哪一次的结果，不取样");
     }
 }
