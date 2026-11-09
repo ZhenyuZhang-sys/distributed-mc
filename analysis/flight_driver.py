@@ -176,6 +176,9 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         world_env = {**(server_env or {}), 'MC_CPUS': str(cpus), 'MC_CPUSET': cpuset}
         if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）；接在 server_env 的后面（比如 GC 日志）
             world_env['MCD_JVM_EXTRA'] = ' '.join(x for x in (world_env.get('MCD_JVM_EXTRA', ''), f'-Dmcdonate.demandLookahead={lookahead}') if x)
+        budget = p.get('scan_budget_us')
+        if budget:   # 扫描预算（调度 11-09：部署包改成 2000，旧默认 500），同样是服务器的 JVM 参数
+            world_env['MCD_JVM_EXTRA'] = ' '.join(x for x in (world_env.get('MCD_JVM_EXTRA', ''), f'-Dmcdonate.demandScanBudgetMicros={budget}') if x)
         runner.script('new_world.sh', name, str(seed), env=world_env, timeout=900)
         if p.get('view_distance'):   # 按用户正式服的视距测（默认是 compose 里的 10）
             runner.rcon(f"bench viewdistance {p['view_distance']}")
@@ -232,6 +235,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         if errors:
             raise errors[0]
         ids_after = controller.worker_ids() if donors else []
+        budget_used = controller.status().get('config', {}).get('demandScanBudgetMicros') if budget else None
         counts_after = _status_counts(controller) if donors else None
         cpu_after = runner.worker_cpu(services) if cpu_before is not None else None
         log_lines = runner.server_log_since(t_fly) if hasattr(runner, 'server_log_since') else []
@@ -245,9 +249,14 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         if lookahead and str(s.get('demand_lookahead')) != str(lookahead):
             judged['valid'] = False
             judged['invalid'].append(f"提前量没生效：要 {lookahead}，服务器用的是 {s.get('demand_lookahead')}")
+        if budget and str(budget_used) != str(budget):
+            judged['valid'] = False
+            judged['invalid'].append(f"扫描预算没生效：要 {budget} µs，服务器用的是 {budget_used}")
         if not judged['valid']:
             raise RuntimeError('这一轮无效：' + '；'.join(judged['invalid']))
         result = {k: _num(s[k]) for k in METRICS if k in s}
+        if budget:
+            result['scan_budget_us_effective'] = budget_used
         if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个
             stalls = [j['summary'].get('stall_fraction') for j in all_judged if j['summary'].get('stall_fraction') is not None]
             dists = [j['summary'].get('distance_ratio') for j in all_judged if j['summary'].get('distance_ratio') is not None]

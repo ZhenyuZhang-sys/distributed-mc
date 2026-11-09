@@ -306,6 +306,8 @@ ORDER = [PROFILE_NAME[None], PROFILE_NAME['1x8'], PROFILE_NAME['1x4'], PROFILE_N
 def _cfg(r):
     """配置名；行带 code（哪套代码，三臂对比用）时后面标上。"""
     base = PROFILE_NAME.get(r.get('donor_profile'), r.get('donor_profile')) if r.get('donors') else PROFILE_NAME[None]
+    if r.get('donors') and r.get('scan_budget_us'):
+        base += f" · 扫描预算 {r['scan_budget_us']} µs"
     return f"{base} · {r['code']}" if r.get('code') else base
 
 

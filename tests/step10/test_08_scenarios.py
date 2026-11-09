@@ -269,3 +269,45 @@ def test_run_name_differs_between_attempts(tmp_path):
     drive(rcell('firework'), tmp_path / 'a1')
     drive(rcell('firework'), tmp_path / 'a2')
     assert len(names) == 2 and names[0] != names[1] and all(n.startswith('mx-mx') for n in names)
+
+
+def test_driver_sets_and_checks_scan_budget(tmp_path):
+    # 调度 11-09：部署包里唯一的参数改动是扫描预算 -Dmcdonate.demandScanBudgetMicros（旧默认 500，部署 2000），要能按单元设、
+    # 接在 server_env 后面（GC 日志不丢），并用 /donor status 的 config 核对服务器真的用上了，没用上判无效
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    profiles = {'1x8': {'donors': 1, 'env': {'WORKER_CPUS': '8'}}}
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles=profiles,
+                               server_env={'MCD_JVM_EXTRA': '-Xlog:gc:stdout:time'})
+    cell = rcell('firework')
+    cell['params']['scan_budget_us'] = 2000
+    runner.status['config'] = {'demandScanBudgetMicros': 2000}
+    out = drive(cell, tmp_path / 'c11')
+    assert envs[0]['MCD_JVM_EXTRA'] == '-Xlog:gc:stdout:time -Dmcdonate.demandScanBudgetMicros=2000'
+    assert out['scan_budget_us_effective'] == 2000
+    runner.status['config'] = {'demandScanBudgetMicros': 500}
+    with pytest.raises(RuntimeError, match='扫描预算没生效'):
+        drive(cell, tmp_path / 'c12')
+
+
+def test_matrix_accepts_scan_budget_and_drops_it_for_vanilla():
+    from analysis import run_matrix as rm
+    base = dict(donors=[0, 1], speed=['elytra'], server_cpus=[2], latency_ms=[0], features=['deadline'], bots=[1], duration_s=120,
+                scenario=['firework'], scan_budget_us=[500, 2000])
+    cfg = dict(name='t', seed=1, repeats=1, experiments=dict(flight=[base]))
+    rm.validate(cfg)
+    cells = rm.expand(cfg)
+    got = sorted((c['params']['donors'], c['params'].get('scan_budget_us')) for c in cells)
+    assert got == [(0, None), (1, 500), (1, 2000)]   # 原版没有扫描（没 donor 不扫），只留一个
+    bad = dict(cfg, experiments=dict(flight=[dict(base, scan_budget_us=[0])]))
+    with pytest.raises(ValueError):
+        rm.validate(bad)
+
+
+def test_firework_config_name_shows_scan_budget():
+    from analysis import firework as f
+    r = dict(donors=1, donor_profile='1x8', scan_budget_us=2000)
+    assert f._cfg(r).endswith('扫描预算 2000 µs')
+    assert '扫描预算' not in f._cfg(dict(donors=0))
