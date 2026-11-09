@@ -378,8 +378,8 @@ def _cfg(r):
     base = PROFILE_NAME.get(r.get('donor_profile'), r.get('donor_profile')) if r.get('donors') else PROFILE_NAME[None]
     if r.get('donors'):
         for k, name, unit in (('lookahead', '提前量', ''), ('corridor_chunks', 'corridor', ''), ('max_concurrency', '并发', ''),
-                              ('scan_budget_us', '扫描预算', ' µs')):
-            if r.get(k) and (k != 'lookahead' or r[k] != 16):   # 提前量只标和部署值 16 不一样的
+                              ('scan_budget_us', '扫描预算', ' µs'), ('forward_first', '前方优先', '')):
+            if r.get(k) is not None and r.get(k) != '' and (k != 'lookahead' or r[k] != 16):   # 提前量只标和部署值 16 不一样的
                 base += f" · {name} {r[k]}{unit}"
     return f"{base} · {r['code']}" if r.get('code') else base
 

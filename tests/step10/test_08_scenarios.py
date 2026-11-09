@@ -332,3 +332,23 @@ def test_driver_sets_corridor_and_concurrency_and_checks_them(tmp_path):
     runner.status['config'] = {'demandScanBudgetMicros': 2000, 'corridorChunks': 6, 'maxConcurrency': 6}
     with pytest.raises(RuntimeError, match='corridorChunks没生效'):
         drive(cell, tmp_path / 'c14')
+
+
+def test_driver_forward_first_both_arms_are_checked(tmp_path):
+    # 调度 11-09：fish-fwd 的 -Dmcdonate.demandForwardFirst（0/1），/donor status 的 config 里是 true/false。关的那一臂（0）也要
+    # 明确传、明确核对，不能因为是 0 就当没设
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (name == 'new_world.sh' and envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles={'1x8': {'donors': 1, 'env': {}}})
+    for i, (v, shown) in enumerate(((1, True), (0, False))):
+        cell = rcell('firework')
+        cell['params']['forward_first'] = v
+        runner.status['config'] = {'demandForwardFirst': shown}
+        out = drive(cell, tmp_path / f'f{i}')
+        assert f'-Dmcdonate.demandForwardFirst={v}' in envs[-1]['MCD_JVM_EXTRA'].split()
+        assert out['forward_first_effective'] is shown
+    runner.status['config'] = {'demandForwardFirst': True}
+    with pytest.raises(RuntimeError, match='demandForwardFirst没生效'):
+        drive(cell, tmp_path / 'f9')

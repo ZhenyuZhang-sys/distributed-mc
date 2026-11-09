@@ -30,7 +30,7 @@ CHEATS = ('none', 'ore', 'flatten', 'random', 'flat', 'collude')
 # 每种实验：哪些键是维度（配置里给列表，逐个展开）、哪些是固定参数、哪些必须有。
 SCHEMA = {
     'flight': dict(dims={'donors', 'speed', 'server_cpus', 'latency_ms', 'features', 'bots', 'tile_size', 'lookahead', 'scenario',
-                         'donor_profile', 'speed_bps', 'cache_radius', 'view_distance', 'scan_budget_us', 'corridor_chunks', 'max_concurrency'},
+                         'donor_profile', 'speed_bps', 'cache_radius', 'view_distance', 'scan_budget_us', 'corridor_chunks', 'max_concurrency', 'forward_first'},
                    fixed={'duration_s', 'jitter_ms', 'repeats', 'estimate_minutes', 'group'}, required={'donors', 'speed', 'server_cpus', 'duration_s'}),
     'capacity': dict(dims={'donors', 'features', 'server_cpus'},
                      fixed={'repeats', 'estimate_minutes', 'max_bots'}, required={'donors', 'server_cpus'}),
@@ -60,6 +60,7 @@ def _check_value(exp, key, v):
         'scan_budget_us': lambda x: type(x) is int and 1 <= x <= 100_000,   # -Dmcdonate.demandScanBudgetMicros
         'corridor_chunks': lambda x: type(x) is int and 0 <= x <= 64,
         'max_concurrency': lambda x: type(x) is int and 1 <= x <= 64,
+        'forward_first': lambda x: x in (0, 1) and type(x) is int,   # fish-fwd 的 demandForwardFirst
         'scenario': lambda x: x in ('straight', 'turning', 'out_and_back', 'mixed', 'two_players', 'firework', 'firework_turning'),
         'speed_bps': lambda x: type(x) in (int, float) and 1 <= x <= 200,
         'cache_radius': lambda x: type(x) is int and 0 <= x <= 64,
@@ -135,7 +136,7 @@ def _normalize(exp: str, params: dict) -> dict:
         p.pop('tile_size', None)
         p.pop('jitter_ms', None)
         p.pop('lookahead', None)
-        for k in ('scan_budget_us', 'corridor_chunks', 'max_concurrency'):   # 没 donor 时这些都不起作用
+        for k in ('scan_budget_us', 'corridor_chunks', 'max_concurrency', 'forward_first'):   # 没 donor 时这些都不起作用
             p.pop(k, None)
         p.pop('donor_profile', None)
     return p
@@ -166,7 +167,7 @@ def order(cells: list[dict], seed: int, mode: str = 'shuffle') -> list[dict]:
         def key(c):
             p = c['params']
             return (str(p.get('group', '')), c['repeat'], p.get('donors', 0) > 0, p.get('latency_ms', 0),
-                    p.get('lookahead') or 0, p.get('donors', 0), p.get('scan_budget_us') or 0, p.get('corridor_chunks') or 0, p.get('max_concurrency') or 0, cell_id(c))
+                    p.get('lookahead') or 0, p.get('donors', 0), p.get('scan_budget_us') or 0, p.get('corridor_chunks') or 0, p.get('max_concurrency') or 0, p.get('forward_first') or 0, cell_id(c))
         return sorted(out, key=key)
     random.Random(seed).shuffle(out)
     return out

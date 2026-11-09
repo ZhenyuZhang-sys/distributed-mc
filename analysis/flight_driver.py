@@ -74,8 +74,17 @@ def _features_on(features):
 
 
 # 矩阵维度 → coordinator 配置项（-Dmcdonate.<项>，/donor status 的 config 里核对）
-SERVER_PROPS = {'scan_budget_us': 'demandScanBudgetMicros', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency'}
-SERVER_PROP_NAMES = {'scan_budget_us': '扫描预算', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency'}
+SERVER_PROPS = {'scan_budget_us': 'demandScanBudgetMicros', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency',
+                'forward_first': 'demandForwardFirst'}
+SERVER_PROP_NAMES = {'scan_budget_us': '扫描预算', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency',
+                     'forward_first': 'demandForwardFirst'}
+
+
+def _prop_matches(want, used):
+    """/donor status 里开关是 true/false，数是数：0/1 对 false/true，其余按字符串比。"""
+    if isinstance(used, bool):
+        return str(want) in ('0', '1') and bool(int(want)) == used
+    return str(used) == str(want)
 
 
 def _status_counts(controller) -> dict:
@@ -181,7 +190,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         world_env = {**(server_env or {}), 'MC_CPUS': str(cpus), 'MC_CPUSET': cpuset}
         if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）；接在 server_env 的后面（比如 GC 日志）
             world_env['MCD_JVM_EXTRA'] = ' '.join(x for x in (world_env.get('MCD_JVM_EXTRA', ''), f'-Dmcdonate.demandLookahead={lookahead}') if x)
-        props = {k: p[k] for k in SERVER_PROPS if p.get(k)}
+        props = {k: p[k] for k in SERVER_PROPS if p.get(k) is not None}   # 0 也传（比如开关关着的那一臂），好核对
         for k, v in props.items():   # 其他 coordinator 配置（扫描预算、corridor、并发），同样是服务器的 JVM 参数
             world_env['MCD_JVM_EXTRA'] = ' '.join(x for x in (world_env.get('MCD_JVM_EXTRA', ''), f'-Dmcdonate.{SERVER_PROPS[k]}={v}') if x)
         runner.script('new_world.sh', name, str(seed), env=world_env, timeout=900)
@@ -255,7 +264,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             judged['valid'] = False
             judged['invalid'].append(f"提前量没生效：要 {lookahead}，服务器用的是 {s.get('demand_lookahead')}")
         for k, v in props.items():
-            if str(used.get(SERVER_PROPS[k])) != str(v):
+            if not _prop_matches(v, used.get(SERVER_PROPS[k])):
                 judged['valid'] = False
                 judged['invalid'].append(f"{SERVER_PROP_NAMES[k]}没生效：要 {v}，服务器用的是 {used.get(SERVER_PROPS[k])}")
         if not judged['valid']:
