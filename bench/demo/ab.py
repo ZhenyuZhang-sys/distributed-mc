@@ -69,7 +69,7 @@ def run_ab(runner, controller, flyer, out_root, speed='elytra', seconds=120, fea
 
     # A：没有 donor
     step('A：换全新世界')
-    runner.script('new_world.sh', f'demoa{ts}', str(seed), timeout=900)
+    runner.script('new_world.sh', f'demoa{ts.lower()}', str(seed), timeout=900)
     step('A：donor 关')
     controller.donor_off()
     for f in FEATURES:
@@ -79,7 +79,7 @@ def run_ab(runner, controller, flyer, out_root, speed='elytra', seconds=120, fea
     a = _judge(root / 'A', False)
     # B：有 donor，开关按参数
     step('B：换全新世界')
-    runner.script('new_world.sh', f'demob{ts}', str(seed), timeout=900)
+    runner.script('new_world.sh', f'demob{ts.lower()}', str(seed), timeout=900)
     runner.rcon('donor reset')
     step('B：donor 开')
     controller.donor_on()
