@@ -91,4 +91,29 @@ class MotionTest {
         assertEquals(1.5, Motion.lateralChunks(new mcdonate.common.TilePos(8, 0), 0, 0, 30, 0), 1e-9);
         assertEquals(Double.POSITIVE_INFINITY, Motion.lateralChunks(new mcdonate.common.TilePos(8, 0), 0, 0, 0, 0), "不动：没有飞行线");
     }
+
+    @Test
+    void turnCoversBothOldAndNewDirection() {
+        // 11-09（kexu 第二张表：转弯时 donor 没帮上）：沿 +x 飞 3 秒，然后转向 +z 飞 0.75 秒。
+        // 短窗口（0.75 秒）看到的是新方向，长窗口（3 秒）还偏旧方向；截止时间、离飞行线距离取两者里小的（并集）
+        Motion m = new Motion();
+        long t = 0;
+        double x = 0, z = 0;
+        for (; t <= 3_000; t += 250) {
+            m.record(t, x, z);
+            x += 8;                       // 32 格/秒
+        }
+        for (; t <= 3_750; t += 250) {
+            m.record(t, x, z);
+            z += 8;
+        }
+        mcdonate.common.TilePos aheadNew = new mcdonate.common.TilePos((int) (x / 64), 6);   // 新方向（+z）前方
+        mcdonate.common.TilePos aheadOld = new mcdonate.common.TilePos((int) (x / 64) + 6, 0); // 旧方向（+x）前方
+        double[] vs = m.velocity(Motion.SHORT_WINDOW_MS), vl = m.velocity(Motion.LONG_WINDOW_MS);
+        assertTrue(Math.abs(vs[0]) < 1 && vs[1] > 20, "短窗口：新方向 " + vs[0] + "," + vs[1]);
+        assertTrue(vl[0] > vl[1], "长窗口：还偏旧方向");
+        assertTrue(Double.isFinite(m.deadlineSecondsUnion(aheadNew, 10)), "新方向前方的 tile 有截止时间");
+        assertTrue(Double.isFinite(m.deadlineSecondsUnion(aheadOld, 10)), "转弯刚开始，旧方向前方的也还算");
+        assertTrue(m.lateralChunksUnion(aheadNew) <= 6, "新方向前方的在走廊里");
+    }
 }
