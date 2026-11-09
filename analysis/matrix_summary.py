@@ -145,24 +145,47 @@ def summarize(rows) -> list[dict]:
 # ---- 假设检验 ----
 
 
-def _flight_x_rows(rows):
+def _flight_x_groups(rows):
+    """X 用的那组 flight 轮：2 核、鞘翅、1 个假玩家、不加延迟。返回 (0 donor 的轮, {N: N donor 的轮}, 开关)。"""
     f = [r for r in rows if r['experiment'] == 'flight' and r.get('server_cpus') == 2 and r.get('speed') == 'elytra'
          and r.get('bots', 1) == 1 and r.get('latency_ms', 0) == 0]
     features = 'all' if any(r.get('features') == 'all' for r in f if r['donors'] > 0) else 'v0'
-    base = [r['latency_p95_ms'] for r in f if r['donors'] == 0]
+    base = [r for r in f if r['donors'] == 0]
     by_n = {}
     for r in f:
         if r['donors'] > 0 and r.get('features', 'v0') == features:
-            by_n.setdefault(r['donors'], []).append(r['latency_p95_ms'])
+            by_n.setdefault(r['donors'], []).append(r)
     return base, by_n, features
 
 
+def _flight_x_rows(rows):
+    base, by_n, features = _flight_x_groups(rows)
+    return ([r['latency_p95_ms'] for r in base], {n: [r['latency_p95_ms'] for r in rs] for n, rs in by_n.items()}, features)
+
+
+def _mean_of(rs, key):
+    """有这个指标的轮的均值；一轮都没有是 None。"""
+    vals = [float(r[key]) for r in rs if _number(r.get(key))]
+    return statistics.mean(vals) if vals else None
+
+
+def _donor_share(rs):
+    """donor 分担的比例（fish 11-09 的三类）：导入后服务器接着做完的 ÷（服务器从头生成 + 接着做完 + 读盘），按轮汇总后相除。"""
+    keys = ('full_generated', 'full_resumed', 'full_loaded')
+    rs = [r for r in rs if all(_number(r.get(k)) for k in keys)]
+    total = sum(r[k] for r in rs for k in keys)
+    return (sum(r['full_resumed'] for r in rs) / total if total else None), {k: sum(r[k] for r in rs) for k in keys}
+
+
 def x_by_n(rows) -> list[dict]:
-    base, by_n, features = _flight_x_rows(rows)
+    base, by_n, features = _flight_x_groups(rows)
     out = []
-    for n, vals in sorted(by_n.items()):
-        est, lo, hi = bootstrap_ratio_ci(base, vals)
-        out.append(dict(donors=n, features=features, n_base=len(base), n_donor=len(vals), x=est, ci_low=lo, ci_high=hi))
+    for n, rs in sorted(by_n.items()):
+        est, lo, hi = bootstrap_ratio_ci([r['latency_p95_ms'] for r in base], [r['latency_p95_ms'] for r in rs])
+        out.append(dict(donors=n, features=features, n_base=len(base), n_donor=len(rs), x=est, ci_low=lo, ci_high=hi,
+                        stall_fraction_base=_mean_of(base, 'stall_fraction'), stall_fraction_donor=_mean_of(rs, 'stall_fraction'),
+                        distance_ratio_base=_mean_of(base, 'distance_ratio'), distance_ratio_donor=_mean_of(rs, 'distance_ratio'),
+                        donor_share=_donor_share(rs)[0]))
     return out
 
 
@@ -191,6 +214,7 @@ def hypotheses(rows) -> list[dict]:
     out.append(dict(item='X', value=est, ci_low=lo, ci_high=hi,
                     verdict=_verdict(lo, hi, X_TARGET, min(len(base), len(donor)) >= MIN_RUNS and est is not None),
                     rule=f'自助法 95% 区间下限 ≥ {X_TARGET} 成立；上限 < {X_TARGET} 不成立；跨过或 n < {MIN_RUNS} 数据不足', note=note))
+    out += _stall_and_share(*_flight_x_groups(rows))
     mspt = [r for r in rows if r['experiment'] == 'flight' and r.get('server_cpus') == 2 and r.get('mspt_p95') is not None]
     worst = max((r['mspt_p95'] for r in mspt), default=None)
     out.append(dict(item='MSPT<50ms', value=worst, ci_low=None, ci_high=None,
@@ -223,6 +247,26 @@ def hypotheses(rows) -> list[dict]:
                     verdict='已定' if len(zs) >= MIN_RUNS else '数据不足',
                     rule=f'真实电脑上至少 {MIN_RUNS} 段挂机即给出数值', note='这台机器测不了（软件渲染）' if not zs else f'{len(zs)} 段'))
     return out
+
+
+def _pct(v):
+    return '—' if v is None else f'{v:.0%}'
+
+
+def _stall_and_share(base, by_n, features):
+    """和 X 并列的两条描述性数字（11-09）：卡住占比、donor 分担的比例。不是事先定的门槛，判定写"记录"，没有数据写"数据不足"。"""
+    donor = by_n.get(X_DONORS, [])
+    stall = _mean_of(donor, 'stall_fraction')
+    note = (f'{X_DONORS} donor 卡住 {_pct(stall)}（{_mean_of(donor, "stall_s") or 0:.1f} 秒），0 donor 卡住 {_pct(_mean_of(base, "stall_fraction"))}'
+            f'（{_mean_of(base, "stall_s") or 0:.1f} 秒）；实际 / 理想距离 {_pct(_mean_of(base, "distance_ratio"))} → {_pct(_mean_of(donor, "distance_ratio"))}；'
+            f'开关 {features}')
+    share, sums = _donor_share(donor)
+    return [dict(item='stall', value=stall, ci_low=None, ci_high=None, verdict='数据不足' if stall is None else '记录',
+                 rule='卡住占比 = 假玩家停在没就绪 chunk 前面的时间 ÷ 飞行时长（第 4 步），和 X 并列，不判成立', note=note),
+            dict(item='donor_share', value=share, ci_low=None, ci_high=None, verdict='数据不足' if share is None else '记录',
+                 rule='导入后服务器接着做完（full_resumed）÷ 三类之和，不把 resumed 算成服务器自己生成的',
+                 note=f'{X_DONORS} donor 的轮合计：服务器自己生成 {sums["full_generated"]}，导入后接着做完 {sums["full_resumed"]}，'
+                      f'读盘 {sums["full_loaded"]}')]
 
 
 # ---- 写表 ----
