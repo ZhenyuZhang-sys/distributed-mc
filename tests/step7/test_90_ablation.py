@@ -42,7 +42,7 @@ def flight_guard(out) -> dict:
 def main_metrics(summary: dict) -> dict:
     """主要指标：卡住时长占比、实际/理想距离（新 layer2，字段名含 stuck、distance），和虚空率、就绪延迟并列。"""
     keys = ("void_mean", "void_p95", "latency_p50_ms", "latency_p95_ms", "cpu_cores_mean", "mspt_mean", "mspt_max")
-    return {k: v for k, v in summary.items() if k in keys or "stuck" in k or "distance" in k}
+    return {k: v for k, v in summary.items() if k in keys or "stall" in k or "distance" in k}
 
 
 def status(server) -> dict:

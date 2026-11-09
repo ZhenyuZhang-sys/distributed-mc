@@ -81,7 +81,7 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
         "discarded": status["discarded"],
         "imports_accepted": len(imported_tiles), "sample": len(sample), "decor_rate": rate, "strict": strict,
         "sync_loads": sync_loads,
-        "flight": {k: v for k, v in flight.items() if "stuck" in k or "distance" in k or k in
+        "flight": {k: v for k, v in flight.items() if "stall" in k or "stuck" in k or "distance" in k or k in
                    ("void_mean", "void_p95", "latency_p95_ms", "cpu_cores_mean", "mspt_mean", "mspt_max", "ticks_per_s")},
         "strict_examples": acc["imported"].examples + acc["server"].examples,
     }
