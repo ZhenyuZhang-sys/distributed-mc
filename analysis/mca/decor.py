@@ -258,6 +258,39 @@ def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str
     return bad
 
 
+# 导入边界一圈、两圈的护栏（调度 11-09 定，看过数据后定的）。第 5 步 e2e 5 次里：tile 内部 0 处；边界一圈的地形互换密度
+# 约是没导入部分的 2～3 倍（4 次合计 25 处对 28 处，ring1 占面积 23%，p = 0.0001），都是同类的跨 chunk 小地物，
+# 最大一处 67 个方块（kexu 11-09 那次）。这是已知问题（docs/step7-plan.md 7.8，docs/step6-report.md 第 11 节），只测量、写报告；
+# 护栏只抓明显变坏的情况。7.8 修好后收紧回 relative_check 的判法。
+SEAM_GUARD_FACTOR = 5.0
+SEAM_GUARD_CLUSTER_MAX = 2 * TERRAIN_CLUSTER_MAX  # 132
+
+
+def seam_guard(ring: Diff, outside: Diff, factor: float = SEAM_GUARD_FACTOR) -> list[str]:
+    """导入边界附近（tile 外面一圈、两圈）的护栏。返回不满足的说明，空列表表示通过。
+
+    - 装饰类差异率不超过没导入部分的 factor 倍（下限 VANILLA_DECOR_FLOOR）。
+    - 地形互换的处数密度（按方块数）不超过没导入部分的 factor 倍；没导入部分一处都没有时按 1 处算底。
+    - 每一处不超过 SEAM_GUARD_CLUSTER_MAX 个方块。
+    """
+    bad = []
+    limit = max(outside.decor_rate * factor, VANILLA_DECOR_FLOOR)
+    if ring.decor_rate > limit:
+        bad.append(f"边界装饰类：{ring.decor_rate:.5%} > 没导入部分的 {factor:g} 倍 {limit:.5%}")
+    ring_clusters = terrain_clusters(ring.terrain_positions or [])
+    out_clusters = terrain_clusters(outside.terrain_positions or [])
+    big = [len(c) for c in ring_clusters if len(c) > SEAM_GUARD_CLUSTER_MAX]
+    if big:
+        bad.append(f"边界地形互换有 {len(big)} 处超过 {SEAM_GUARD_CLUSTER_MAX} 个方块（{big}）")
+    if ring.blocks and outside.blocks:
+        ring_density = len(ring_clusters) / ring.blocks
+        out_density = max(len(out_clusters), 1) / outside.blocks
+        if ring_density > factor * out_density:
+            bad.append(f"边界地形互换 {len(ring_clusters)} 处，密度是没导入部分（{len(out_clusters)} 处）的 "
+                       f"{ring_density / out_density:.1f} 倍 > {factor:g} 倍")
+    return bad
+
+
 # 地形互换处数的判法（调度 11-08 定，看到第 5 步那轮数据后改的）：处数只有 0～3，按比例 × 1.5 判不稳。
 # 假设导入不影响地形互换，每一处落在导入部分的概率 = 导入部分方块数 ÷ 总方块数；
 # 导入部分的处数达到观察值的概率 < TERRAIN_ALPHA 才算偏多。
