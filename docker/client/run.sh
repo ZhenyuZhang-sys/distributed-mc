@@ -8,7 +8,9 @@ MC_VERSION=1.21.1; LOADER=0.16.14; PROFILE="fabric-loader-${LOADER}-${MC_VERSION
 export HOME=/cache                       # ~/.minecraft（版本、库、资源）在卷里，下载一次
 GAME=/game                               # 这一轮的游戏目录（mods、config、mc-donate），每轮新的
 rm -rf "$GAME" && mkdir -p "$GAME/mods" /out
-HMC=(java -Dhmc.check.xvfb=false -Dhmc.java.use.current=true -Dhmc.offline=true -Dhmc.offline.username="$NAME"
+# Java 的 user.home 来自系统用户（/root），不看 $HOME：要显式设，否则 HeadlessMC 下载到 /root/.minecraft（不在卷里，
+# 和下面写 Fabric 版本描述的位置也对不上——11-09 第一次跑报 "Couldn't find object for name fabric-loader-…"）
+HMC=(java -Duser.home="$HOME" -Dhmc.check.xvfb=false -Dhmc.java.use.current=true -Dhmc.offline=true -Dhmc.offline.username="$NAME"
      -Dhmc.gamedir="$GAME" -Dhmc.always.lwjgl.flag=true -Dhmc.auto.download.specifics=false
      "-Dhmc.gameargs=--quickPlayMultiplayer $SERVER" -jar /opt/headlessmc.jar)
 
