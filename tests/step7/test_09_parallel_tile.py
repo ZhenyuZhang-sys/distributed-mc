@@ -49,7 +49,8 @@ def test_adjacent_tiles_export_safely(worker):
     """11-09 用户真机（9008deb）：任务在 worker 上失败，"Accessing PalettedContainer from multiple threads"——主线程序列化
     tile A 外圈的 chunk 时，生成线程正在写它（相邻 tile B 先排上了生成，B 的地物写进 A 的外圈）。
     几个紧挨着的 tile（外圈互相重叠）一起排上再一个一个导出，跑几遍，都要成功。"""
-    for row in range(3):
-        r = worker.rcon(f"donor export 6000 {-6000 - 10 * row} batch 6 1")
+    # 11-09 kexu k2（3132230 转弯）又出了一次，异常在生成线程上：多跑几遍、每遍多几个（竞态，不一定每次都撞上）
+    for row in range(6):
+        r = worker.rcon(f"donor export 6000 {-6000 - 10 * row} batch 10 1")
         assert r.startswith("{"), f"第 {row} 遍失败：{r}"
 

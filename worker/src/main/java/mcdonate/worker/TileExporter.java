@@ -136,6 +136,28 @@ final class TileExporter {
         }
     }
 
+    /** 已经排上生成的、和 tile 紧挨着（含对角）的 tile，它们的 16 个 chunk 都到了 initialize_light。在主线程上调。 */
+    static void waitAdjacentDone(TilePos tile, ServerChunkCache cache, long timeoutMs) {
+        mcdonate.worker.mixin.ServerChunkCacheInvoker inv = (mcdonate.worker.mixin.ServerChunkCacheInvoker) cache;
+        List<java.util.concurrent.CompletableFuture<?>> futures = new ArrayList<>();
+        for (TilePos o : PREFETCHED) {
+            if (o.equals(tile) || Math.max(Math.abs(o.x() - tile.x()), Math.abs(o.z() - tile.z())) > 1) {
+                continue;
+            }
+            for (int x = o.minChunkX(); x <= o.maxChunkX(); x++) {
+                for (int z = o.minChunkZ(); z <= o.maxChunkZ(); z++) {
+                    futures.add(inv.mcdonate$schedule(x, z, ChunkStatus.INITIALIZE_LIGHT, true));
+                }
+            }
+        }
+        if (futures.isEmpty()) {
+            return;
+        }
+        Waits.until(() -> futures.stream().allMatch(java.util.concurrent.CompletableFuture::isDone), cache::pollTask, timeoutMs,
+                System::currentTimeMillis, "tile " + tile + " 旁边已经排上的 tile 做完",
+                net.minecraft.server.MinecraftServer::throwIfFatalException);
+    }
+
     /** 区域（tile ± 外圈）里每个 chunk 的生成引用数都是 0（没有生成任务在用它）。在主线程上调。 */
     static void waitNoGeneration(ServerLevel level, TilePos tile, ServerChunkCache cache, long timeoutMs) {
         mcdonate.worker.mixin.ChunkMapInvoker map = (mcdonate.worker.mixin.ChunkMapInvoker) cache.chunkMap;
@@ -223,6 +245,10 @@ final class TileExporter {
         // 相邻 tile 的生成任务可能还在写这个 tile 外圈的 chunk（地物写进邻居），主线程这时序列化就撞上。
         // 序列化之前等整个区域（tile ± 外圈）里每个 chunk 都没有进行中的生成任务；等的时候照常处理 chunk 的主线程任务，不会卡死。
         long quietFrom = System.nanoTime();
+        // 11-09（kexu k2 转弯，3132230 又出 PalettedContainer 多线程访问，异常在生成线程上）：原版的生成任务是一层层推进、
+        // 一层层占邻居的（不一定在主线程上），"引用数为 0"检查完以后，相邻 tile 的地物还可能开始往这个区域里写。
+        // 能写进这个区域（tile ± 1 圈）的只有紧挨着的 tile（地物只写进相邻一圈）：先等已经排上的相邻 tile 全部做完，再看引用数
+        waitAdjacentDone(tile, cache, Math.max(1, deadline - System.currentTimeMillis()));
         waitNoGeneration(level, tile, cache, Math.max(1, deadline - System.currentTimeMillis()));
         long waited = System.nanoTime();
         int r = TileFile.MAX_RING;
