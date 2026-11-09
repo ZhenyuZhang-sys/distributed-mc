@@ -42,6 +42,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `tokenTtlMs` | 60000 | 发给客户端的一次性 token 多久作废 | |
 | `allowTokenless` | false | 没带 token 的 worker 放不放进来。测试的 compose 里设 true（Docker 里的本地 worker 没有玩家）；正式部署保持 false | 第 9 步 |
 | `publicHost` | 空 | 发给玩家客户端的 coordinator 地址（主机名或 IP）。空就不发邀请，玩家的 worker 起不来 | 第 9 步 |
+| `inviteRequestMinMs` | 10000 | 每个玩家多久最多再要一次邀请（`mcdonate:invite_request`），超了忽略并记 WARN | 第 9 步 |
 | `publicPort` | 同 `port` | 发给玩家客户端的 coordinator 端口（端口转发时和监听端口不一样） | 第 9 步 |
 | `features` | 空 | 第 7 步的功能开关，逗号分隔 | 见 docs/step7-plan.md |
 | `demand` | on | `off` 关掉自动找需求（测试里手动派任务时用） | |
@@ -68,3 +69,9 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 ## 开发机上的值从哪来
 
 都是开发机（EPYC 7542，按 N100 限 4 核、频率固定 2.9GHz）上粗测的，第 1、6、7 步都只做了快速对比，精调留到部署机器上。
+
+## 部署时的安全注意（第 9 步，已知限制）
+
+- **游戏连接**：邀请（coordinator 地址和一次性 token）走游戏自己的连接。服务器 `online-mode=false`（离线模式）时游戏连接**不加密**，同一个局域网里能抓到 token，抢在玩家的 worker 之前用掉。正式部署要开 `online-mode=true`；离线模式只适合可信的网络（比如测试）。
+- **coordinator 和 worker 之间的 TCP 是明文**：抓到包的人同样能抢用 token（一次性，被抢用后玩家的 worker 会被拒，可以再要一次邀请）。以后的工作：加 TLS。
+- **`allowTokenless` 只给测试**：开着时没带 token 的 worker 也能连进来、领任务、导入。只在 `docker/compose.test.yaml` 里设，coordinator 启动时开着会打 WARN。

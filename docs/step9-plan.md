@@ -66,6 +66,13 @@
 - 玩家进服时（Fabric `ServerPlayConnectionEvents.JOIN`）发包；退出时作废没用过的 token，并断开这个玩家的 worker。
 - Docker 里的测试 worker 没有玩家：coordinator 加一个"本地 worker 不要 token"的开关（系统属性 `mcdonate.allowTokenless=true`，只在测试 compose 里设）。正式默认关。
 
+### 3.2b 再要一次邀请（kexu 11-09 审阅后加）
+
+- token 60 秒过期，邀请只在进服时发一次：玩家晚同意、worker 晚起，或者 coordinator 重启后 worker 要重连，都会过期、没法再要。
+- 客户端发 `mcdonate:invite_request`（游戏内频道，不改 coordinator 的 TCP 协议），服务器作废这个玩家的旧 token、重发邀请。每个玩家 10 秒最多一次（`inviteRequestMinMs`），超了忽略并记 WARN。
+- 已做（11-09）：payload、频率限制、服务器处理，单元测试。等客户端 mod 能跑（9.3）再做的端到端：过期后再要能拿到新 token、旧 token 失效、刷请求被限流、coordinator 重启后 worker 靠再要邀请重连。
+- 还要接的：worker 握手被拒（-2）时经本地控制通道告诉客户端（`NEED_TOKEN`），客户端再要邀请，把新 token 发给 worker（`TOKEN <t>`）。另外 worker 建世界前取 seed 的那次握手（SeedHandshake）也会带 token：要么那次不用掉 token（只检查），要么改成从邀请里拿 seed、再由 Welcome 核对，接客户端时定。
+
 ### 3.3 协议改动（要转给 kexu 确认）
 
 - `hello` 加字段 `token: String`（没有 token 时是空串）。
@@ -140,6 +147,7 @@ donor 只算地形阶段、矿和结构由服务器自己算，会改变导出�
 
 ## 7. 已知限制（写进报告）
 
+- **离线模式的游戏连接不加密**（kexu 11-09 审阅）：邀请走游戏连接，服务器 `online-mode=false` 时局域网里能抓到 token。正式部署开 `online-mode=true`，离线模式只用于可信网络。写在 docs/config.md 的"部署时的安全注意"。
 - **token 走明文 TCP**：coordinator 和 worker 之间没有加密，抓到包的人可以抢在玩家的 worker 之前用掉 token（一次性，被抢用后玩家的 worker 会被拒）。原型阶段接受。以后的工作：coordinator 和 worker 之间加 TLS。
 - **Z 没在这台机器上测**：见第 0 节和 9.7。
 

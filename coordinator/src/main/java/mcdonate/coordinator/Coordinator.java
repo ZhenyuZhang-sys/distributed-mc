@@ -13,6 +13,7 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import mcdonate.common.net.DonorInvite;
+import mcdonate.common.net.InviteRequest;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -138,23 +139,25 @@ public final class Coordinator implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
         // 第 9 步：玩家进服时，装了客户端 mod 的（注册了 mcdonate:invite 频道）收到 coordinator 地址、一次性 token、seed；
         // 原版客户端不注册这个频道，canSend 为假，不发。没配公开地址（mcdonate.publicHost）就不发。玩家退出：作废没用过的 token，断开他的 worker。
+        // 客户端可以再要一次（mcdonate:invite_request）：token 60 秒过期、邀请只在进服时发一次，玩家晚同意或 coordinator 重启后
+        // worker 要重连时用。每个玩家 inviteRequestMinMs（默认 10 秒）最多一次，超了忽略并记 WARN。
         PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            CoordinatorServer n = network;
-            if (n == null || PUBLIC_HOST.isEmpty() || !ServerPlayNetworking.canSend(handler.player, DonorInvite.TYPE)) {
+        PayloadTypeRegistry.playC2S().register(InviteRequest.TYPE, InviteRequest.CODEC);
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> sendInvite(server, handler.player));
+        ServerPlayNetworking.registerGlobalReceiver(InviteRequest.TYPE, (payload, context) -> {
+            net.minecraft.server.level.ServerPlayer p = context.player();
+            if (!payload.valid()) {
+                LOG.warn("{} 的 invite_request 读不懂（版本 {}），忽略", p.getGameProfile().getName(), payload.version());
                 return;
             }
-            String token = n.tokens.issue(handler.player.getUUID());
-            DonorInvite invite = new DonorInvite(PUBLIC_HOST, PUBLIC_PORT, token, server.overworld().getSeed());
-            if (!invite.valid()) {
-                LOG.warn("公开地址 {}:{} 不合法，不发 donor 邀请", PUBLIC_HOST, PUBLIC_PORT);
-                n.tokens.revoke(handler.player.getUUID());
+            if (!INVITE_LIMITER.allow(p.getUUID(), System.currentTimeMillis())) {
+                LOG.warn("{} 再要邀请太频繁（{} ms 内最多一次），忽略", p.getGameProfile().getName(), INVITE_REQUEST_MIN_MS);
                 return;
             }
-            ServerPlayNetworking.send(handler.player, invite);
-            LOG.info("给 {} 发了 donor 邀请（token {}）", handler.player.getGameProfile().getName(), TokenRegistry.redact(token));
+            sendInvite(context.server(), p);
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            INVITE_LIMITER.forget(handler.player.getUUID());
             CoordinatorServer n = network;
             if (n != null) {
                 n.playerLeft(handler.player.getUUID());
@@ -190,6 +193,29 @@ public final class Coordinator implements ModInitializer {
     }
 
     private static volatile CoordinatorServer network;
+
+    static final long INVITE_REQUEST_MIN_MS = Config.getLong("inviteRequestMinMs", 10_000);
+    private static final InviteLimiter INVITE_LIMITER = new InviteLimiter(INVITE_REQUEST_MIN_MS);
+
+    /**
+     * 第 9 步：给装了 mod 的玩家发邀请（进服时、玩家再要时）。发新 token 时这个玩家的旧 token 作废（TokenRegistry.issue）。
+     * 原版客户端不注册频道（canSend 为假）、没配公开地址、coordinator 没开：不发。
+     */
+    static void sendInvite(net.minecraft.server.MinecraftServer server, net.minecraft.server.level.ServerPlayer player) {
+        CoordinatorServer n = network;
+        if (n == null || PUBLIC_HOST.isEmpty() || !ServerPlayNetworking.canSend(player, DonorInvite.TYPE)) {
+            return;
+        }
+        String token = n.tokens.issue(player.getUUID());
+        DonorInvite invite = new DonorInvite(PUBLIC_HOST, PUBLIC_PORT, token, server.overworld().getSeed());
+        if (!invite.valid()) {
+            LOG.warn("公开地址 {}:{} 不合法，不发 donor 邀请", PUBLIC_HOST, PUBLIC_PORT);
+            n.tokens.revoke(player.getUUID());
+            return;
+        }
+        ServerPlayNetworking.send(player, invite);
+        LOG.info("给 {} 发了 donor 邀请（token {}）", player.getGameProfile().getName(), TokenRegistry.redact(token));
+    }
 
     /** 第 9 步：发给玩家的 coordinator 公开地址，空 = 不发邀请；端口默认和监听端口一样。 */
     static final String PUBLIC_HOST = Config.get("publicHost", "");
