@@ -135,32 +135,31 @@ final class TileExporter {
         }
     }
 
-    /** 等区域里的 chunk 都没有进行中的生成任务的最长时间；超过就让这个任务失败（重新排队），不冒险序列化。 */
-    static final long QUIET_TIMEOUT_MS = 60_000;
-
     /** 区域（tile ± 外圈）里每个 chunk 的生成引用数都是 0（没有生成任务在用它）。在主线程上调。 */
-    static void waitNoGeneration(ServerLevel level, TilePos tile, ServerChunkCache cache) {
+    static void waitNoGeneration(ServerLevel level, TilePos tile, ServerChunkCache cache, long timeoutMs) {
         mcdonate.worker.mixin.ChunkMapInvoker map = (mcdonate.worker.mixin.ChunkMapInvoker) cache.chunkMap;
         int r = TileFile.MAX_RING;
-        long deadline = System.currentTimeMillis() + QUIET_TIMEOUT_MS;
-        while (true) {
-            boolean busy = false;
-            for (int x = tile.minChunkX() - r; x <= tile.maxChunkX() + r && !busy; x++) {
-                for (int z = tile.minChunkZ() - r; z <= tile.maxChunkZ() + r && !busy; z++) {
+        Waits.until(() -> {
+            for (int x = tile.minChunkX() - r; x <= tile.maxChunkX() + r; x++) {
+                for (int z = tile.minChunkZ() - r; z <= tile.maxChunkZ() + r; z++) {
                     net.minecraft.server.level.ChunkHolder h = map.mcdonate$holder(net.minecraft.world.level.ChunkPos.asLong(x, z));
-                    busy = h != null && h.getGenerationRefCount() > 0;
+                    if (h != null && h.getGenerationRefCount() > 0) {
+                        return false;
+                    }
                 }
             }
-            if (!busy) {
-                return;
-            }
-            if (System.currentTimeMillis() > deadline) {
-                throw new IllegalStateException("tile " + tile + " 的区域 " + QUIET_TIMEOUT_MS / 1000 + " 秒内一直有生成任务在用，不导出");
-            }
-            if (!cache.pollTask()) {
-                java.util.concurrent.locks.LockSupport.parkNanos(200_000);
-            }
-        }
+            return true;
+        }, cache::pollTask, timeoutMs, System::currentTimeMillis, "tile " + tile + " 区域里的生成任务结束");
+    }
+
+    /** 测试用：下一个 tile 多等一个永远不会完成的 chunk（/donor stallnext）。 */
+    static volatile boolean STALL_NEXT;
+
+    /** 这个 worker 最近导出一个 tile 的平均毫秒数（指数平均；没有样本是 -1）。只在主线程上读写。 */
+    static long avgMs = -1;
+
+    private static void recordMs(long ms) {
+        avgMs = avgMs < 0 ? ms : (avgMs * 4 + ms) / 5;
     }
 
     /** 上一次 generate 的两段（毫秒）：等生成、序列化（/donor export 的 JSON 里报，排查用）。只在主线程上读写。 */
@@ -184,17 +183,34 @@ final class TileExporter {
     }
 
     private static Generated generateNow(ServerLevel level, TilePos tile, ServerChunkCache cache, long started) {
-        // tile 的 16 个 chunk 要到 initialize_light（排上了的就是等它们做完）。已经更靠后的也会直接返回，下面统一检查
+        // tile 的 16 个 chunk 要到 initialize_light（排上了的就是等它们做完）。已经更靠后的也会直接返回，下面统一检查。
+        // 11-09：不用原版的 getChunk(..., true) 等（它没有超时，生成被异常打断时主线程永远等下去）：自己一边处理主线程任务一边等，超时抛异常
+        long timeout = Waits.tileTimeoutMs(avgMs);
+        mcdonate.worker.mixin.ServerChunkCacheInvoker inv = (mcdonate.worker.mixin.ServerChunkCacheInvoker) cache;
+        List<java.util.concurrent.CompletableFuture<net.minecraft.server.level.ChunkResult<ChunkAccess>>> futures = new ArrayList<>();
         for (int x = tile.minChunkX(); x <= tile.maxChunkX(); x++) {
             for (int z = tile.minChunkZ(); z <= tile.maxChunkZ(); z++) {
-                cache.getChunk(x, z, ChunkStatus.INITIALIZE_LIGHT, true);
+                futures.add(inv.mcdonate$schedule(x, z, ChunkStatus.INITIALIZE_LIGHT, true));
+            }
+        }
+        if (STALL_NEXT) {
+            // 测试钩子（/donor stallnext）：多等一个永远不会完成的 chunk，模拟生成被异常打断（用户真机 11-09）
+            STALL_NEXT = false;
+            futures.add(new java.util.concurrent.CompletableFuture<>());
+        }
+        Waits.until(() -> futures.stream().allMatch(java.util.concurrent.CompletableFuture::isDone), cache::pollTask, timeout,
+                System::currentTimeMillis, "tile " + tile + " 的 16 个 chunk");
+        for (var f : futures) {
+            net.minecraft.server.level.ChunkResult<ChunkAccess> res = f.getNow(null);
+            if (res == null || !res.isSuccess()) {
+                throw new IllegalStateException("tile " + tile + " 的 chunk 没生成出来：" + (res == null ? "?" : res.getError()));
             }
         }
 
         // 11-09（用户真机，9008deb："Accessing PalettedContainer from multiple threads"）：几个 tile 同时生成时，
         // 相邻 tile 的生成任务可能还在写这个 tile 外圈的 chunk（地物写进邻居），主线程这时序列化就撞上。
         // 序列化之前等整个区域（tile ± 外圈）里每个 chunk 都没有进行中的生成任务；等的时候照常处理 chunk 的主线程任务，不会卡死。
-        waitNoGeneration(level, tile, cache);
+        waitNoGeneration(level, tile, cache, timeout);
         long waited = System.nanoTime();
         int r = TileFile.MAX_RING;
         List<ExportedChunk> chunks = new ArrayList<>();
@@ -220,6 +236,7 @@ final class TileExporter {
         }
 
         LAST_SPLIT[0] = (waited - started) / 1_000_000;
+        recordMs((System.nanoTime() - started) / 1_000_000);
         LAST_SPLIT[1] = (System.nanoTime() - waited) / 1_000_000;
         TileFile file = new TileFile(SharedConstants.getCurrentVersion().getDataVersion().getVersion(),
                 level.getSeed(), WorldId.of(level.getServer()), tile, chunks);

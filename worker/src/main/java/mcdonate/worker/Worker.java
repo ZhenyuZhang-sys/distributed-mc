@@ -54,6 +54,12 @@ public final class Worker implements ModInitializer {
                                             ctx.getSource().sendSuccess(() -> Component.literal("slept " + sec), false);
                                             return 1;
                                         })))
+                        // 测试用：下一个 tile 等一个永远不会完成的 chunk（模拟生成被异常打断），看 worker 会不会超时报失败、接着做下一个
+                        .then(Commands.literal("stallnext").requires(source -> source.hasPermission(4)).executes(ctx -> {
+                            TileExporter.STALL_NEXT = true;
+                            ctx.getSource().sendSuccess(() -> Component.literal("stalling next"), false);
+                            return 1;
+                        }))
                         .then(Commands.literal("hold")
                                 .requires(source -> source.hasPermission(4))
                                 .then(Commands.literal("on").executes(ctx -> hold(ctx.getSource(), true)))

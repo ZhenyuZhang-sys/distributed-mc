@@ -36,6 +36,11 @@ public final class TaskQueue {
     static final long ORPHAN_MS = Config.getLong("orphanMs", 60_000);
 
     /**
+     * 11-09：一个任务从派出起，心跳最多续租到这么久，过了就不再续，到期收回重派（用户真机：worker 卡死、心跳照发，续租了 5 分钟）。
+     */
+    static final long MAX_LEASE_TOTAL_MS = Config.getLong("maxLeaseTotalMs", 120_000);
+
+    /**
      * 11-09：派之前问"做得完吗"时，在 importBy 前面再留多少毫秒（结果在主线程上排队等导入、找需求每秒才看一次前沿）。
      */
     static final long IMPORT_MARGIN_MS = Config.getLong("importMarginMs", 1_000);
@@ -540,8 +545,9 @@ public final class TaskQueue {
     /** worker 的心跳带着正在做的任务：是租给它的就续租。 */
     public synchronized void heartbeat(int worker, long taskId) {
         Task t = tasks.get(taskId);
-        if (t != null && t.state == State.LEASED && t.worker == worker) {
-            t.deadline = clock.getAsLong() + leaseMs;
+        long now = clock.getAsLong();
+        if (t != null && t.state == State.LEASED && t.worker == worker && now - t.leasedAt < MAX_LEASE_TOTAL_MS) {
+            t.deadline = Math.min(now + leaseMs, t.leasedAt + MAX_LEASE_TOTAL_MS);
         }
     }
 
