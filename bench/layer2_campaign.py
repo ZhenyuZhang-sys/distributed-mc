@@ -241,6 +241,43 @@ def docker_events(since: float, until: float):
     return [json.loads(line) for line in text.splitlines() if line.strip()]
 
 
+def test_project() -> str:
+    """lib.sh 实际用的测试 compose 项目名（环境变量优先，否则 docker/.env.test）。"""
+    from bench.server import SCRIPTS, run
+    return run('bash', '-c', 'source "$1"; printf %s "$TEST_PROJECT"', 'bash', str(SCRIPTS / 'lib.sh')).strip()
+
+
+def workers_running() -> list[str]:
+    """本项目正在跑的 donor worker 容器名。"""
+    from bench.server import run
+    out = run('docker', 'ps', '--filter', f'label=com.docker.compose.project={test_project()}',
+              '--format', '{{.Names}} {{.Label "com.docker.compose.service"}}')
+    return sorted(line.split()[0] for line in out.splitlines() if line.strip() and line.split()[-1].startswith('worker'))
+
+
+def without_workers():
+    """原版基线不带 donor：先停掉本项目的 worker，再把 COMPOSE_PROFILES 清空，新世界就不会把它们带起来。结束后恢复。"""
+    import os
+    from contextlib import contextmanager
+
+    from bench.server import compose
+
+    @contextmanager
+    def ctx():
+        saved = os.environ.get('COMPOSE_PROFILES')
+        try:
+            os.environ['COMPOSE_PROFILES'] = 'worker,worker2'
+            compose('stop', 'worker', 'worker2', timeout=300)
+            os.environ['COMPOSE_PROFILES'] = ''
+            yield
+        finally:
+            if saved is None:
+                os.environ.pop('COMPOSE_PROFILES', None)
+            else:
+                os.environ['COMPOSE_PROFILES'] = saved
+    return ctx()
+
+
 def real_fly_slot(p: dict):
     """返回真实的 fly_slot：新世界、预热、（自检 1：预生成航线并重启）、等 CPU 稳定、飞一轮、记 docker 事件。"""
     from bench import layer2
@@ -253,7 +290,8 @@ def real_fly_slot(p: dict):
     def fly_slot(slot, directory):
         t0 = time.time()
         own = set()
-        with resource_environment(slot['cpus']) as cpuset:
+        pregenerated = None
+        with without_workers(), resource_environment(slot['cpus']) as cpuset:
             world = WorldSession(directory / 'server', prefix=f"l2{slot['speed_name'][0]}{slot['cpus']}", seed=p['seed'])
             server = world.start()
             try:
@@ -261,14 +299,20 @@ def real_fly_slot(p: dict):
                 cg = Cgroup(compose('ps', '-q', 'minecraft').strip(), run)
                 cg.verify(slot['cpus'], cpuset)
                 own.add(cg.cid)
+                running = workers_running()
+                if running:
+                    raise RuntimeError(f'原版基线旁边有 donor worker 在跑：{running}')
                 wx, wz = p['warm_origin_chunk']
                 for i in range(p['warmup_by_cpu'][str(slot['cpus'])] // 256):
                     server.chunky_square(wx + i * 32, wz, 16)
                 if slot['pregenerate']:
                     chunks = route_chunks(p, slot)
                     got = server.chunky_list(chunks, timeout=3600)
-                    if got != len(chunks):
-                        raise RuntimeError(f'预生成航线：期望 {len(chunks)}，Chunky 报 {got}')
+                    # Chunky 的 Processed 还算上选区边缘取整多出的几行（见 Server.chunky_square 的注释），只会多不会少。
+                    # 航线是不是真的都生成了，由自检结果本身检验：预生成后虚空率应接近 0。
+                    if got < len(chunks):
+                        raise RuntimeError(f'预生成航线：期望至少 {len(chunks)}，Chunky 报 {got}')
+                    pregenerated = dict(route_chunks=len(chunks), chunky_processed=got)
                     server.restart()
                     cg = Cgroup(compose('ps', '-q', 'minecraft').strip(), run)
                     cg.verify(slot['cpus'], cpuset)
@@ -289,7 +333,7 @@ def real_fly_slot(p: dict):
                 f.write(json.dumps(e) + '\n')
         foreign = interference(events, own, tuple(p['interference_actions']))
         world.cleanup()
-        return {**summary, 'cpuset': cpuset, 'world': world.level, 'flight_dir': str(out),
+        return {**summary, 'cpuset': cpuset, 'world': world.level, 'flight_dir': str(out), 'pregenerated': pregenerated, 'workers_running': workers_running(),
                 'concurrent': [f"{e['name']} {e['action']}" for e in foreign]}
 
     return fly_slot

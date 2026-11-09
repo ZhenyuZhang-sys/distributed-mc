@@ -28,7 +28,7 @@ def test_real_slot_driver_runs_once(server_manager):
     assert isinstance(result['concurrent'], list)
     assert (directory / 'docker-events.jsonl').is_file()
     # 原版基线不能有 donor worker 在旁边跑：本项目的 worker 容器在槽位期间不该启动
-    project = os.environ.get('MCD_TEST_PROJECT', 'mc-test')
+    project = lc.test_project()
     events = [json.loads(line) for line in (directory / 'docker-events.jsonl').read_text().splitlines()]
     workers = [e for e in events if e.get('Type') == 'container' and e.get('Action') == 'start'
                and e['Actor']['Attributes'].get('com.docker.compose.project') == project
