@@ -43,3 +43,71 @@ def max_sustainable(runs, limit=0.05, key='config'):
             best = r['speed_bps']
         out[name] = best
     return out
+
+
+PROFILE_NAME = {None: '原版（0 个 donor）', '': '原版（0 个 donor）', '1x8': '1 个 donor，8 核', '1x4': '1 个 donor，4 核',
+                '2x4': '2 个 donor，各 4 核', '3x4': '3 个 donor，各 4 核'}
+SCEN_NAME = {'firework': '直线', 'firework_turning': '转弯'}
+
+
+def _cfg(r):
+    return PROFILE_NAME.get(r.get('donor_profile'), r.get('donor_profile')) if r.get('donors') else PROFILE_NAME[None]
+
+
+def _f(v, pct=False, digits=1):
+    if v is None or v == '':
+        return '—'
+    if isinstance(v, str):
+        return v
+    return f'{v * 100:.0f}%' if pct else (f'{v:.{digits}f}' if isinstance(v, float) else str(v))
+
+
+def _mean(rs, k):
+    vals = [r[k] for r in rs if isinstance(r.get(k), (int, float)) and not isinstance(r.get(k), bool)]
+    return sum(vals) / len(vals) if vals else None
+
+
+def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种配置 1 次，可能有别的测试并行') -> str:
+    """烟花鞘翅第一段的结果表（markdown）。第一张表：能扛住的最高速度（原版、各 donor 配置，调度要放在最前面）；
+    第二张：33.5 格/秒（真实烟花速度）下直线和转弯的每轮指标。只看出了缓存区以后。"""
+    fw = [r for r in rows if r.get('experiment', 'flight') == 'flight' and r.get('scenario') in SCEN_NAME]
+    sweep = [dict(r, config=_cfg(r)) for r in fw if r.get('scenario') == 'firework' and r.get('speed_bps') is not None]
+    best = max_sustainable(sweep, limit=0.05)
+    order = [PROFILE_NAME[None], PROFILE_NAME['1x8'], PROFILE_NAME['1x4'], PROFILE_NAME['2x4'], PROFILE_NAME['3x4']]
+    names = [n for n in order if n in best] + [n for n in best if n not in order]
+    out = [f'> {note}', '',
+           '| 配置 | 能扛住的最高速度（格/秒，出缓存区后卡住 < 5%） | 各速度下出缓存区后的卡住占比 |', '| --- | --- | --- |']
+    for n in names:
+        per = sorted((r['speed_bps'], r.get('stall_after_exit')) for r in sweep if r['config'] == n)
+        out.append(f"| {n} | **{_f(best[n])}** | " + '，'.join(f'{_f(v, digits=1) if isinstance(v, float) else v}: {_f(s, True)}' for v, s in per) + ' |')
+    real = [r for r in fw if r.get('speed_bps') in (None, 33.5)]
+    out += ['', '真实烟花速度（33.5 格/秒）下，出了缓存区以后：', '',
+            '| 场景 | 配置 | 卡住占比 | 实际 / 理想速度 | 第一次卡住（出去后几秒） | MSPT p95 / max | Can\'t keep up | moved too quickly | donor 分担 | 丢弃：来晚 / 碰到服务器 / 过时 | 导入主线程（ms） | worker 核数 | tile/s |',
+            '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+    for scen in ('firework', 'firework_turning'):
+        for n in order:
+            rs = [r for r in real if r.get('scenario') == scen and _cfg(r) == n]
+            if not rs:
+                continue
+            out.append(f"| {SCEN_NAME[scen]} | {n} | {_f(_mean(rs, 'stall_after_exit'), True)} | {_f(_mean(rs, 'speed_ratio_after_exit'), True)} "
+                       f"| {_f(_mean(rs, 'first_stall_after_exit_s'), digits=0)} | {_f(_mean(rs, 'mspt_p95'))} / {_f(_mean(rs, 'mspt_max'), digits=0)} "
+                       f"| {_f(_mean(rs, 'cant_keep_up'), digits=0)} | {_f(_mean(rs, 'moved_too_quickly'), digits=0)} | {_f(_mean(rs, 'resumed_share'), True)} "
+                       f"| {_f(_mean(rs, 'discard_late'), digits=0)} / {_f(_mean(rs, 'discard_server'), digits=0)} / {_f(_mean(rs, 'stale_dropped'), digits=0)} "
+                       f"| {_f(_mean(rs, 'import_ms'), digits=0)} | {_f(_mean(rs, 'worker_cores'))} | {_f(_mean(rs, 'tile_s'), digits=2)} |")
+    return '\n'.join(out) + '\n'
+
+
+if __name__ == '__main__':
+    import argparse
+    import sys
+    from pathlib import Path
+    from analysis.matrix_summary import collect
+    ap = argparse.ArgumentParser(description='烟花鞘翅结果表：python -m analysis.firework <campaign 目录>...')
+    ap.add_argument('campaigns', nargs='+')
+    ap.add_argument('--out')
+    a = ap.parse_args()
+    rows = [r for c in a.campaigns for r in collect(Path(c))]
+    md = report(rows)
+    if a.out:
+        Path(a.out).write_text(md)
+    sys.stdout.write(md)

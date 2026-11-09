@@ -80,3 +80,22 @@ def test_driver_pregenerates_cache_and_flies_out(tmp_path):
     assert cmds.index('chunky start') < cmds.index('donor demand on')       # 先生成缓存区，再开 donor
     assert fly.calls[-1]['route'] == '-90,20,90'                          # 速度换成 20
     assert out['cache_chunks'] == 1089 and 'stall_after_exit' in out and 'exit_s' in out
+
+
+def test_report_puts_max_speed_first(tmp_path):
+    # 调度 11-09：原版"能扛住的最高速度"是最重要的对比基准，结果表第一行就放它和 1 个 8 核 donor 的数
+    rows = []
+    for prof, stalls in (('', {10: 0, 15: .01, 20: .2}), ('1x8', {10: 0, 15: 0, 20: .03}), ('1x4', {10: 0, 15: .02, 20: .3})):
+        for v, st in stalls.items():
+            rows.append(dict(experiment='flight', group=f'v{v}', scenario='firework', server_cpus=4, donors=1 if prof else 0,
+                             donor_profile=prof or None, speed_bps=v, repeat=1, stall_after_exit=st, speed_ratio_after_exit=1 - st,
+                             first_stall_after_exit_s=None, mspt_p95=9.0, mspt_max=80.0, cant_keep_up=0, moved_too_quickly=0,
+                             resumed_share=.3 if prof else 0, exit_s=8, discard_late=5, discard_server=0, discard_other_world=0,
+                             stale_dropped=2, import_ms=100, worker_cores=3.2 if prof else None, tile_s=1.1 if prof else None))
+    md = firework.report(rows)
+    lines = [l for l in md.splitlines() if l.startswith('|')]
+    assert '能扛住的最高速度' in lines[0]
+    first = lines[2]
+    assert '原版' in first and '15' in first, first
+    assert '8 核' in lines[3] and '20' in lines[3], lines[3]
+    assert '4 核' in md and '演示，粗测' in md
