@@ -3,6 +3,7 @@ package mcdonate.bench.mixin;
 import java.util.concurrent.CompletableFuture;
 import mcdonate.bench.Counters;
 import mcdonate.bench.FromDisk;
+import mcdonate.bench.Generation;
 import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.Level;
@@ -30,7 +31,8 @@ abstract class ChunkStatusTasksMixin {
             Counters.FullKind kind = chunk instanceof ImposterProtoChunk ? Counters.FullKind.LOADED
                     : chunk instanceof FromDisk d && d.mcdonate$isFromDisk() ? Counters.FullKind.RESUMED
                     : Counters.FullKind.GENERATED;
-            Counters.onFull(kind);
+            // 计数和来源事件（第 4 步地图用）一起发，见 Generation
+            Generation.onFull(kind, chunk.getPos().x, chunk.getPos().z);
         }
     }
 

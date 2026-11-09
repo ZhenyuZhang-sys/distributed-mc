@@ -3,6 +3,7 @@ package mcdonate.bench;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import mcdonate.bench.flight.FlightCommands;
 import mcdonate.common.ModIds;
+import mcdonate.common.Provenance;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
@@ -31,6 +32,7 @@ public final class Bench implements ModInitializer {
         //   /bench chunk <x> <z>  这个 chunk 跑过几次 noise、features
         //   /bench view           每个玩家视距内已经做好（加载成成品）的 chunk 数，加上平均 MSPT（冒烟测试估虚空率用）
         //   /bench fly ...        第 4 步飞行测量：start / stop / status / ready，见 FlightCommands
+        //   /bench mark <cx> <cz> donor <编号> | rejected   造一条来源事件（验证地图上色用），走 Provenance.report
         FlightCommands.registerEvents();
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("bench")
@@ -67,6 +69,17 @@ public final class Bench implements ModInitializer {
                             return 1;
                         }))
                         .then(FlightCommands.node())
+                        .then(Commands.literal("mark")
+                                .then(Commands.argument("cx", IntegerArgumentType.integer())
+                                        .then(Commands.argument("cz", IntegerArgumentType.integer())
+                                                .then(Commands.literal("donor")
+                                                        .then(Commands.argument("id", IntegerArgumentType.integer(0))
+                                                                .executes(ctx -> mark(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "cx"),
+                                                                        IntegerArgumentType.getInteger(ctx, "cz"), Provenance.Kind.DONOR,
+                                                                        IntegerArgumentType.getInteger(ctx, "id")))))
+                                                .then(Commands.literal("rejected")
+                                                        .executes(ctx -> mark(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "cx"),
+                                                                IntegerArgumentType.getInteger(ctx, "cz"), Provenance.Kind.REJECTED, -1))))))
                         .then(Commands.literal("timing")
                                 .then(Commands.literal("on").executes(ctx -> setTiming(ctx.getSource(), true)))
                                 .then(Commands.literal("off").executes(ctx -> setTiming(ctx.getSource(), false))))));
@@ -100,6 +113,12 @@ public final class Bench implements ModInitializer {
                     .append(",\"ready\":").append(ready).append('}');
         }
         return sb.append("],\"mspt\":").append(server.getAverageTickTimeNanos() / 1_000_000.0).append('}').toString();
+    }
+
+    private static int mark(CommandSourceStack source, int cx, int cz, Provenance.Kind kind, int donorId) {
+        Provenance.report(cx, cz, kind, donorId);
+        source.sendSuccess(() -> Component.literal("bench mark " + cx + " " + cz + " " + kind), false);
+        return 1;
     }
 
     private static int setTracking(CommandSourceStack source, boolean on) {

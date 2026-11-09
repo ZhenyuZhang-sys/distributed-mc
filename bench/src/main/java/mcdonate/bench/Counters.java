@@ -41,6 +41,18 @@ public final class Counters {
         }
     }
 
+    public static long fullGenerated() {
+        return FULL_GENERATED.sum();
+    }
+
+    public static long fullLoaded() {
+        return FULL_LOADED.sum();
+    }
+
+    public static long fullResumed() {
+        return FULL_RESUMED.sum();
+    }
+
     public static void onNoise(int x, int z) {
         NOISE.increment();
         if (tracking) {

@@ -2,6 +2,9 @@ package mcdonate.bench.flight;
 
 import com.google.gson.JsonObject;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLongArray;
+import mcdonate.bench.Generation;
+import mcdonate.common.Provenance;
 import mcdonate.bench.mixin.ChunkMapAccess;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.MinecraftServer;
@@ -34,7 +37,14 @@ public final class FlightRecorder {
     private final ViewTracker tracker;
     private final SecondRows rows;
     private final ViewTracker.Snapshot initial;
-    private long t0 = -1, tickStart, ticks, scanNanos, endMs;
+    /** 起飞命令执行时的 System.nanoTime；逐秒、chunk 事件、来源事件的时间都从这里算。 */
+    private final long t0 = System.nanoTime();
+    private long tickStart, ticks, scanNanos, endMs;
+    private boolean started;
+    /** 来源事件计数，按 Provenance.Kind 的顺序；监听器在生成线程上调用。 */
+    private final AtomicLongArray provenance = new AtomicLongArray(Provenance.Kind.values().length);
+    private final Provenance.Listener listener = this::provenance;
+    private final Generation.Snapshot countersAtStart;
     private int enters, readies, leaves;
     private boolean finished;
 
@@ -56,6 +66,7 @@ public final class FlightRecorder {
         ChunkPos c = player.chunkPosition();
         this.initial = tracker.start(c.x, c.z, this::ready);
         out.runJson(config().toString());
+        countersAtStart = Generation.listen(listener);
     }
 
     UUID playerId() {
@@ -85,14 +96,14 @@ public final class FlightRecorder {
             return;
         }
         long now = System.nanoTime();
-        if (t0 < 0) t0 = now;
+        started = true;
         tickStart = now;
         double e = flight.elapsed(now - t0, ticks);
         place(p, flight.x(e), flight.z(e));
     }
 
     void endTick(MinecraftServer server) {
-        if (finished || t0 < 0) return;
+        if (finished || !started) return;
         ServerPlayer p = player(server);
         if (p == null) {
             finish(false, "player_left");
@@ -117,6 +128,7 @@ public final class FlightRecorder {
         if (finished) return;
         finished = true;
         rows.finish();
+        Generation.Snapshot end = Generation.unlisten(listener);
         ServerPlayer p = level.getServer().getPlayerList().getPlayer(playerId);
         JsonObject done = config();
         done.addProperty("end_x", p != null ? (Number) p.getX() : null);
@@ -126,6 +138,15 @@ public final class FlightRecorder {
         done.addProperty("end_ms", endMs);
         // 第一个 tick 开始时的 System.nanoTime。Linux 上它就是 CLOCK_MONOTONIC，容器和宿主机共用，宿主机的 cgroup 采样靠它对齐
         done.addProperty("t0_nanotime", t0);
+        // 监听期间收到的来源事件数，和同一段时间的计数增量（Generation 保证两者对得上：原版 = generated + resumed）
+        JsonObject prov = new JsonObject();
+        for (Provenance.Kind k : Provenance.Kind.values()) prov.addProperty(k.name().toLowerCase(java.util.Locale.ROOT), provenance.get(k.ordinal()));
+        done.add("provenance", prov);
+        JsonObject delta = new JsonObject();
+        delta.addProperty("full_generated", end.generated() - countersAtStart.generated());
+        delta.addProperty("full_loaded", end.loaded() - countersAtStart.loaded());
+        delta.addProperty("full_resumed", end.resumed() - countersAtStart.resumed());
+        done.add("counters", delta);
         JsonObject ev = new JsonObject();
         ev.addProperty("enter", enters);
         ev.addProperty("ready", readies);
@@ -141,7 +162,7 @@ public final class FlightRecorder {
         JsonObject o = new JsonObject();
         o.addProperty("run", run);
         o.addProperty("player", playerName);
-        o.addProperty("elapsed_s", t0 < 0 ? 0 : (System.nanoTime() - t0) / 1e9);
+        o.addProperty("elapsed_s", (System.nanoTime() - t0) / 1e9);
         o.addProperty("rows", rows.written());
         ViewTracker.Snapshot s = tracker.snapshot();
         o.addProperty("view", s.view());
@@ -184,6 +205,13 @@ public final class FlightRecorder {
             case LEAVE -> leaves++;
         }
         out.chunk("{\"t_ms\":" + tMs + ",\"cx\":" + cx + ",\"cz\":" + cz + ",\"ev\":\"" + kind.name().toLowerCase(java.util.Locale.ROOT) + "\"}");
+    }
+
+    /** 来源事件（任何线程）：写进 provenance.jsonl，t_ms 从起飞命令算。地图按它上色和回放。 */
+    private void provenance(int cx, int cz, Provenance.Kind kind, int donorId) {
+        provenance.incrementAndGet(kind.ordinal());
+        out.provenance("{\"t_ms\":" + (System.nanoTime() - t0) / 1_000_000 + ",\"cx\":" + cx + ",\"cz\":" + cz
+                + ",\"kind\":\"" + kind.name().toLowerCase(java.util.Locale.ROOT) + "\",\"donor\":" + donorId + "}");
     }
 
     private boolean ready(int cx, int cz) {
