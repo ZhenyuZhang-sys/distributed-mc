@@ -13,7 +13,7 @@
 | Minecraft Java 版 | 1.21.1 | 官方启动器 |
 | Fabric Loader | 0.16.14 | https://fabricmc.net/use/installer/ （安装器里选 Minecraft 1.21.1、Loader 0.16.14） |
 | Fabric API | 0.116.6+1.21.1 | https://modrinth.com/mod/fabric-api/version/0.116.6+1.21.1 |
-| mc-donate 客户端 mod | 0.1.0（第二版，提交 f19d087） | 服务器管理者给的包：`mcdonate-client-0.1.0-f19d087.jar`（开发机上在 `/home/zhenyu/mc-slots/user-test/deploy/v2-f19d087/`） |
+| mc-donate 客户端 mod | 0.1.0（第二版 v2.1，提交 14d18f4） | 服务器管理者给的包：`mcdonate-client-0.1.0-14d18f4.jar`（开发机上在 `/home/zhenyu/mc-slots/user-test/deploy/v2.1-14d18f4/`） |
 
 客户端 jar 里已经带了 worker mod，不用另装。sha256 在包里的 `SHA256SUMS`。
 
@@ -28,7 +28,7 @@ worker 用游戏自带的 Java 21，不用另外装 Java。第一次打开时会
    ```bash
    sha256sum -c SHA256SUMS            # macOS：shasum -a 256 -c SHA256SUMS；Windows：certutil -hashfile <jar> SHA256，和 SHA256SUMS 对一下
    ```
-3. 把 `mcdonate-client-0.1.0-f19d087.jar` 和 Fabric API 的 jar 放进 mods 目录：
+3. 把 `mcdonate-client-0.1.0-14d18f4.jar` 和 Fabric API 的 jar 放进 mods 目录：
    Mac 是 `~/Library/Application Support/minecraft/mods/`，Windows 是 `%APPDATA%\.minecraft\mods\`，Linux 是 `~/.minecraft/mods/`。
    **mods 里只留一个 `mcdonate-client-*.jar`**，旧版本删掉。
 

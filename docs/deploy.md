@@ -32,7 +32,7 @@ jar 不在 git 里，两种拿法任选：
    # 给玩家的客户端 mod：client/build/libs/mcdonate-client-0.1.0.jar
    ```
 
-2. **从开发机拷构建好的**：`/home/zhenyu/mc-slots/user-test/deploy/v2-f19d087/` 里有 coordinator（`mods/` 下）和客户端的 jar，
+2. **从开发机拷构建好的**：`/home/zhenyu/mc-slots/user-test/deploy/v2.1-14d18f4/` 里有 coordinator（`mods/` 下）和客户端的 jar，
    文件名带提交号，校验和在 `SHA256SUMS`。客户端 jar 里已经带了 worker，不用另装。整个目录拷过来以后在目录里核对：`sha256sum -c SHA256SUMS`。
    coordinator 的 jar 放进仓库的 `deploy/mods/`（文件名带不带提交号都行）。
 
@@ -163,10 +163,12 @@ docker compose exec -T minecraft rcon-cli donor imports              # 每个导
 服务器：`docker compose logs minecraft > server.log`。玩家：`.minecraft/logs/latest.log` 和 `.minecraft/mc-donate/worker/worker.log`。
 日志里不会有 token。把这些发回来。
 
-## 11. 从上一版升级（11-09 第二版：main f19d087）
+## 11. 从上一版升级（11-09 第二版 v2.1：worker 代码 14d18f4）
 
 这一版：worker 并行生成不再卡死、worker 重连后马上能领活、续租有上限（120 秒）、导入分摊到多个 tick、
 按玩家前方的走廊先派、扫描预算 2000 微秒（`.env` 里打开）。已导入的地形不会因为换版本变化。
+v2.1（14d18f4）只改了 worker：同一个 tile 卸载后又派回来时不再失败（"不在内存里"）。coordinator jar 和 v2（f19d087）字节相同，
+已经换成 v2 coordinator 的服务器不用再换，只换客户端。
 
 1. **核对 jar**：在包目录里 `sha256sum -c SHA256SUMS`（macOS：`shasum -a 256 -c SHA256SUMS`），两个 jar 都要 OK。
 2. **备份**：拷一份现在用的 coordinator jar、客户端 jar、`.env` 和 compose 文件。然后正常停服务器
