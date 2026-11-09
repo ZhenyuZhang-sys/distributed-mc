@@ -147,6 +147,24 @@ final class Motion {
         return Math.min(lateralChunks(tile, p[0], p[1], vs[0], vs[1]), lateralChunks(tile, p[0], p[1], vl[0], vl[1]));
     }
 
+    /**
+     * 11-09 找需求先看正前方：tile 在短窗口或长窗口的飞行方向前方（中心在玩家前面），且离那条飞行线不超过 corridor 个 chunk。
+     * 不动时是 false。
+     */
+    boolean forward(TilePos tile, int corridor) {
+        double[] p = position();
+        return forward(tile, p[0], p[1], velocity(SHORT_WINDOW_MS), corridor)
+                || forward(tile, p[0], p[1], velocity(LONG_WINDOW_MS), corridor);
+    }
+
+    static boolean forward(TilePos tile, double x, double z, double[] v, int corridor) {
+        if (v[0] == 0 && v[1] == 0) {
+            return false;
+        }
+        double cx = tile.minChunkX() + (TilePos.SIZE - 1) / 2.0 - x / 16, cz = tile.minChunkZ() + (TilePos.SIZE - 1) / 2.0 - z / 16;
+        return cx * v[0] + cz * v[1] > 0 && lateralChunks(tile, x, z, v[0], v[1]) <= corridor;
+    }
+
     double deadlineSecondsFast(TilePos tile, int view, double[] v) {
         double[] p = position();
         if (chunkDistanceBeyondView(tile, p[0], p[1], view) <= 0) {
