@@ -25,7 +25,8 @@ def rows(name):
 
 @pytest.mark.slow
 def test_smoke_measurement(server_manager):
-    server_manager.enter_benchmark()
+    # 先停掉第 4 步前面测试用的服务器；每个槽位自己开新世界（enter_benchmark 只给第 1 步用，阶段 4 回不去）
+    server_manager.finish()
     p = lc.load_protocol(PROTOCOL)
     campaign = ROOT / 'analysis/results/runs' / os.environ.get(
         'MCD_LAYER2_CAMPAIGN', 'layer2-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S'))
