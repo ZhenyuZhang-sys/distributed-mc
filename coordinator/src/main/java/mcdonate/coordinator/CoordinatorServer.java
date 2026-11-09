@@ -392,6 +392,20 @@ final class CoordinatorServer {
         }
     }
 
+    /**
+     * worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；不在线返回空。玩家名从在线玩家列表里找（玩家下线了用主机名）。
+     * 在主线程上调（玩家列表是主线程的）。
+     */
+    public java.util.Optional<WorkerName> workerName(int workerId) {
+        Connection c = workers.get(workerId);
+        if (c == null) {
+            return java.util.Optional.empty();
+        }
+        java.util.UUID p = c.player;
+        net.minecraft.server.level.ServerPlayer sp = p == null ? null : server.getPlayerList().getPlayer(p);
+        return java.util.Optional.of(WorkerName.of(p, sp == null ? null : sp.getGameProfile().getName(), c.world, c.name));
+    }
+
     /** 当前生效的配置项（docs/config.md），放进 /donor status。 */
     static String configJson() {
         return "{\"tileSize\":" + TilePos.SIZE
