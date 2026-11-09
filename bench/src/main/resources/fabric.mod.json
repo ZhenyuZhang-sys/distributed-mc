@@ -17,7 +17,8 @@
       "mcdonate.bench.Bench"
     ],
     "fabric-gametest": [
-      "mcdonate.bench.gametest.BenchGameTest"
+      "mcdonate.bench.gametest.BenchGameTest",
+      "mcdonate.bench.gametest.FlightGameTest"
     ]
   },
   "mixins": [

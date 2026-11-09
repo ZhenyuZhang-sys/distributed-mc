@@ -1,0 +1,16 @@
+{
+ "name": "smoke",
+ "seed": 424242,
+ "repeats": 1,
+ "server_cpuset": "12-13",
+ "donor_cpuset": "16-19",
+ "rerun_on_interference": false,
+ "experiments": {
+  "flight": [
+   {"donors": [0, 2], "speed": ["elytra"], "server_cpus": [2], "latency_ms": [0], "features": ["v0"], "bots": [1], "duration_s": 60}
+  ],
+  "verify": [
+   {"cheat": ["none", "ore"], "check_rate": [0.05], "donors": [1], "duration_s": 300}
+  ]
+ }
+}

@@ -68,8 +68,10 @@ class ProtoTest {
         return List.of(
                 new Hello(Protocol.VERSION, "donor-1"),
                 new Hello(Protocol.VERSION, ""),
+                new Hello(Protocol.VERSION, "donor-2", "s3cret-token"),
                 new Welcome(Protocol.VERSION, 3, 424242L, 3955),
-                new Welcome(Protocol.VERSION, -1, Long.MIN_VALUE, 0),
+                new Welcome(Protocol.VERSION, Welcome.BAD_VERSION, Long.MIN_VALUE, 0),
+                new Welcome(Protocol.VERSION, Welcome.BAD_TOKEN, 424242L, 3955),
                 new Task(9, -2, 5, 30_000),
                 new Task(Long.MAX_VALUE, Integer.MIN_VALUE, Integer.MAX_VALUE, 0),
                 Result.success(9, TILE),
@@ -274,11 +276,60 @@ class ProtoTest {
         }
     }
 
+    /** 可以缺的字段（缺了有默认值）。 */
+    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token");
+
+    // ---- 第 9 步：hello.token、welcome.workerId = -2 ----
+
+    @Test
+    void helloWithoutTokenFieldDecodesAsEmpty() {
+        CompoundTag old = new CompoundTag();   // 旧版本 worker 发的 hello，没有 token
+        old.putString("type", "hello");
+        old.putInt("protocol", Protocol.VERSION);
+        old.putString("name", "old-worker");
+        assertEquals(new Hello(Protocol.VERSION, "old-worker", ""), MessageCodec.fromTag(old));
+        assertEquals(new Hello(Protocol.VERSION, "old-worker"), MessageCodec.fromTag(old));
+    }
+
+    @Test
+    void tokenRoundTripsAndWrongTypeRejected() {
+        Hello h = new Hello(Protocol.VERSION, "w", "abc");
+        assertEquals(h, MessageCodec.fromTag(MessageCodec.toTag(h)));
+        CompoundTag t = MessageCodec.toTag(h);
+        t.putInt("token", 5);
+        assertThrows(ProtocolException.class, () -> MessageCodec.fromTag(t));
+        assertThrows(NullPointerException.class, () -> new Hello(1, "w", null));
+    }
+
+    @Test
+    void welcomeRejectionCodes() {
+        for (int id : new int[] {Welcome.BAD_VERSION, Welcome.BAD_TOKEN}) {
+            Welcome w = new Welcome(Protocol.VERSION, id, 0, 0);
+            byte[] f = Frame.encode(w);
+            Welcome got = (Welcome) new FrameDecoder().feed(f, 0, f.length).get(0);
+            assertEquals(id, got.workerId());
+            assertTrue(!got.accepted());
+        }
+        assertEquals(-1, Welcome.BAD_VERSION);
+        assertEquals(-2, Welcome.BAD_TOKEN);
+        assertTrue(new Welcome(Protocol.VERSION, 0, 0, 0).accepted());
+        assertEquals(1, Protocol.VERSION);
+    }
+
+    @Test
+    void helloToStringHidesToken() {
+        String s = new Hello(1, "w", "s3cret").toString();
+        assertTrue(!s.contains("s3cret") && s.contains("***"), s);
+    }
+
     @Test
     void everyMissingFieldRejected() {
         for (Message m : all()) {
             CompoundTag full = MessageCodec.toTag(m);
             for (String key : full.getAllKeys()) {
+                if (OPTIONAL.contains(key)) {
+                    continue;
+                }
                 CompoundTag t = full.copy();
                 t.remove(key);
                 assertThrows(ProtocolException.class, () -> MessageCodec.fromTag(t),

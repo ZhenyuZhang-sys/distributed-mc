@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 基线实验入口，整轮持有共享锁。
+# 基线实验入口，整轮持有独占锁（测试和 Gradle 拿共享锁，benchmark 跑时它们排队）。
 source "$(dirname "$0")/lib.sh"
 take_heavy_lock
 require_play_server_stopped

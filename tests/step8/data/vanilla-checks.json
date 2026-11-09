@@ -1,0 +1,492 @@
+{
+ "campaign": "baseline-20261108T154535",
+ "chunk_max": {
+  "count.chest": 2,
+  "count.diamond": 54,
+  "count.emerald": 19,
+  "count.gold": 48,
+  "count.lapis": 41,
+  "count.redstone": 64,
+  "count.spawner": 2,
+  "extra.diamond": 10,
+  "extra.emerald": 2,
+  "extra.gold": 22,
+  "extra.lapis": 4,
+  "extra.redstone": 4,
+  "extra_valued": 22,
+  "height_diff_columns": 5
+ },
+ "chunk_max_worlds": 12,
+ "direction": {
+  "all": {
+   "a_more": 93,
+   "b_more": 89,
+   "chunks": 182,
+   "max_extra": 22,
+   "p_two_sided": 0.8240980930696915
+  },
+  "jungle": {
+   "a_more": 17,
+   "b_more": 15,
+   "chunks": 32,
+   "max_extra": 21,
+   "p_two_sided": 0.860050065908581
+  },
+  "mountain": {
+   "a_more": 62,
+   "b_more": 68,
+   "chunks": 130,
+   "max_extra": 22,
+   "p_two_sided": 0.661169683138816
+  },
+  "ocean": {
+   "a_more": 14,
+   "b_more": 6,
+   "chunks": 20,
+   "max_extra": 12,
+   "p_two_sided": 0.11531829833984375
+  }
+ },
+ "pairs": [
+  {
+   "area_id": "ocean",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "repeat_1cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 3,
+   "height_examples": [
+    {
+     "a": 62,
+     "b": 60,
+     "cx": 1250,
+     "cz": 1862,
+     "x": 9,
+     "z": 7
+    },
+    {
+     "a": 62,
+     "b": 61,
+     "cx": 1251,
+     "cz": 1861,
+     "x": 1,
+     "z": 6
+    },
+    {
+     "a": 61,
+     "b": 62,
+     "cx": 1251,
+     "cz": 1861,
+     "x": 4,
+     "z": 7
+    }
+   ],
+   "height_max_abs": 2,
+   "revised_height_diff_columns": 9,
+   "revised_height_max_abs": 2,
+   "run_a": "ocean-c1-r1",
+   "run_b": "ocean-c1-r2"
+  },
+  {
+   "area_id": "ocean",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "repeat_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 0,
+   "height_examples": [],
+   "height_max_abs": 0,
+   "revised_height_diff_columns": 1,
+   "revised_height_max_abs": 2,
+   "run_a": "ocean-c4-r1",
+   "run_b": "ocean-c4-r2"
+  },
+  {
+   "area_id": "ocean",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "cross_1_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 3,
+   "height_examples": [
+    {
+     "a": 62,
+     "b": 60,
+     "cx": 1250,
+     "cz": 1862,
+     "x": 9,
+     "z": 7
+    },
+    {
+     "a": 62,
+     "b": 61,
+     "cx": 1251,
+     "cz": 1861,
+     "x": 1,
+     "z": 6
+    },
+    {
+     "a": 61,
+     "b": 62,
+     "cx": 1251,
+     "cz": 1861,
+     "x": 4,
+     "z": 7
+    }
+   ],
+   "height_max_abs": 2,
+   "revised_height_diff_columns": 11,
+   "revised_height_max_abs": 3,
+   "run_a": "ocean-c1-r1",
+   "run_b": "ocean-c4-r1"
+  },
+  {
+   "area_id": "ocean",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "cross_1_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 0,
+   "height_examples": [],
+   "height_max_abs": 0,
+   "revised_height_diff_columns": 5,
+   "revised_height_max_abs": 3,
+   "run_a": "ocean-c1-r2",
+   "run_b": "ocean-c4-r2"
+  },
+  {
+   "area_id": "mountain",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "repeat_1cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 0,
+   "height_examples": [],
+   "height_max_abs": 0,
+   "revised_height_diff_columns": 0,
+   "revised_height_max_abs": 0,
+   "run_a": "mountain-c1-r1",
+   "run_b": "mountain-c1-r2"
+  },
+  {
+   "area_id": "mountain",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "repeat_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 1,
+   "height_examples": [
+    {
+     "a": 113,
+     "b": 112,
+     "cx": 1341,
+     "cz": 3707,
+     "x": 12,
+     "z": 1
+    }
+   ],
+   "height_max_abs": 1,
+   "revised_height_diff_columns": 1,
+   "revised_height_max_abs": 1,
+   "run_a": "mountain-c4-r1",
+   "run_b": "mountain-c4-r2"
+  },
+  {
+   "area_id": "mountain",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "cross_1_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 3,
+   "height_examples": [
+    {
+     "a": 145,
+     "b": 144,
+     "cx": 1328,
+     "cz": 3699,
+     "x": 13,
+     "z": 3
+    },
+    {
+     "a": 112,
+     "b": 113,
+     "cx": 1341,
+     "cz": 3707,
+     "x": 12,
+     "z": 1
+    },
+    {
+     "a": 103,
+     "b": 102,
+     "cx": 1343,
+     "cz": 3705,
+     "x": 1,
+     "z": 15
+    }
+   ],
+   "height_max_abs": 1,
+   "revised_height_diff_columns": 3,
+   "revised_height_max_abs": 1,
+   "run_a": "mountain-c1-r1",
+   "run_b": "mountain-c4-r1"
+  },
+  {
+   "area_id": "mountain",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "cross_1_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 2,
+   "height_examples": [
+    {
+     "a": 145,
+     "b": 144,
+     "cx": 1328,
+     "cz": 3699,
+     "x": 13,
+     "z": 3
+    },
+    {
+     "a": 103,
+     "b": 102,
+     "cx": 1343,
+     "cz": 3705,
+     "x": 1,
+     "z": 15
+    }
+   ],
+   "height_max_abs": 1,
+   "revised_height_diff_columns": 2,
+   "revised_height_max_abs": 1,
+   "run_a": "mountain-c1-r2",
+   "run_b": "mountain-c4-r2"
+  },
+  {
+   "area_id": "jungle",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "repeat_1cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 60,
+   "height_examples": [
+    {
+     "a": 100,
+     "b": 101,
+     "cx": 1152,
+     "cz": 5499,
+     "x": 3,
+     "z": 4
+    },
+    {
+     "a": 100,
+     "b": 101,
+     "cx": 1152,
+     "cz": 5499,
+     "x": 3,
+     "z": 5
+    },
+    {
+     "a": 82,
+     "b": 83,
+     "cx": 1152,
+     "cz": 5508,
+     "x": 5,
+     "z": 6
+    },
+    {
+     "a": 71,
+     "b": 70,
+     "cx": 1152,
+     "cz": 5511,
+     "x": 15,
+     "z": 3
+    },
+    {
+     "a": 71,
+     "b": 70,
+     "cx": 1152,
+     "cz": 5511,
+     "x": 5,
+     "z": 8
+    }
+   ],
+   "height_max_abs": 5,
+   "revised_height_diff_columns": 61,
+   "revised_height_max_abs": 5,
+   "run_a": "jungle-c1-r1",
+   "run_b": "jungle-c1-r2"
+  },
+  {
+   "area_id": "jungle",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "repeat_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 51,
+   "height_examples": [
+    {
+     "a": 126,
+     "b": 125,
+     "cx": 1156,
+     "cz": 5504,
+     "x": 11,
+     "z": 15
+    },
+    {
+     "a": 110,
+     "b": 111,
+     "cx": 1156,
+     "cz": 5506,
+     "x": 5,
+     "z": 12
+    },
+    {
+     "a": 110,
+     "b": 111,
+     "cx": 1156,
+     "cz": 5506,
+     "x": 6,
+     "z": 12
+    },
+    {
+     "a": 110,
+     "b": 109,
+     "cx": 1156,
+     "cz": 5506,
+     "x": 7,
+     "z": 14
+    },
+    {
+     "a": 117,
+     "b": 118,
+     "cx": 1157,
+     "cz": 5497,
+     "x": 9,
+     "z": 11
+    }
+   ],
+   "height_max_abs": 2,
+   "revised_height_diff_columns": 52,
+   "revised_height_max_abs": 2,
+   "run_a": "jungle-c4-r1",
+   "run_b": "jungle-c4-r2"
+  },
+  {
+   "area_id": "jungle",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "cross_1_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 56,
+   "height_examples": [
+    {
+     "a": 103,
+     "b": 104,
+     "cx": 1152,
+     "cz": 5508,
+     "x": 4,
+     "z": 13
+    },
+    {
+     "a": 103,
+     "b": 104,
+     "cx": 1152,
+     "cz": 5508,
+     "x": 5,
+     "z": 13
+    },
+    {
+     "a": 71,
+     "b": 70,
+     "cx": 1152,
+     "cz": 5511,
+     "x": 15,
+     "z": 3
+    },
+    {
+     "a": 71,
+     "b": 70,
+     "cx": 1152,
+     "cz": 5511,
+     "x": 5,
+     "z": 8
+    },
+    {
+     "a": 71,
+     "b": 70,
+     "cx": 1152,
+     "cz": 5511,
+     "x": 6,
+     "z": 8
+    }
+   ],
+   "height_max_abs": 2,
+   "revised_height_diff_columns": 56,
+   "revised_height_max_abs": 2,
+   "run_a": "jungle-c1-r1",
+   "run_b": "jungle-c4-r1"
+  },
+  {
+   "area_id": "jungle",
+   "biome_diff_sections": 0,
+   "biome_sections": 6144,
+   "group": "cross_1_4cpu",
+   "height_columns": 65536,
+   "height_diff_columns": 69,
+   "height_examples": [
+    {
+     "a": 101,
+     "b": 100,
+     "cx": 1152,
+     "cz": 5499,
+     "x": 3,
+     "z": 4
+    },
+    {
+     "a": 101,
+     "b": 100,
+     "cx": 1152,
+     "cz": 5499,
+     "x": 3,
+     "z": 5
+    },
+    {
+     "a": 83,
+     "b": 82,
+     "cx": 1152,
+     "cz": 5508,
+     "x": 5,
+     "z": 6
+    },
+    {
+     "a": 103,
+     "b": 104,
+     "cx": 1152,
+     "cz": 5508,
+     "x": 4,
+     "z": 13
+    },
+    {
+     "a": 103,
+     "b": 104,
+     "cx": 1152,
+     "cz": 5508,
+     "x": 5,
+     "z": 13
+    }
+   ],
+   "height_max_abs": 5,
+   "revised_height_diff_columns": 71,
+   "revised_height_max_abs": 5,
+   "run_a": "jungle-c1-r2",
+   "run_b": "jungle-c4-r2"
+  }
+ ],
+ "valued_ores": [
+  "diamond",
+  "emerald",
+  "gold",
+  "lapis",
+  "redstone"
+ ]
+}

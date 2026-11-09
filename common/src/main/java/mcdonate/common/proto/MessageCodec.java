@@ -14,6 +14,7 @@ public final class MessageCodec {
                 t.putString("type", "hello");
                 t.putInt("protocol", h.protocol());
                 t.putString("name", h.name());
+                t.putString("token", h.token());
             }
             case Welcome w -> {
                 t.putString("type", "welcome");
@@ -57,7 +58,7 @@ public final class MessageCodec {
         String type = str(t, "type");
         try {
             return switch (type) {
-                case "hello" -> new Hello(i(t, "protocol"), str(t, "name"));
+                case "hello" -> new Hello(i(t, "protocol"), str(t, "name"), optionalStr(t, "token"));
                 case "welcome" -> new Welcome(i(t, "protocol"), i(t, "workerId"), l(t, "seed"), i(t, "dataVersion"));
                 case "task" -> new Task(l(t, "taskId"), i(t, "tx"), i(t, "tz"), l(t, "leaseMs"));
                 case "result" -> new Result(l(t, "taskId"), bool(t, "ok"), str(t, "error"), compound(t, "tile"));
@@ -89,6 +90,11 @@ public final class MessageCodec {
     private static String str(CompoundTag t, String key) {
         need(t, key, Tag.TAG_STRING);
         return t.getString(key);
+    }
+
+    /** 可选字段：缺了按空串（向后兼容旧消息），有但类型不对照样拒绝。 */
+    private static String optionalStr(CompoundTag t, String key) {
+        return t.contains(key) ? str(t, key) : "";
     }
 
     private static boolean bool(CompoundTag t, String key) {

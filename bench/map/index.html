@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chunk 来源地图</title>
+<style>
+  :root { --bg: #fafafa; --fg: #222; --muted: #777; --panel: #fff; --border: #ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17181a; --fg: #e6e6e6; --muted: #999; --panel: #222326; --border: #3a3b3e; }
+  }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--border); }
+  header select, header button, header input { font: inherit; }
+  #legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; }
+  #legend i { width: 12px; height: 12px; display: inline-block; border-radius: 2px; }
+  #status { color: var(--muted); }
+  canvas { display: block; width: 100%; height: calc(100vh - 56px); }
+  #slider { width: 240px; max-width: 60vw; }
+</style>
+</head>
+<body>
+<header>
+  <label>run <select id="run"></select></label>
+  <label><input type="radio" name="mode" value="live" checked> 实时</label>
+  <label><input type="radio" name="mode" value="replay"> 回放</label>
+  <button id="play">播放</button>
+  <label>速度 <select id="speed"><option>1</option><option selected>4</option><option>16</option></select>×</label>
+  <input id="slider" type="range" min="0" max="0" value="0">
+  <span id="legend">
+    <span><i style="background:#5b8c5a"></i>原版</span>
+    <span><i style="background:linear-gradient(90deg,#e6a13c,#3c8ee6,#b83ce6)"></i>donor（按编号）</span>
+    <span><i style="background:#d62728"></i>验证打回</span>
+    <span><i style="background:#c7c7c7"></i>读盘</span>
+  </span>
+  <span id="status"></span>
+</header>
+<canvas id="map"></canvas>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const canvas = $("map"), ctx = canvas.getContext("2d");
+let chunks = new Map();          // "cx,cz" -> color
+let player = null;               // {x, z}，方块坐标
+let since = 0, liveTimer = null;
+let replay = null, replayIndex = 0, replayClock = 0, playing = false, lastFrame = 0;
+
+function key(e) { return e.cx + "," + e.cz; }
+function apply(e) { chunks.set(key(e), e.color); }
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (chunks.size === 0) return;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const k of chunks.keys()) {
+    const [x, z] = k.split(",").map(Number);
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+  }
+  const cell = Math.max(1, Math.min(w / (maxX - minX + 3), h / (maxZ - minZ + 3)));
+  const ox = (w - (maxX - minX + 1) * cell) / 2, oz = (h - (maxZ - minZ + 1) * cell) / 2;
+  for (const [k, c] of chunks) {
+    const [x, z] = k.split(",").map(Number);
+    ctx.fillStyle = c;
+    ctx.fillRect(ox + (x - minX) * cell, oz + (z - minZ) * cell, Math.max(1, cell - (cell > 4 ? 1 : 0)), Math.max(1, cell - (cell > 4 ? 1 : 0)));
+  }
+  if (player) {
+    const px = ox + (player.x / 16 - minX) * cell, pz = oz + (player.z / 16 - minZ) * cell;
+    ctx.strokeStyle = getComputedStyle(document.body).color;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px, pz, 10 * cell, 0, Math.PI * 2); ctx.stroke();   // 视距 10 的大致范围
+    ctx.beginPath(); ctx.arc(px, pz, 4, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(url + " → " + r.status);
+  return r.json();
+}
+
+async function loadRuns() {
+  const runs = await getJSON("/runs");
+  const sel = $("run");
+  sel.innerHTML = "";
+  for (const r of runs) { const o = document.createElement("option"); o.textContent = r; sel.appendChild(o); }
+  if (runs.length) sel.value = runs[runs.length - 1];
+}
+
+async function pollLive() {
+  const run = $("run").value;
+  if (!run) return;
+  try {
+    const data = await getJSON("/events?run=" + encodeURIComponent(run) + "&since=" + since);
+    data.events.forEach(apply);
+    since = data.next;
+    if (data.player) player = data.player;
+    $("status").textContent = "实时：" + chunks.size + " 个 chunk";
+    draw();
+  } catch (err) { $("status").textContent = String(err); }
+}
+
+function startLive() {
+  stopAll(); chunks = new Map(); player = null; since = 0;
+  pollLive(); liveTimer = setInterval(pollLive, 500);
+}
+
+function stopAll() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = null; playing = false; $("play").textContent = "播放";
+}
+
+function trackAt(tMs) {
+  if (!replay || replay.track.length === 0) return null;
+  let best = replay.track[0];
+  for (const s of replay.track) { if (s.t_s * 1000 <= tMs) best = s; else break; }
+  return best;
+}
+
+function seek(tMs) {
+  chunks = new Map(); replayIndex = 0; replayClock = tMs;
+  while (replayIndex < replay.events.length && replay.events[replayIndex].t_ms <= tMs) apply(replay.events[replayIndex++]);
+  player = trackAt(tMs);
+  $("slider").value = String(Math.round(tMs));
+  $("status").textContent = "回放：" + (tMs / 1000).toFixed(1) + " 秒，" + replayIndex + "/" + replay.events.length + " 个事件";
+  draw();
+}
+
+function frame(now) {
+  if (!playing) return;
+  const dt = lastFrame ? now - lastFrame : 0;
+  lastFrame = now;
+  replayClock += dt * Number($("speed").value);
+  while (replayIndex < replay.events.length && replay.events[replayIndex].t_ms <= replayClock) apply(replay.events[replayIndex++]);
+  player = trackAt(replayClock);
+  $("slider").value = String(Math.round(replayClock));
+  $("status").textContent = "回放：" + (replayClock / 1000).toFixed(1) + " 秒，" + replayIndex + "/" + replay.events.length + " 个事件";
+  draw();
+  if (replayIndex >= replay.events.length) { stopAll(); return; }
+  requestAnimationFrame(frame);
+}
+
+async function startReplay() {
+  stopAll();
+  replay = await getJSON("/replay?run=" + encodeURIComponent($("run").value));
+  const end = replay.events.length ? replay.events[replay.events.length - 1].t_ms : 0;
+  $("slider").max = String(Math.ceil(end));
+  seek(0);
+}
+
+$("play").addEventListener("click", () => {
+  if (document.querySelector("input[name=mode]:checked").value !== "replay" || !replay) return;
+  if (playing) { stopAll(); return; }
+  if (replayIndex >= replay.events.length) seek(0);
+  playing = true; lastFrame = 0; $("play").textContent = "暂停";
+  requestAnimationFrame(frame);
+});
+$("slider").addEventListener("input", (e) => { if (replay) { stopAll(); seek(Number(e.target.value)); } });
+for (const r of document.querySelectorAll("input[name=mode]")) {
+  r.addEventListener("change", () => (r.value === "live" ? startLive() : startReplay()));
+}
+$("run").addEventListener("change", () => {
+  document.querySelector("input[name=mode]:checked").value === "live" ? startLive() : startReplay();
+});
+window.addEventListener("resize", draw);
+loadRuns().then(startLive).catch((err) => { $("status").textContent = String(err); });
+</script>
+</body>
+</html>
