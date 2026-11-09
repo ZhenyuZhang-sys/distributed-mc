@@ -5,6 +5,9 @@
   "name": "mc-donate common",
   "description": "协议：消息格式、NBT 打包。其他模块的公共库。",
   "environment": "*",
+  "mixins": [
+    "mcdonate-common.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.16.14",
     "minecraft": "~1.21.1",

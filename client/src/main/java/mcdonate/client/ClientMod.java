@@ -73,6 +73,22 @@ public final class ClientMod implements ClientModInitializer {
         PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
         PayloadTypeRegistry.playC2S().register(InviteRequest.TYPE, InviteRequest.CODEC);
         controller = new DonorController(new RealEnv());
+        // 游戏内来源上色和算力面板（docs/overlay-plan.md，kexu）：每秒经控制通道要一次 worker 的 STATUS
+        mcdonate.client.overlay.OverlayClient.install(new mcdonate.client.overlay.OverlayClient.WorkerLink() {
+            @Override
+            public boolean running() {
+                WorkerProcess w = worker;
+                return w != null && w.alive();
+            }
+
+            @Override
+            public void send(String line) {
+                WorkerProcess w = worker;
+                if (w != null) {
+                    w.send(line); // 每秒一次 STATUS，不记日志（RealEnv.sendToWorker 会记）
+                }
+            }
+        });
         ClientPlayNetworking.registerGlobalReceiver(DonorInvite.TYPE, (invite, context) -> onInvite(invite));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             for (ConsentDriver d : FabricLoader.getInstance().getEntrypoints("mcdonate:consent_driver", ConsentDriver.class)) {
@@ -113,6 +129,10 @@ public final class ClientMod implements ClientModInitializer {
 
     /** 设置变了（设置界面、同意界面调）。 */
     static void settingsChanged() {
+        FrameThrottle t = throttle;
+        if (t != null) {
+            t.setTargetMs(ClientSettings.load(settingsFile()).frameTargetMs()); // 帧时间目标改了马上生效
+        }
         Minecraft.getInstance().execute(controller::onSettingsChanged);
     }
 
@@ -243,6 +263,7 @@ public final class ClientMod implements ClientModInitializer {
                             if (!line.startsWith("STATUS ")) {
                                 LOG.info("worker：{}", line); // CONNECTED、NEED_TOKEN 这类少见的记下来（STATUS 每秒一次，不记）
                             }
+                            mcdonate.client.overlay.OverlayClient.onWorkerLine(line); // 只存最新的 STATUS，哪个线程都行
                             Minecraft.getInstance().execute(() -> controller.onWorkerLine(line));
                         });
                 throttle = null;

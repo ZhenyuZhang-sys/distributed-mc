@@ -1,6 +1,6 @@
-package mcdonate.bench.mixin;
+package mcdonate.common.mixin;
 
-import mcdonate.bench.FromDisk;
+import mcdonate.common.gen.FromDisk;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.village.poi.PoiManager;
 import net.minecraft.world.level.ChunkPos;
@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** 从存档读出的半成品打上标记（成品会包成 ImposterProtoChunk，不用标）。 */
 @Mixin(ChunkSerializer.class)
-abstract class ChunkSerializerMixin {
+abstract class ChunkSerializerFromDiskMixin {
     @Inject(method = "read", at = @At("RETURN"))
     private static void mcdonate$markFromDisk(ServerLevel level, PoiManager poiManager, RegionStorageInfo info,
             ChunkPos pos, CompoundTag tag, CallbackInfoReturnable<ProtoChunk> cir) {

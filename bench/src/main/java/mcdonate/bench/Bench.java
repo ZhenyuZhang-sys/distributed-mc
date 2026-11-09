@@ -36,6 +36,7 @@ public final class Bench implements ModInitializer {
         //   /bench record ...     跟踪真人玩家：start / stop，只记录不移动（第 10 步 7.2），见 FlightCommands
         //   /bench mark <cx> <cz> donor <编号> | rejected   造一条来源事件（验证地图上色用），走 Provenance.report
         FlightCommands.registerEvents();
+        Generation.install();   // Counters 注册成 common FullStatus 的计数（full 的钩子在 common）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("bench")
                         .requires(source -> source.hasPermission(2))

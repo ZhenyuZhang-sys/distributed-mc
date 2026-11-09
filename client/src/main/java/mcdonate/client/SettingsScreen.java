@@ -7,7 +7,7 @@ import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** 第 9 步 e：设置界面（暂停菜单里的"mc-donate"按钮打开）：开关、用几个线程、多少内存，和当前状态。 */
+/** 第 9 步 e：设置界面（暂停菜单里的"mc-donate"按钮打开）：开关、用几个线程、多少内存、帧时间目标，和当前状态。 */
 public final class SettingsScreen extends Screen {
     private final Screen parent;
     private Button toggle;
@@ -40,7 +40,22 @@ public final class SettingsScreen extends Screen {
         addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " MB"))
                 .withValues(List.of(1024, 2048, 3072, 4096, 6144, 8192)).withInitialValue(settings().memoryMb())
                 .create(x, y + 52, 200, 20, Component.literal("内存上限"), (b, v) -> save(settings().withMemoryMb(v))));
-        addRenderableWidget(Button.builder(Component.literal("完成"), b -> onClose()).bounds(x, y + 104, 200, 20).build());
+        // 帧时间目标：最近 10 秒帧时间的中位数超过它 5 秒就暂停 worker，低于它的 0.8 持续 5 秒恢复。改了马上生效
+        addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " ms（恢复线 " + Math.round(v * 0.8) + " ms）"))
+                .withValues(ClientSettings.FRAME_TARGETS).withInitialValue(nearest(settings().frameTargetMs()))
+                .create(x, y + 78, 200, 20, Component.literal("帧时间目标"), (b, v) -> save(settings().withFrameTargetMs(v))));
+        addRenderableWidget(Button.builder(Component.literal("完成"), b -> onClose()).bounds(x, y + 130, 200, 20).build());
+    }
+
+    /** 手改过设置文件、不在选项里的值：显示最近的选项。 */
+    private static int nearest(int ms) {
+        int best = ClientSettings.FRAME_TARGETS.get(0);
+        for (int v : ClientSettings.FRAME_TARGETS) {
+            if (Math.abs(v - ms) < Math.abs(best - ms)) {
+                best = v;
+            }
+        }
+        return best;
     }
 
     private static Component label() {
@@ -66,7 +81,7 @@ public final class SettingsScreen extends Screen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         super.render(g, mouseX, mouseY, delta);
         g.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
-        g.drawCenteredString(font, Component.literal(ClientMod.statusLine()), width / 2, height / 4 + 88, 0xAAAAAA);
+        g.drawCenteredString(font, Component.literal(ClientMod.statusLine()), width / 2, height / 4 + 114, 0xAAAAAA);
     }
 
     @Override
