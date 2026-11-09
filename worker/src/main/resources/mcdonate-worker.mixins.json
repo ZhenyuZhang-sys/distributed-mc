@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "DedicatedServerPropertiesMixin",
-    "ServerChunkCacheInvoker"
+    "ServerChunkCacheInvoker",
+    "ServerChunkCacheAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

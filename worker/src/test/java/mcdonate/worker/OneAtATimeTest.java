@@ -59,4 +59,16 @@ class OneAtATimeTest {
         }
         assertEquals(List.of("good"), done);
     }
+
+    @Test
+    void pendingValuesInOrder() {
+        // 11-09：导出一个 tile 之前，把排在后面的也排上生成（WorkerClient 用 pendingValues 看排着谁）
+        OneAtATime<String> one = new OneAtATime<>(mainQueue::add);
+        List<List<String>> seen = new ArrayList<>();
+        one.submit("a", v -> seen.add(one.pendingValues()));
+        one.submit("b", v -> { });
+        one.submit("c", v -> { });
+        drainMain();
+        assertEquals(List.of(List.of("b", "c")), seen);
+    }
 }

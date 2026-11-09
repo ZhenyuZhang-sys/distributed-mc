@@ -28,3 +28,13 @@ def test_parallel_tile_is_faster(worker):
     s, p = statistics.median(serial), statistics.median(parallel)
     print(f"一个一个要：{serial} ms（中位 {s}）；一起排上：{parallel} ms（中位 {p}），快 {s / p:.2f} 倍")
     assert p * 2 <= s, (serial, parallel)
+
+
+def test_several_tiles_at_once(worker):
+    # 收到几个任务时先全部排上（加票、不等），再一个一个导出：生成线程池同时做几个 tile。
+    # 对照：同样位置旁边的 4 个 tile 一个一个同步要（原来的办法）。吞吐至少 2 倍
+    serial_ms = sum(export(worker, 5000 + 3 * i, -5000, serial=True) for i in range(4))
+    r = json.loads(worker.rcon("donor export 5000 -5060 batch 4"))
+    print(f"4 个 tile：一个一个要共 {serial_ms} ms；一起排上共 {r['ms']} ms，快 {serial_ms / r['ms']:.2f} 倍")
+    assert r["ms"] * 2 <= serial_ms, (serial_ms, r)
+

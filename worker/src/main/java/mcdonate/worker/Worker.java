@@ -67,7 +67,13 @@ public final class Worker implements ModInitializer {
                                                 // 对照用：按原来的办法一个一个同步要（11-09）
                                                 .then(Commands.literal("serial").executes(ctx -> export(ctx.getSource(),
                                                         new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
-                                                                IntegerArgumentType.getInteger(ctx, "tz")), true))))))));
+                                                                IntegerArgumentType.getInteger(ctx, "tz")), true)))
+                                                // 测吞吐用：沿 x 每隔 3 个 tile 共 n 个，先全部排上再一个一个导出（和收到几个任务时一样）
+                                                .then(Commands.literal("batch").then(Commands.argument("n", IntegerArgumentType.integer(1, 16))
+                                                        .executes(ctx -> exportBatch(ctx.getSource(),
+                                                                new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
+                                                                        IntegerArgumentType.getInteger(ctx, "tz")),
+                                                                IntegerArgumentType.getInteger(ctx, "n"))))))))));
         // 第 5 步：配了 coordinator（系统属性 mcdonate.coordinator=host:port）就连上去领任务
         // 客户端起的 worker：服务器起来之前把标准输入拿给控制通道，不让原版控制台读走（ControlStdin）
         InputStream control = mcdonate.common.Config.getLong("parentPid", -1) > 0 ? ControlStdin.claim() : null;
@@ -124,6 +130,27 @@ public final class Worker implements ModInitializer {
         int sent = c.setHold(on);
         LOG.info("扣结果：{}（测试用）", on ? "开" : "关，发出 " + sent + " 个");
         source.sendSuccess(() -> Component.literal(on ? "holding" : "released " + sent), false);
+        return 1;
+    }
+
+    private static int exportBatch(CommandSourceStack source, TilePos first, int n) {
+        net.minecraft.server.level.ServerLevel level = source.getServer().overworld();
+        long t0 = System.nanoTime();
+        try {
+            java.util.List<TilePos> tiles = new java.util.ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                tiles.add(new TilePos(first.x() + 3 * i, first.z()));
+            }
+            tiles.forEach(t -> TileExporter.prefetch(level, t));
+            for (TilePos t : tiles) {
+                TileExporter.export(level, t);
+            }
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("batch failed: " + e));
+            return 0;
+        }
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        source.sendSuccess(() -> Component.literal("{\"tiles\":" + n + ",\"ms\":" + ms + "}"), false);
         return 1;
     }
 
