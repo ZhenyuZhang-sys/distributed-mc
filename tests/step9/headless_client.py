@@ -23,7 +23,7 @@ def prepare_mods(dest: Path, extra: list[Path] = ()) -> Path:
 def run_client(name: str, seconds: int, mods: Path, out: Path, env: dict | None = None) -> dict:
     """进服挂 seconds 秒。返回 {"log": 客户端日志, "ps": 进程快照, "gamedir": 游戏目录列表, "mods": 装了什么}。"""
     out.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
+    saved = os.environ.copy()
     try:
         os.environ["MCD_CLIENT_MODS"] = str(mods)
         os.environ["MCD_CLIENT_OUT"] = str(out)
@@ -32,7 +32,7 @@ def run_client(name: str, seconds: int, mods: Path, out: Path, env: dict | None 
         compose("run", "--rm", "--build", *extra, "client", name, str(seconds), timeout=2400)
     finally:
         os.environ.clear()
-        os.environ.update(env)
+        os.environ.update(saved)
     assert (out / "done").exists(), "客户端脚本没跑完"
     read = lambda f: (out / f).read_text(errors="replace") if (out / f).exists() else ""
     return {"log": read("latest.log"), "ps": read("ps.txt"), "gamedir": read("gamedir.txt"), "mods": read("mods.txt"),
