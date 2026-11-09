@@ -99,3 +99,22 @@ def test_report_puts_max_speed_first(tmp_path):
     assert '原版' in first and '15' in first, first
     assert '8 核' in lines[3] and '20' in lines[3], lines[3]
     assert '4 核' in md and '演示，粗测' in md
+
+
+def test_firework_default_speed_is_used_for_the_ideal(tmp_path):
+    # 11-09 第一轮：烟花场景没写 speed_bps 时路线按 33.5 飞，驱动却拿鞘翅的 30 算理想速度，速度比成了 1.086
+    from analysis.flight_driver import scenario_speed
+    assert scenario_speed(dict(scenario='firework', speed='elytra')) == 33.5
+    assert scenario_speed(dict(scenario='firework_turning', speed='elytra', speed_bps=20)) == 20
+    assert scenario_speed(dict(scenario='turning', speed='elytra')) == 30
+
+
+def test_recompute_after_exit_from_archive(tmp_path):
+    # 报告按归档的逐秒行重算出缓存区以后的指标（第一轮的速度比要按 33.5 重算）
+    import json
+    raw = tmp_path / 'cell' / 'attempt-001' / 'flight' / 'raw'
+    raw.mkdir(parents=True)
+    rows = [dict(t_s=i + 1, x=-32000.5 + 33.5 * (i + 1), z=32008.5, ticks=20, stalled_ticks=0) for i in range(20)]
+    (raw / 'seconds.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in rows))
+    m = firework.recompute(tmp_path / 'cell' / 'attempt-001', dict(scenario='firework', speed='elytra', cache_radius=16))
+    assert m['exit_s'] == 8 and m['speed_ratio_after_exit'] == pytest.approx(1.0)

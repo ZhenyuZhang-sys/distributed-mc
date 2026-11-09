@@ -35,6 +35,15 @@ def _p95(values):
     return values[min(len(values) - 1, int(len(values) * 0.95))] if values else None
 
 
+def scenario_speed(p) -> float:
+    """这一轮的速度：给了 speed_bps 用它；烟花场景默认 33.5（路线就按它飞）；其余按 speed 档位。"""
+    if p.get('speed_bps'):
+        return float(p['speed_bps'])
+    if str(p.get('scenario', '')).startswith('firework'):
+        return scenarios.FIREWORK
+    return SPEEDS[p['speed']]
+
+
 def resolve_env(env, local):
     """donor 配置的环境变量里，'@A+B' 换成这个槽位 .env.local 里 A、B 的值用逗号连起来（1 个强 donor 拼 worker、worker2 的核）。"""
     out = {}
@@ -130,7 +139,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         services = list(controller.active) if donors else []
         cpu_before = runner.worker_cpu(services) if services and hasattr(runner, 'worker_cpu') else None
         scenario = p.get('scenario')
-        speed = float(p.get('speed_bps') or SPEEDS[p['speed']])
+        speed = scenario_speed(p)
         routes = (scenarios.routes(scenario, seed=seed, seconds=p['duration_s'], speed=p.get('speed_bps'), cache_radius_blocks=cache * 16)
                   if scenario else [None])
         t_fly = time.time()

@@ -45,6 +45,36 @@ def max_sustainable(runs, limit=0.05, key='config'):
     return out
 
 
+def recompute(attempt_dir, params) -> dict:
+    """按归档的逐秒行重算出缓存区以后的指标（报告用；11-09 第一轮的速度比按错的速度算过）。"""
+    import json
+    from pathlib import Path
+    from analysis.flight_driver import scenario_speed
+    from bench.demo.ab import DEFAULT_START
+    raw = Path(attempt_dir) / 'flight' / 'raw' / 'seconds.jsonl'
+    rows = [json.loads(l) for l in raw.read_text().splitlines() if l.strip()]
+    return after_exit(rows, DEFAULT_START, (params.get('cache_radius') or 0) * 16, scenario_speed(params))
+
+
+def rows_recomputed(campaign) -> list[dict]:
+    """matrix_summary.collect 的行，出缓存区以后的指标按归档重算（每个单元取通过的那次尝试）。"""
+    import json
+    from pathlib import Path
+    from analysis.matrix_summary import collect
+    rows = collect(campaign)
+    by_cell = {}
+    for cdir in Path(campaign).iterdir():
+        for a in sorted(cdir.glob('attempt-*')):
+            m = a / 'manifest.json'
+            if m.exists() and json.loads(m.read_text()).get('status') == 'passed' and (a / 'flight' / 'raw' / 'seconds.jsonl').exists():
+                by_cell[cdir.name] = a
+    for r in rows:
+        a = by_cell.get(r['cell_id'])
+        if a is not None and r.get('cache_radius'):
+            r.update(recompute(a, r))
+    return rows
+
+
 PROFILE_NAME = {None: '原版（0 个 donor）', '': '原版（0 个 donor）', '1x8': '1 个 donor，8 核', '1x4': '1 个 donor，4 核',
                 '2x4': '2 个 donor，各 4 核', '3x4': '3 个 donor，各 4 核'}
 SCEN_NAME = {'firework': '直线', 'firework_turning': '转弯'}
@@ -106,7 +136,7 @@ if __name__ == '__main__':
     ap.add_argument('campaigns', nargs='+')
     ap.add_argument('--out')
     a = ap.parse_args()
-    rows = [r for c in a.campaigns for r in collect(Path(c))]
+    rows = [r for c in a.campaigns for r in rows_recomputed(Path(c))]
     md = report(rows)
     if a.out:
         Path(a.out).write_text(md)
