@@ -73,6 +73,7 @@ class ProtoTest {
                 new Welcome(Protocol.VERSION, Welcome.BAD_VERSION, Long.MIN_VALUE, 0),
                 new Welcome(Protocol.VERSION, Welcome.BAD_TOKEN, 424242L, 3955),
                 new Task(9, -2, 5, 30_000),
+                new Task(10, 3, -4, 30_000, Task.Kind.RECOMPUTE),
                 new Task(Long.MAX_VALUE, Integer.MIN_VALUE, Integer.MAX_VALUE, 0),
                 Result.success(9, TILE),
                 Result.failure(10, "生成失败：boom"),
@@ -277,7 +278,7 @@ class ProtoTest {
     }
 
     /** 可以缺的字段（缺了有默认值）。 */
-    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token");
+    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token", "kind");
 
     // ---- 第 9 步：hello.token、welcome.workerId = -2 ----
 
@@ -314,6 +315,51 @@ class ProtoTest {
         assertEquals(-2, Welcome.BAD_TOKEN);
         assertTrue(new Welcome(Protocol.VERSION, 0, 0, 0).accepted());
         assertEquals(1, Protocol.VERSION);
+    }
+
+    // ---- 第 8 步：task.kind（重算任务）、welcome.workerId = -3（拉黑） ----
+
+    @Test
+    void taskKindDefaultsToGenerateAndRoundTrips() {
+        assertEquals(Task.Kind.GENERATE, new Task(1, 2, 3, 4).kind());
+        Task r = new Task(7, -1, 9, 5_000, Task.Kind.RECOMPUTE);
+        byte[] f = Frame.encode(r);
+        assertEquals(List.of(r), new FrameDecoder().feed(f, 0, f.length));
+        assertEquals("recompute", MessageCodec.toTag(r).getString("kind"));
+        assertThrows(NullPointerException.class, () -> new Task(1, 2, 3, 4, null));
+    }
+
+    @Test
+    void taskWithoutKindFieldIsGenerate() {
+        CompoundTag old = new CompoundTag();   // 旧版本 coordinator 发的 task，没有 kind
+        old.putString("type", "task");
+        old.putLong("taskId", 5);
+        old.putInt("tx", 1);
+        old.putInt("tz", 2);
+        old.putLong("leaseMs", 30_000);
+        assertEquals(new Task(5, 1, 2, 30_000), MessageCodec.fromTag(old));
+        assertEquals(Task.Kind.GENERATE, ((Task) MessageCodec.fromTag(old)).kind());
+    }
+
+    @Test
+    void taskUnknownOrWrongTypedKindRejected() {
+        CompoundTag t = MessageCodec.toTag(new Task(1, 2, 3, 4));
+        t.putString("kind", "mine-diamonds");
+        assertThrows(ProtocolException.class, () -> MessageCodec.fromTag(t));
+        t.putInt("kind", 1);
+        assertThrows(ProtocolException.class, () -> MessageCodec.fromTag(t));
+        t.putString("kind", "RECOMPUTE");   // 只认小写，和 type 一样
+        assertThrows(ProtocolException.class, () -> MessageCodec.fromTag(t));
+    }
+
+    @Test
+    void welcomeBlacklistedCode() {
+        assertEquals(-3, Welcome.BLACKLISTED);
+        Welcome w = new Welcome(Protocol.VERSION, Welcome.BLACKLISTED, 0, 0);
+        byte[] f = Frame.encode(w);
+        Welcome got = (Welcome) new FrameDecoder().feed(f, 0, f.length).get(0);
+        assertEquals(-3, got.workerId());
+        assertTrue(!got.accepted());
     }
 
     @Test
