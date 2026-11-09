@@ -211,3 +211,16 @@ def test_resume_ignores_documentation_only_keys(tmp_path):
     again, calls = fake({s['slot']: [] for s in lc.slots(p)})
     out = lc.run_campaign(lc.validate(proto(user_decision='新', selfcheck_concurrency_counts=True, note='x')), tmp_path / 'c', again)
     assert calls == [] and out['failed'] == 0
+
+
+def test_max_attempts_is_orchestration_not_measurement(tmp_path):
+    # 最多试几次不改变怎么飞：调高它照样能续跑（11-09：守护计数误报用掉了尝试次数）
+    p = lc.validate(proto(max_attempts=2))
+    names = [x['slot'] for x in lc.slots(p)]
+    results = {n: [dict(concurrent=[])] for n in names}
+    results[names[1]] = ['fail', 'fail']
+    fly_slot, _ = fake(results)
+    assert lc.run_campaign(p, tmp_path / 'c', fly_slot)['failed'] == 1
+    again, calls = fake({**{n: [] for n in names}, names[1]: [dict(concurrent=[])]})
+    out = lc.run_campaign(lc.validate(proto(max_attempts=3)), tmp_path / 'c', again)
+    assert out['failed'] == 0 and calls == [names[1]]
