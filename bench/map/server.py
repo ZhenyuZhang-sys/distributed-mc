@@ -79,6 +79,31 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def latest_run(self):
+        """最新的一轮：provenance.jsonl 最新改过的那个（新开的一轮一开始就会建这个文件）。没有就是 None。"""
+        best = None
+        for p in self.root.iterdir():
+            f = p / 'provenance.jsonl'
+            if p.is_dir() and RUN_NAME.fullmatch(p.name) and f.is_file():
+                t = f.stat().st_mtime
+                if best is None or t > best[0]:
+                    best = (t, p)
+        return best[1] if best else None
+
+    def latest_events(self, query, raw):
+        """实时模式跟最新一轮（用户 11-09 报"地图更新一次之后就不再重新着色"：原来页面只在打开时读一次 run 列表）。
+        have = 页面正在显示的那一轮。最新一轮变了就从头发，reset = true，页面先清空。一轮都没有（飞完被归档删掉了）回空的，页面保留最后的样子。"""
+        have = query.get('have', [''])[0]
+        latest = self.latest_run()
+        if latest is None:
+            return self.send(200, dict(run=None, next=0, events=[], player=None, reset=False))
+        reset = latest.name != have
+        since = 0 if reset else int(raw)
+        events, nxt = complete_lines(latest / 'provenance.jsonl', since)
+        track = complete_lines(latest / 'seconds.jsonl')[0] if (latest / 'seconds.jsonl').exists() else []
+        return self.send(200, dict(run=latest.name, reset=reset, next=nxt, events=[decorate(e) for e in events],
+                                   player=track[-1] if track else None))
+
     def run_dir(self, query):
         name = query.get('run', [''])[0]
         if not RUN_NAME.fullmatch(name):
@@ -162,10 +187,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, sorted(p.name for p in self.root.iterdir()
                                              if p.is_dir() and (p / 'provenance.jsonl').is_file()))
             if url.path == '/events':
-                path = self.run_dir(query)
                 raw = query.get('since', ['0'])[0]
                 if not raw.isdigit():
                     raise LookupError(400, 'since 必须是非负整数')
+                if query.get('run', [''])[0] == 'latest':
+                    return self.latest_events(query, raw)
+                path = self.run_dir(query)
                 events, nxt = complete_lines(path / 'provenance.jsonl', int(raw))
                 track = complete_lines(path / 'seconds.jsonl')[0] if (path / 'seconds.jsonl').exists() else []
                 return self.send(200, dict(next=nxt, events=[decorate(e) for e in events],

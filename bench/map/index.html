@@ -84,29 +84,41 @@ async function getJSON(url) {
   return r.json();
 }
 
+// run 下拉框的第一项是"跟最新一轮"（value = latest，默认）。列表每 5 秒刷新一次，新开的一轮能选到。
+// 原来只在打开页面时读一次列表，新的一轮出不来，地图停在旧的那一轮（用户 11-09 报"更新一次之后就不再重新着色"）。
+let shownRun = "";
 async function loadRuns() {
   const runs = await getJSON("/runs");
-  const sel = $("run");
+  const sel = $("run"), cur = sel.value || "latest";
   sel.innerHTML = "";
-  for (const r of runs) { const o = document.createElement("option"); o.textContent = r; sel.appendChild(o); }
-  if (runs.length) sel.value = runs[runs.length - 1];
+  const follow = document.createElement("option");
+  follow.value = "latest"; follow.textContent = "跟最新一轮";
+  sel.appendChild(follow);
+  for (const r of runs) { const o = document.createElement("option"); o.value = r; o.textContent = r; sel.appendChild(o); }
+  sel.value = cur === "latest" || runs.includes(cur) ? cur : "latest";
 }
 
 async function pollLive() {
-  const run = $("run").value;
-  if (!run) return;
+  const run = $("run").value || "latest";
   try {
-    const data = await getJSON("/events?run=" + encodeURIComponent(run) + "&since=" + since);
+    const url = run === "latest"
+      ? "/events?run=latest&have=" + encodeURIComponent(shownRun) + "&since=" + since
+      : "/events?run=" + encodeURIComponent(run) + "&since=" + since;
+    const data = await getJSON(url);
+    if (run === "latest") {
+      if (data.reset) { chunks = new Map(); player = null; }   // 换到新的一轮：先清空
+      if (data.run) shownRun = data.run;
+    }
     data.events.forEach(apply);
     since = data.next;
     if (data.player) player = data.player;
-    $("status").textContent = "实时：" + chunks.size + " 个 chunk";
+    $("status").textContent = "实时" + (run === "latest" ? "（跟最新一轮：" + (shownRun || "还没有") + "）" : "") + "：" + chunks.size + " 个 chunk";
     draw();
   } catch (err) { $("status").textContent = String(err); }
 }
 
 function startLive() {
-  stopAll(); chunks = new Map(); player = null; since = 0;
+  stopAll(); chunks = new Map(); player = null; since = 0; shownRun = "";
   pollLive(); liveTimer = setInterval(pollLive, 500);
 }
 
@@ -147,7 +159,9 @@ function frame(now) {
 
 async function startReplay() {
   stopAll();
-  replay = await getJSON("/replay?run=" + encodeURIComponent($("run").value));
+  const run = $("run").value === "latest" ? shownRun : $("run").value;
+  if (!run) { $("status").textContent = "回放要先选一轮"; return; }
+  replay = await getJSON("/replay?run=" + encodeURIComponent(run));
   const end = replay.events.length ? replay.events[replay.events.length - 1].t_ms : 0;
   $("slider").max = String(Math.ceil(end));
   seek(0);
@@ -169,6 +183,7 @@ $("run").addEventListener("change", () => {
 });
 window.addEventListener("resize", draw);
 loadRuns().then(startLive).catch((err) => { $("status").textContent = String(err); });
+setInterval(() => loadRuns().catch(() => {}), 5000);
 </script>
 </body>
 </html>
