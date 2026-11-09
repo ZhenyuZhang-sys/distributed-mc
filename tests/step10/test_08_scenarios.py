@@ -93,6 +93,11 @@ from bench.demo.control import Controller, Flyer           # noqa: E402
 from bench.demo.poll import Poller                         # noqa: E402
 
 
+import threading  # noqa: E402
+
+LOCK = threading.Lock()
+
+
 class RouteFly(FakeFly):
     def __call__(self, server, run, player, start, speed, seconds, out_dir, **kw):
         self.runner.status['import'] = dict(totalMs=self.runner.status.get('import', {}).get('totalMs', 0) + 250, count=5)
@@ -100,8 +105,9 @@ class RouteFly(FakeFly):
             w['done'] = w.get('done', 0) + 12
         self.runner.server_log += ["[12:00:01] [Server thread/WARN]: Can't keep up! Is the server overloaded?",
                                    "[12:00:02] [Server thread/WARN]: abl moved too quickly! 3,0,0"]
-        out = super().__call__(server, run, player, start, speed, seconds, out_dir, **kw)
-        self.calls[-1].update(route=kw.get('route'), player=player)
+        with LOCK:   # 两个玩家是两个线程同时飞：记调用要原子
+            out = super().__call__(server, run, player, start, speed, seconds, out_dir, **kw)
+            self.calls[-1].update(route=kw.get('route'), player=player)
         return out
 
 
@@ -110,9 +116,15 @@ def real_rig(tmp_path):
     runner.netem = True
     runner.server_log = []
     runner.server_log_since = lambda t: list(runner.server_log)
-    runner.worker_cpu_cores = lambda services, seconds: {s: 1.5 for s in services}
+    samples = iter([0, 1])
+
+    def worker_cpu(services):   # 第一次在飞之前、第二次在飞之后：120 秒用了 180 个 CPU 秒 = 1.5 核
+        k = next(samples, 1)
+        return {s: (int(k * 120e9), int(k * 180e6)) for s in services}
+    runner.worker_cpu = worker_cpu
     poller = Poller(runner, runs_dir=tmp_path / 'runs', clock=Clock())
     fly = RouteFly(runner)
+    fly.cpus = 4   # 这些单元的服务器是 4 核（用户的 N100）
     flyer = Flyer(runner, poller, tmp_path / 'artifacts', fly=fly)
     ctl = Controller(runner, poller, flyer, wait_timeout=1, wait_interval=0)
     profiles = {'1x8': {'donors': 1, 'env': {'WORKER_CPUS': '8', 'WORKER_CPUSET': '24-31'}},
@@ -159,3 +171,13 @@ def test_profile_must_exist(tmp_path):
     runner.slot_cpuset = lambda: '16-19'
     with pytest.raises(ValueError, match='donor_profile'):
         drive(rcell('turning', profile='9x9'), tmp_path / 'c3')
+
+
+def test_profile_env_can_join_slot_core_sets():
+    # 1 个强 donor 要 8 个核：拼这个槽位 .env.local 里 worker 和 worker2 的核（k2 是 24-27 + 28-31，k4 是 68-71 + 72-75）
+    from analysis.flight_driver import resolve_env
+    local = {'WORKER_CPUSET': '24-27', 'WORKER2_CPUSET': '28-31'}
+    got = resolve_env({'WORKER_CPUS': '8', 'WORKER_CPUSET': '@WORKER_CPUSET+WORKER2_CPUSET'}, local.get)
+    assert got == {'WORKER_CPUS': '8', 'WORKER_CPUSET': '24-27,28-31'}
+    with pytest.raises(ValueError):
+        resolve_env({'WORKER_CPUSET': '@NOPE'}, local.get)

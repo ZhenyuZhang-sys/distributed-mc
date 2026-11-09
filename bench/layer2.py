@@ -27,6 +27,7 @@ CHUNK_COLUMNS = ('cx', 'cz', 'enter_ms', 'latency_ms', 'censored', 'source', 'do
 # done.json 里原样带进 summary.json 的配置（第 7 步预留的两项没有 coordinator 时是 null）
 CONFIG_KEYS = ('run', 'player', 'mode', 'speed', 'y', 'start_x', 'start_z', 'view_distance', 'requested_view_distance',
                'available_processors', 'coordinator_features', 'demand_lookahead', 'scan_ms_total', 'scan_every_ticks')
+OPTIONAL_KEYS = ('route',)   # 路线飞行（调度 11-09 真实场景）才有
 
 
 def _finite(value):
@@ -52,6 +53,7 @@ def compose(run_dir, samples, out_dir, initial_load_s=None, tail_exclude_ms=10_0
     summary = stats.run_summary(seconds, visits, cpu)
     visits = stats.sources(visits, stats.load_jsonl(run_dir / 'provenance.jsonl'), done['end_ms'])
     summary.update({k: done[k] for k in CONFIG_KEYS})
+    summary.update({k: done.get(k) for k in OPTIONAL_KEYS})
     summary.update(flight_seconds=done['seconds'], ticks_total=done['ticks'], initial_load_s=initial_load_s,
                    initial_view=done['initial']['view'], initial_not_ready=done['initial']['not_ready'],
                    tail_exclude_ms=tail_exclude_ms)
@@ -93,10 +95,11 @@ def _ready(server, player):
 
 
 def fly(server, run, player, start, speed, seconds, out_dir, mode='wall', y=200, ready_timeout=300, done_slack=120,
-        tail_exclude_ms=10_000):
+        tail_exclude_ms=10_000, route=None):
     """在 server（bench.server.Server，已经在跑）上飞一轮，结果写进 out_dir。返回 out_dir。
 
     假玩家用旁观模式（和 fish 第 3、6 步的测试一样）：不受重力，原版默认 spectatorsGenerateChunks=true，加载和生成与创造模式相同。
+    route：真实场景的路线（bench/scenarios.py 生成，/bench fly route），给了就按路线飞，speed 只用来记录；seconds 要等于路线总时长。
     """
     from bench.metrics import Cgroup, Sampler
     from bench.server import compose as docker_compose
@@ -113,7 +116,8 @@ def fly(server, run, player, start, speed, seconds, out_dir, mode='wall', y=200,
         initial_load_s = time.monotonic() - t_spawn
         cgroup = Cgroup(docker_compose('ps', '-q', 'minecraft').strip(), host_run)
         with Sampler(cgroup) as sampler:
-            reply = server.rcon(f'bench fly start {player} {speed} {seconds} {run} {mode}')
+            cmd = f'bench fly route {player} {run} {route}' if route else f'bench fly start {player} {speed} {seconds} {run} {mode}'
+            reply = server.rcon(cmd)
             if 'started' not in reply:
                 raise RuntimeError(f'bench fly start 失败：{reply}')
             done_file = RUNS / run / 'done.json'

@@ -13,7 +13,9 @@ import math
 import time
 from pathlib import Path
 
-from bench import layer2_stats
+import threading
+
+from bench import layer2_stats, scenarios
 from bench.demo import ab
 from bench.demo.control import ALL_WORKERS, FEATURES, SPEEDS, server_cpuset
 
@@ -33,35 +35,65 @@ def _p95(values):
     return values[min(len(values) - 1, int(len(values) * 0.95))] if values else None
 
 
+def resolve_env(env, local):
+    """donor 配置的环境变量里，'@A+B' 换成这个槽位 .env.local 里 A、B 的值用逗号连起来（1 个强 donor 拼 worker、worker2 的核）。"""
+    out = {}
+    for k, v in (env or {}).items():
+        if isinstance(v, str) and v.startswith('@'):
+            parts = []
+            for name in v[1:].split('+'):
+                val = local(name)
+                if not val:
+                    raise ValueError(f'槽位的 .env.local 里没有 {name}')
+                parts.append(val)
+            v = ','.join(parts)
+        out[k] = v
+    return out
+
+
 def _features_on(features):
+    """v0 = 全关，all = 全开，单项名，或者用 + 连起来的组合（比如 deadline+throughput）。"""
     if features in (None, 'v0'):
         return ()
     if features == 'all':
         return FEATURES
-    if features not in FEATURES:
-        raise ValueError(f'不认识的开关组合：{features}')
-    return (features,)
+    names = tuple(features.split('+'))
+    bad = [n for n in names if n not in FEATURES]
+    if bad:
+        raise ValueError(f'不认识的开关：{bad}')
+    return names
 
 
 def _status_counts(controller) -> dict:
-    """/donor status 里会涨的计数：导入、丢弃按原因、过时删掉的（7.2）。"""
+    """/donor status 里会涨的计数：导入、丢弃按原因、过时删掉的（7.2）、导入的主线程耗时、donor 做完的 tile。"""
     s = controller.status()
     d, stale = s.get('discarded', {}), s.get('stale', {})
     return dict(imports_accepted=s.get('accepted', 0), discard_late=d.get('late', 0), discard_other_world=d.get('other_world', 0),
-                discard_server=d.get('server', 0), stale_dropped=stale.get('dropped', 0), stale_cancelled=stale.get('cancelled', 0))
+                discard_server=d.get('server', 0), stale_dropped=stale.get('dropped', 0), stale_cancelled=stale.get('cancelled', 0),
+                import_ms=s.get('import', {}).get('totalMs', 0), tiles_done=sum(w.get('done', 0) for w in s.get('workers', [])))
 
 
-def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_START, seed=424242, donor_env=None):
-    """donor_env：起 donor 时给 compose 的环境变量（演示矩阵里 worker3 提到 4 核）。"""
+def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_START, seed=424242, donor_env=None,
+                       donor_profiles=None):
+    """donor_env：起 donor 时给 compose 的环境变量（演示矩阵里 worker3 提到 4 核）。
+    donor_profiles：真实场景矩阵（调度 11-09）的 donor 配置，名字 → {donors: 个数, env: compose 环境变量}，比如 1x8（1 个 8 核的强 donor）、3x4。"""
     events = events or ab._docker_events
 
     def drive(cell, out) -> dict:
         p = cell['params']
         donors = p['donors']
+        env = donor_env
+        profile = p.get('donor_profile')
+        if donors and profile:
+            if profile not in (donor_profiles or {}):
+                raise ValueError(f'不认识的 donor_profile：{profile}（配置里的 donor_profiles 没有）')
+            donors = donor_profiles[profile]['donors']
+            env = resolve_env({**(donor_env or {}), **donor_profiles[profile].get('env', {})},
+                              getattr(runner, 'local_env', lambda k: None))
         if not 0 <= donors <= len(ALL_WORKERS):
             raise ValueError(f'这台机器上最多 {len(ALL_WORKERS)} 个 donor（compose 里只有 {", ".join(ALL_WORKERS)}）：{donors}')
         if p.get('bots', 1) != 1:
-            raise ValueError('演示矩阵只支持 1 个假玩家')
+            raise ValueError('只支持 bots = 1（两个玩家用 scenario = two_players）')
         out = Path(out)
         cpus = p['server_cpus']
         cpuset = server_cpuset(cpus, runner.slot_cpuset())
@@ -80,7 +112,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 controller.feature(f, False)
         else:
             runner.rcon('donor reset')
-            controller.donor_on(donors, env=donor_env)
+            controller.donor_on(donors, env=env)
             on = _features_on(p.get('features'))
             for f in FEATURES:
                 controller.feature(f, f in on)
@@ -90,10 +122,38 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 raise RuntimeError('要模拟网络，但 scripts/netem.sh 还不支持 NETEM_SERVICE 和限速')
             ids_before = controller.worker_ids()
         counts_before = _status_counts(controller) if donors else None
-        flyer.fly_sync(f'mx-{name}', start, SPEEDS[p['speed']], p['duration_s'], out / 'flight')
+        services = list(controller.active) if donors else []
+        cpu_before = runner.worker_cpu(services) if services and hasattr(runner, 'worker_cpu') else None
+        scenario = p.get('scenario')
+        routes = scenarios.routes(scenario, seed=seed, seconds=p['duration_s']) if scenario else [None]
+        t_fly = time.time()
+        dirs = [out / ('flight' if i == 0 else f'flight{i + 1}') for i in range(len(routes))]
+        errors = []
+
+        def one(i, route):
+            try:
+                flyer.fly_sync(f'mx-{name}-p{i + 1}' if len(routes) > 1 else f'mx-{name}', start, SPEEDS[p['speed']],
+                               p['duration_s'], dirs[i], route=route,
+                               player=None if i == 0 else f'{flyer.PLAYER}{i + 1}')
+            except Exception as e:   # 一个玩家飞失败，这一轮就无效
+                errors.append(e)
+
+        threads = [threading.Thread(target=one, args=(i, r), daemon=True) for i, r in enumerate(routes)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if errors:
+            raise errors[0]
         ids_after = controller.worker_ids() if donors else []
         counts_after = _status_counts(controller) if donors else None
-        judged = ab._judge(out / 'flight', donors > 0, cpus, ids_before, ids_after)
+        cpu_after = runner.worker_cpu(services) if cpu_before is not None else None
+        log_lines = runner.server_log_since(t_fly) if hasattr(runner, 'server_log_since') else []
+        all_judged = [ab._judge(d, donors > 0, cpus, ids_before, ids_after) for d in dirs]
+        judged = all_judged[0]
+        for j in all_judged[1:]:
+            judged['valid'] = judged['valid'] and j['valid']
+            judged['invalid'] += [x for x in j['invalid'] if x not in judged['invalid']]
         s = judged['summary']
         if lookahead and str(s.get('demand_lookahead')) != str(lookahead):
             judged['valid'] = False
@@ -101,6 +161,24 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         if not judged['valid']:
             raise RuntimeError('这一轮无效：' + '；'.join(judged['invalid']))
         result = {k: _num(s[k]) for k in METRICS if k in s}
+        if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个
+            stalls = [j['summary'].get('stall_fraction') for j in all_judged if j['summary'].get('stall_fraction') is not None]
+            dists = [j['summary'].get('distance_ratio') for j in all_judged if j['summary'].get('distance_ratio') is not None]
+            if stalls:
+                result.update(stall_fraction=sum(stalls) / len(stalls), stall_fraction_max=max(stalls))
+            if dists:
+                result['distance_ratio'] = sum(dists) / len(dists)
+        result.update(players=len(routes), scenario_route=routes[0],
+                      cant_keep_up=sum("Can't keep up" in l for l in log_lines),
+                      moved_too_quickly=sum('moved too quickly' in l for l in log_lines))
+        if cpu_before is not None:
+            cores = 0.0
+            for svc in services:
+                if svc not in cpu_before or svc not in cpu_after:
+                    continue   # 这个 donor 的容器飞前或飞后不在
+                (t0n, u0), (t1n, u1) = cpu_before[svc], cpu_after[svc]
+                cores += (u1 - u0) / 1e6 / ((t1n - t0n) / 1e9) if t1n > t0n else 0
+            result['worker_cores'] = cores
         raw = out / 'flight' / 'raw'
         seconds = layer2_stats.load_jsonl(raw / 'seconds.jsonl') if (raw / 'seconds.jsonl').exists() else []
         csv_path = out / 'flight' / 'layer2.csv'
@@ -113,6 +191,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         leads = layer2_stats.donor_leads(prov, seconds)
         if counts_before is not None:
             result.update({k: counts_after[k] - counts_before[k] for k in counts_before})
+            result['tile_s'] = result.pop('tiles_done') / p['duration_s']
         total = sum(result.get(k) or 0 for k in ('full_generated', 'full_resumed', 'full_loaded'))
         result['resumed_share'] = (result.get('full_resumed') or 0) / total if total else None
         result.update(donor_events=judged['donor_events'], netem=net, valid=True, server_cpuset=cpuset,

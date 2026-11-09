@@ -200,12 +200,13 @@ class Flyer:
         f.write_text(json.dumps(dict(next=k + 1)) + '\n')
         return (0.5, 8000.0 * k + 8.5)
 
-    def fly_sync(self, run, start, speed, seconds, out_dir):
-        self.poller.flight = dict(run=run, start_x=start[0], speed=speed)
+    def fly_sync(self, run, start, speed, seconds, out_dir, route=None, player=None):
+        self.poller.flight = dict(run=run, start_x=start[0], speed=None if route else speed)   # 路线飞行没有一条直线的理想位置
         self.run = run
         try:
-            return self.fly(_ServerShim(self.runner), run=run, player=self.PLAYER, start=start, speed=speed,
-                            seconds=seconds, out_dir=Path(out_dir))
+            kw = dict(route=route) if route else {}
+            return self.fly(_ServerShim(self.runner), run=run, player=player or self.PLAYER, start=start, speed=speed,
+                            seconds=seconds, out_dir=Path(out_dir), **kw)
         finally:
             self.poller.flight = None
             self.run = None
