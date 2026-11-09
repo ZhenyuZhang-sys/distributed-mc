@@ -86,6 +86,12 @@ public class FlightGameTest implements FabricGameTest {
         }
     }
 
+    /** 取字段；没有就按断言失败（重试到超时），不抛空指针让 GameTest 服务器崩掉。 */
+    static com.google.gson.JsonElement field(JsonObject o, String key) {
+        if (o == null || !o.has(key) || o.get(key).isJsonNull()) throw new GameTestAssertException("缺字段 " + key + "：" + o);
+        return o.get(key);
+    }
+
     static void check(boolean ok, String message) {
         if (!ok) throw new GameTestAssertException(message);
     }
@@ -133,10 +139,12 @@ public class FlightGameTest implements FabricGameTest {
         ServerPlayer p = player(h);
         double x0 = p.getX(), z0 = p.getZ();
         String run = newRun("wall");
-        check(run(h, "bench fly start " + p.getStringUUID() + " 4.3 3 " + run + " wall") == 1, "fly start 失败");
         int view = viewSize(h);
         check(view == 453, "视距 10 时原版发包范围应是 453 个 chunk：" + view);
-        h.succeedWhen(() -> {
+        // 起飞前等初始视野全部就绪（和 layer2.fly 一样）；飞行只走进已就绪的 chunk
+        h.startSequence().thenWaitUntil(() -> check(run(h, "bench fly ready " + p.getStringUUID()) == 0, "初始视野没就绪"))
+                .thenExecute(() -> check(run(h, "bench fly start " + p.getStringUUID() + " 4.3 3 " + run + " wall") == 1, "fly start 失败"))
+                .thenWaitUntil(() -> {
             JsonObject done = done(h, run);
             List<JsonObject> rows = lines(h, run, "seconds.jsonl");
             check(rows.size() == 3, "seconds.jsonl 应有 3 行，实际 " + rows.size());
@@ -166,8 +174,10 @@ public class FlightGameTest implements FabricGameTest {
                 check(t >= last && t <= done.get("end_ms").getAsLong(), "事件时间倒退或晚于结束：" + e);
                 last = t;
             }
+            check(FlightGameTest.field(done, "stalled_ticks").getAsInt() == 0 && FlightGameTest.field(done, "unready_ticks").getAsInt() == 0, "走路速度不该卡住：" + done);
+            check(Math.abs(FlightGameTest.field(done, "distance").getAsDouble() - 12.9) < 0.5, "实际距离：" + done);
             delete(h, run);
-        });
+        }).thenSucceed();
     }
 
     /** tick 模式：位置只跟 tick 数走，飞满 1 秒正好前进 速度 × 1 格。 */
@@ -176,14 +186,42 @@ public class FlightGameTest implements FabricGameTest {
         ServerPlayer p = player(h);
         double x0 = p.getX();
         String run = newRun("tick");
-        check(run(h, "bench fly start " + p.getStringUUID() + " 20 1 " + run + " tick") == 1, "fly start 失败");
-        h.succeedWhen(() -> {
+        h.startSequence().thenWaitUntil(() -> check(run(h, "bench fly ready " + p.getStringUUID()) == 0, "初始视野没就绪"))
+                .thenExecute(() -> check(run(h, "bench fly start " + p.getStringUUID() + " 20 1 " + run + " tick") == 1, "fly start 失败"))
+                .thenWaitUntil(() -> {
             JsonObject done = done(h, run);
             check(done.get("mode").getAsString().equals("tick"), "mode：" + done);
             check(done.get("ticks").getAsInt() >= 20, "tick 模式飞 1 秒至少 20 tick：" + done);
+            // 1 秒 20 格还在已就绪的视野里，不会卡住：正好前进 20 格
+            check(FlightGameTest.field(done, "stalled_ticks").getAsInt() == 0, "不该卡住：" + done);
             check(Math.abs(done.get("end_x").getAsDouble() - x0 - 20) < 1e-6, "应正好前进 20 格：" + done);
+            check(Math.abs(FlightGameTest.field(done, "distance").getAsDouble() - 20) < 1e-6, "distance：" + done);
             delete(h, run);
-        });
+        }).thenSucceed();
+    }
+
+    /**
+     * 像真实客户端一样（11-09，看门狗问题）：前面的 chunk 没就绪就停在边缘，不进去，所以玩家的实体 tick 不会在主线程上同步生成。
+     * tick 模式每 tick 100 格，生成跟不上：一定会卡住，但每个 tick 结束时玩家所在的 chunk 都已就绪。
+     */
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
+    public void fastFlightStallsAtEdgeInsteadOfEnteringUnreadyChunks(GameTestHelper h) {
+        ServerPlayer p = player(h);
+        String run = newRun("edge");
+        h.startSequence().thenWaitUntil(() -> check(run(h, "bench fly ready " + p.getStringUUID()) == 0, "初始视野没就绪"))
+                .thenExecute(() -> check(run(h, "bench fly start " + p.getStringUUID() + " 2000 2 " + run + " tick") == 1, "fly start 失败"))
+                .thenWaitUntil(() -> {
+            JsonObject done = done(h, run);
+            check(FlightGameTest.field(done, "unready_ticks").getAsInt() == 0, "有 tick 结束时玩家在没就绪的 chunk 里：" + done);
+            check(FlightGameTest.field(done, "stalled_ticks").getAsInt() > 0 && FlightGameTest.field(done, "stall_ms").getAsDouble() > 0, "生成跟不上却没卡住：" + done);
+            check(FlightGameTest.field(done, "distance").getAsDouble() < FlightGameTest.field(done, "ideal_distance").getAsDouble(), "卡住了距离应该比理想的短：" + done);
+            check(Math.abs(FlightGameTest.field(done, "ideal_distance").getAsDouble() - 4000) < 1e-6, "理想距离 = 速度 × 时长：" + done);
+            JsonObject sync = FlightGameTest.field(done, "sync_loads").getAsJsonObject();
+            check(sync.has("count") && sync.has("max_ms") && sync.has("stack"), "缺同步加载计数：" + done);
+            long stalled = lines(h, run, "seconds.jsonl").stream().mapToLong(r -> FlightGameTest.field(r, "stalled_ticks").getAsLong()).sum();
+            check(stalled == FlightGameTest.field(done, "stalled_ticks").getAsLong(), "逐秒的 stalled_ticks 加起来不等于总数");
+            delete(h, run);
+        }).thenSucceed();
     }
 
     /** 中途 stop：done.json 标 stopped，飞行不再推玩家。 */

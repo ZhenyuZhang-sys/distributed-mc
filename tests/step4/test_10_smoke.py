@@ -34,7 +34,9 @@ def test_walk_flight_writes_csv(server, smoke):
         rows = list(csv.DictReader(f))
     assert [int(r['t_s']) for r in rows] == list(range(1, 16))
     assert all(int(r['view_chunks']) == 453 for r in rows), {r['view_chunks'] for r in rows}
-    assert all(0 <= float(r['void_rate']) <= float(r['void_rate_max']) <= 1 for r in rows)
+    # void_rate 是各 tick 的平均，可能比最大值大最后一位（浮点误差，fish 11-09 在 2 核上遇到）
+    assert all(0 <= float(r['void_rate']) <= float(r['void_rate_max']) + 1e-12 and float(r['void_rate_max']) <= 1 for r in rows)
+    assert all('stalled_ticks' in r for r in rows)
     assert all(int(r['ticks']) > 0 and float(r['cpu_cores']) > 0 for r in rows)
     xs = [float(r['x']) for r in rows]
     assert abs(xs[-1] - START[0] - 4.3 * 15) < 1.0 and xs == sorted(xs)
@@ -42,6 +44,7 @@ def test_walk_flight_writes_csv(server, smoke):
     assert summary['initial_load_s'] > 0 and summary['visits'] > 0
     assert summary['view_distance'] == 10 and summary['available_processors'] >= 1
     assert summary['scan_every_ticks'] == 1
+    assert summary['sync_loads'] == 0, summary  # 主线程不能同步生成（守护计数）
     assert (result / 'raw' / 'done.json').is_file() and (result / 'raw' / 'chunks.jsonl').is_file()
     # 归档后服务器目录里的原始输出删掉，不在 test-data 里越积越多
     assert not (layer2.RUNS / summary['run']).exists()

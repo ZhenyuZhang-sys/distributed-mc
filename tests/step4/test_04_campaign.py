@@ -156,6 +156,19 @@ def test_campaign_reruns_on_interference_when_configured(tmp_path):
     assert m['status'] == 'invalid' and m['concurrent'] == ['a start']
 
 
+def test_campaign_reruns_invalid_results(tmp_path):
+    # 主线程同步加载不为 0 的一轮判无效、重跑（调度 11-09），不管 rerun_on_interference
+    p = lc.load_protocol(PROTOCOL)
+    names = [s['slot'] for s in lc.slots(p)]
+    results = {n: [dict(concurrent=[])] for n in names}
+    results[names[2]] = [dict(concurrent=[], invalid='主线程同步加载 3 次'), dict(concurrent=[])]
+    fly_slot, _ = fake(results)
+    out = lc.run_campaign(p, tmp_path / 'c', fly_slot)
+    assert out['passed'] == len(names)
+    m = json.loads((tmp_path / 'c' / names[2] / 'attempt-001' / 'manifest.json').read_text())
+    assert m['status'] == 'invalid' and '同步加载' in m['invalid']
+
+
 def test_campaign_gives_up_after_max_attempts(tmp_path):
     p = lc.validate(proto(max_attempts=2))
     names = [s['slot'] for s in lc.slots(p)]

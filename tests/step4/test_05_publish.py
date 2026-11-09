@@ -33,6 +33,7 @@ def campaign(tmp_path, concurrent_slot=None, pregen_void=.002):
         return dict(void_mean=void, void_p95=void * 2, latency_p50_ms=0.0, latency_p95_ms=500.0, latency_p99_ms=900.0,
                     mspt_mean=10.0, mspt_max=40.0, cpu_cores_mean=1.5, censored_fraction=0.0, available_processors=slot['cpus'],
                     scan_ms_total=5.0, scan_every_ticks=1, ticks_total=2400, initial_load_s=20.0, flight_dir=str(out),
+                    stall_s=3.0, stall_fraction=.025, distance_ratio=.9, distance=3240.0, sync_loads=0,
                     concurrent=['mc-test-fish start'] if slot['slot'] == concurrent_slot else [])
     root = tmp_path / 'runs' / 'layer2-x'
     return p, lc.run_campaign(p, root, fly_slot), root
@@ -49,7 +50,8 @@ def test_publish_writes_tables_report_and_digests(tmp_path):
     state = lc.publish(root, p, result, out)
     runs = rows(out / 'layer2-runs.csv')
     assert len(runs) == 7 and {r['kind'] for r in runs} == {'selfcheck', 'smoke'}
-    for col in ('latency_p50_ms', 'latency_p95_ms', 'latency_p99_ms', 'void_mean', 'available_processors', 'concurrent', 'scan_every_ticks'):
+    for col in ('latency_p50_ms', 'latency_p95_ms', 'latency_p99_ms', 'void_mean', 'available_processors', 'concurrent', 'scan_every_ticks',
+                'stall_s', 'stall_fraction', 'distance_ratio', 'sync_loads'):
         assert col in runs[0]
     summary = {(r['speed_name'], r['cpus']): r for r in rows(out / 'layer2-summary.csv')}
     assert set(summary) == {('walk', '2'), ('horse', '2'), ('elytra', '2'), ('elytra', '4')}  # 只汇总冒烟矩阵，不含自检
@@ -61,7 +63,8 @@ def test_publish_writes_tables_report_and_digests(tmp_path):
     check = json.loads((out / 'selfcheck.json').read_text())
     assert check['pregen']['status'] == 'passed' and check['one_core']['status'] == 'passed'
     report = (out / 'baseline-layer2.md').read_text()
-    for text in ('冒烟', 'N100 上要重测', '生成线程', 'availableProcessors', '自检', 'scan_every_ticks', '个百分点', '0.0%～0.0%'):
+    for text in ('冒烟', 'N100 上要重测', '生成线程', 'availableProcessors', '自检', 'scan_every_ticks', '个百分点', '0.0%～0.0%',
+                 '卡住', '实际距离', '同步加载'):
         assert text in report, text
     assert state['smoke'] is True and state['campaign'] == 'layer2-x'
     for name, value in state['artifacts'].items():
@@ -97,7 +100,7 @@ def test_readme_block_rendered_from_published_results(tmp_path):
     assert '冒烟' in block and 'N100 上要重测' in block and 'baseline-layer2.md' in block
     for speed in ('walk', 'horse', 'elytra'):
         assert speed in block or {'walk': '走路', 'horse': '骑马', 'elytra': '鞘翅'}[speed] in block
-    assert '自检' in block
+    assert '自检' in block and '卡住' in block
     # README 里两个标记之间的内容就是它；替换函数只动标记之间
     readme = tmp_path / 'README.md'
     readme.write_text('前面\n' + lc.README_BEGIN + '\n旧的\n' + lc.README_END + '\n后面\n')
