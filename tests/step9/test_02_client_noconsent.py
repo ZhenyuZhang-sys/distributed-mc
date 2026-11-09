@@ -29,7 +29,8 @@ def test_client_joined(server, run):
 
 
 def test_mod_loaded_and_waiting_for_consent(run):
-    lines = [l for l in run["log"].splitlines() if "mcdonate" in l and "等待同意" in l]
+    # Minecraft 的日志格式不带 logger 名字，这一行就是 ClientMod 启动时打的固定内容
+    lines = [l for l in run["log"].splitlines() if "等待同意：mc-donate 默认关闭" in l]
     assert lines, "客户端 mod 没有报'等待同意'：\n" + "\n".join(l for l in run["log"].splitlines() if "mcdonate" in l)
 
 
