@@ -6,7 +6,7 @@ HERE = Path(__file__).parent / 'firework-runs'
 CAMPAIGNS = [('k2-637c2de-ufw-main-8', '637c2de'), ('k3-30a7c22-ufw-main-8', '30a7c22'), ('u1-30a7c22-ufw-sweep8-lo', '30a7c22'),
              ('k3-2359f7d-ufw-main-8', '2359f7d'), ('k3-2359f7d-ufw-mspt', '2359f7d'), ('k2-10cadc8-ufw-turn-first', '10cadc8'),
              ('u1-10cadc8-ufw-straight3', '10cadc8'), ('u1-635a362-ufw-turn-donor', '635a362'), ('k3-6b63414-ufw-mw-turn', '6b63414'),
-             ('k2-ea52493-ufw-mw-straight', 'ea52493')]
+             ('k2-03b2981-ufw-mw-straight', '03b2981')]
 NOTE = ('用户同款服务器：2 核、3G、-Xmx2G、视距 10/6；donor 8 核。几个槽位并行跑，粗测。代码：637c2de = fish-opt+kexu，'
         '30a7c22 / 2359f7d / 3132230 = fish-perf 各版本 + kexu。前方已就绪距离、扇形按 codex-audit K1～K3 修好的算法从归档重算'
         '（初始视野补上、route 按航段取方向、DDA 逐 chunk），单位格。多轮的格子写中位数（最低～最高，几轮）')
