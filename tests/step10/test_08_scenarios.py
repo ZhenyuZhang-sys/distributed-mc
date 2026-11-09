@@ -83,3 +83,79 @@ def test_feature_combos():
     assert _features_on('v0') == ()
     with pytest.raises(ValueError):
         _features_on('deadline+warp')
+
+
+# ---- 驱动：路线、两个玩家、donor 配置、新指标 ----
+
+from step10.test_06_demo import Clock, FakeFly, FakeRunner   # noqa: E402
+from analysis.flight_driver import make_flight_driver       # noqa: E402
+from bench.demo.control import Controller, Flyer           # noqa: E402
+from bench.demo.poll import Poller                         # noqa: E402
+
+
+class RouteFly(FakeFly):
+    def __call__(self, server, run, player, start, speed, seconds, out_dir, **kw):
+        self.runner.status['import'] = dict(totalMs=self.runner.status.get('import', {}).get('totalMs', 0) + 250, count=5)
+        for w in self.runner.status['workers']:
+            w['done'] = w.get('done', 0) + 12
+        self.runner.server_log += ["[12:00:01] [Server thread/WARN]: Can't keep up! Is the server overloaded?",
+                                   "[12:00:02] [Server thread/WARN]: abl moved too quickly! 3,0,0"]
+        out = super().__call__(server, run, player, start, speed, seconds, out_dir, **kw)
+        self.calls[-1].update(route=kw.get('route'), player=player)
+        return out
+
+
+def real_rig(tmp_path):
+    runner = FakeRunner()
+    runner.netem = True
+    runner.server_log = []
+    runner.server_log_since = lambda t: list(runner.server_log)
+    runner.worker_cpu_cores = lambda services, seconds: {s: 1.5 for s in services}
+    poller = Poller(runner, runs_dir=tmp_path / 'runs', clock=Clock())
+    fly = RouteFly(runner)
+    flyer = Flyer(runner, poller, tmp_path / 'artifacts', fly=fly)
+    ctl = Controller(runner, poller, flyer, wait_timeout=1, wait_interval=0)
+    profiles = {'1x8': {'donors': 1, 'env': {'WORKER_CPUS': '8', 'WORKER_CPUSET': '24-31'}},
+                '3x4': {'donors': 3, 'env': {'WORKER3_CPUS': '4'}}}
+    return runner, ctl, flyer, fly, make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles=profiles)
+
+
+def rcell(scenario, donors=1, profile='1x8', features='deadline+throughput', cpus=4):
+    p = dict(donors=donors, speed='elytra', server_cpus=cpus, bots=1, features=features, latency_ms=0, duration_s=120,
+             scenario=scenario)
+    if donors:
+        p['donor_profile'] = profile
+    return dict(experiment='flight', repeat=1, params=p)
+
+
+def test_driver_flies_the_scenario_route(tmp_path):
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    out = drive(rcell('turning'), tmp_path / 'c1')
+    assert fly.calls[-1]['route'] == scenarios.routes('turning', seed=424242, seconds=120)[0]
+    up = [c for c in runner.calls if c[:2] == ('compose', 'up')][-1]
+    assert ('WORKER_CPUS', '8') in up and ('WORKER_CPUSET', '24-31') in up and 'worker2' not in up   # 1 个强 donor
+    assert fly.calls[-1]['features'] == ['deadline', 'throughput']
+    # 新指标
+    assert out['cant_keep_up'] == 1 and out['moved_too_quickly'] == 1
+    assert out['import_ms'] == 250
+    assert out['worker_cores'] == 1.5 and out['tile_s'] == pytest.approx(12 / 120)
+    assert out['scenario_route'].startswith('-90,30,')
+
+
+def test_driver_two_players_at_once(tmp_path):
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    out = drive(rcell('two_players', donors=0, profile=None, features='v0'), tmp_path / 'c2')
+    routes = scenarios.routes('two_players', seed=424242, seconds=120)
+    assert sorted(c['route'] for c in fly.calls[-2:]) == sorted(routes)
+    assert len({c['player'] for c in fly.calls[-2:]}) == 2              # 两个不同的假玩家
+    assert out['players'] == 2 and 'stall_fraction' in out             # 两个人的卡住占比取均值
+    assert out['stall_fraction_max'] >= out['stall_fraction']
+
+
+def test_profile_must_exist(tmp_path):
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    with pytest.raises(ValueError, match='donor_profile'):
+        drive(rcell('turning', profile='9x9'), tmp_path / 'c3')
