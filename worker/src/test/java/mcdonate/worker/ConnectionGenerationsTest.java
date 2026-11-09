@@ -36,4 +36,17 @@ class ConnectionGenerationsTest {
         g.finished(7);
         assertEquals(List.of(), g.disconnected());
     }
+
+    @Test
+    void generationOfTaskIsWhereItWasReceived() {
+        // codex-audit G2：发送时按任务收到时的那一代比，不按发送那一刻的
+        ConnectionGenerations g = new ConnectionGenerations();
+        g.connected();
+        g.received(5);
+        long gen = g.generationOf(5);
+        g.disconnected();
+        g.connected();
+        assertTrue(g.current() != gen);
+        assertEquals(-1, g.generationOf(99));
+    }
 }
