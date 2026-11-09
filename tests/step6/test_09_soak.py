@@ -4,9 +4,12 @@
   移动用第 4 步的飞行场景（bench.layer2.fly）：像客户端一样每 tick 前进，不越过没就绪的 chunk（11-09 起；
   原来用 rcon tp 每 0.5 秒跳 7 格，假玩家会跑到生成前面，在实体 tick 里同步生成，2 核时被看门狗杀掉）。
   守护计数 sync_loads.count 必须为 0，否则这次测量无效；卡住时长、实际距离记录。
-- 跑完：存档里每个 chunk 都读得出来；抽 1% 的 chunk 在全新世界（同 seed）里单独生成作对照，
-  按"导入的 tile / 服务器生成的"分开逐块比（analysis/mca/decor.py 两层）：严格层两边都是 0，
-  导入的装饰类差异率、地形互换率各自不高于服务器生成的 1.5 倍（同 5.4）；记录指标。
+- 跑完：存档里每个 chunk 都读得出来；在全新世界（同 seed）里单独生成对照，逐块比（analysis/mca/decor.py 两层）。
+  两组分开抽（11-09 调度看过数据后改，见 docs/step6-report.md 第 6 节）：
+  - 导入的：被接受的 tile 中间 2×2（邻居都在 tile 里，地物在 donor 上做完）、而且服务器还没把它做成成品（没被玩过、没被 tick 过）的，
+    最多 64 个。严格层必须是 0。一个都抽不到算测量无效（原来按全部成品 chunk 抽 1%，导入的一个都没抽到，这一组是空的）。
+  - 服务器生成的成品 chunk 抽 1%：只做统计层（导入的装饰类、地形互换率不高于它的 1.5 倍），严格层只记录不判——
+    被玩家附近 tick 了 30 分钟的世界和刚生成的对照，在流体、气泡柱上本来就不一样（11-09 f2：920 个方块全是这类），和 donor 无关。
 - 会用 new_world.sh 把测试服务器换成全新世界做对照，所以放在第 6 步最后。
 - 2 核再跑一次：MC_CPUS=2 MC_CPUSET=32-33 scripts/test.sh step6 --slow -k soak
 """
@@ -77,10 +80,14 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
             shutil.copy2(live, keep / f"live-{bad.name}")
         raise
 
-    # 2. 抽 1%，在全新世界里单独生成作对照
+    # 2. 抽样，在全新世界里单独生成作对照（两组分开抽，见开头）
     imported = {(tx * 4 + dx, tz * 4 + dz) for tx, tz in imported_tiles for dx in range(4) for dz in range(4)}
+    centers = sorted({(tx * 4 + dx, tz * 4 + dz) for tx, tz in imported_tiles for dx in (1, 2) for dz in (1, 2)})
+    untouched = [p for p in centers if (c := read_chunk(snap, *p)) is not None and c.status != "minecraft:full"]
     rng = random.Random(424242)
-    sample = rng.sample(full, max(1, len(full) // 100))
+    imported_sample = rng.sample(untouched, min(64, len(untouched)))
+    server_pool = [p for p in full if p not in imported]
+    sample = imported_sample + rng.sample(server_pool, max(1, len(server_pool) // 100))
     level = f"soak{int(time.time())}"
     run(str(SCRIPTS / "new_world.sh"), level, str(server.seed), timeout=900)
     server.level = level
@@ -112,12 +119,14 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
         "flight": {k: v for k, v in flight.items() if "stall" in k or "stuck" in k or "distance" in k or k in
                    ("void_mean", "void_p95", "latency_p95_ms", "cpu_cores_mean", "mspt_mean", "mspt_max", "ticks_per_s")},
         "strict_examples": acc["imported"].examples + acc["server"].examples,
+        "imported_centers": len(centers), "imported_untouched": len(untouched), "imported_sample": len(imported_sample),
     }
     print(json.dumps(report, ensure_ascii=False))
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
         (server.artifact_dir / "soak.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-    assert all(v == 0 for v in strict.values()), report
-    if acc["imported"].blocks and acc["server"].blocks:
-        bad = relative_check(acc["imported"], acc["server"])
-        assert not bad, (bad, rate)
+    assert imported_sample, f"没抽到可比的导入 chunk（被接受的 tile {len(imported_tiles)} 个），这次测量无效：{report}"
+    # 导入的：严格层 0。服务器生成的：严格层只记录（被 tick 过的世界，见开头）
+    assert strict["imported"] == 0, report
+    bad = relative_check(acc["imported"], acc["server"])
+    assert not bad, (bad, rate)
