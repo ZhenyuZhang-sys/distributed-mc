@@ -79,7 +79,21 @@ def test_imported_tiles_in_save(server, filled):
 
 
 @pytest.mark.long
+def test_scan_runs_within_its_limits(server, filled):
+    # 日常回归里的功能断言（调度 11-09）：扫描跑起来了，每次发起的读盘不超过上限，时间预算的配置生效。
+    # 扫描有多快是性能测试（下面的 test_scan_is_cheap，标 slow，只在单独跑 benchmark 时判）。
+    _, s, _ = filled
+    scan, cfg = s["scan"], s["config"]
+    assert scan["count"] > 0 and scan["recent"], scan
+    assert all(len(r) == 3 for r in scan["recent"]), scan["recent"][:3]
+    assert all(r[2] <= cfg["demandReadsPerScan"] for r in scan["recent"]), (cfg["demandReadsPerScan"], scan["recent"])
+    assert cfg["demandScanBudgetMicros"] > 0, cfg
+
+
+@pytest.mark.slow
 def test_scan_is_cheap(server, filled):
+    # 11-09 改成 slow（调度决定，看过数据后改）：7 个槽位并行跑时启动段第 2 次扫描 CPU 5838 µs > 5000，计时断言在这种负载下不可靠；
+    # 按项目规则性能测试标 slow、不进日常回归，只在单独跑 benchmark 时判，阈值不动。
     # 调度 11-08 定：扫描每秒一次。启动段的几毫秒是 JIT 预热和生成线程抢核，只出现一次；稳定段代表常态。
     # - 稳定段（出现 STARTUP_S 秒以后）：单次扫描主线程 CPU 的 p95 < 1 ms
     # - 启动段：单次 CPU < 5 ms、墙钟 < 10 ms（半个 tick）

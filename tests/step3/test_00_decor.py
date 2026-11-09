@@ -5,7 +5,8 @@ from pathlib import Path
 from types import MappingProxyType
 
 from analysis.mca.chunk import AIR, BlockState, Chunk
-from analysis.mca.decor import Diff, binomial_tail, classify, compare_chunks, is_decor_diff, relative_check
+from analysis.mca.decor import (SEAM_GUARD_CLUSTER_MAX, SEAM_GUARD_FACTOR, Diff, binomial_tail, classify, compare_chunks,
+                                is_decor_diff, relative_check, seam_guard)
 
 STONE = BlockState("minecraft:stone")
 WATER = BlockState("minecraft:water", (("level", "0"),))
@@ -131,3 +132,30 @@ def test_lost_sea_is_strict_by_cluster_size():
     sea = [(x, 62, z) for x in range(10) for z in range(10)]
     bad = relative_check(Diff(blocks=10**6, terrain_positions=sea), Diff(blocks=10**6, terrain_positions=[]))
     assert bad and bad[0].startswith("严格")
+
+
+# ---- 导入边界一圈、两圈的护栏（7.8 已知问题，调度 11-09 定，看过数据后定的）----
+
+def test_seam_guard_allows_known_excess():
+    # 4 次第 5 步 e2e 合计：ring1 的地形互换密度约是外面的 2～3 倍，同类小地物，最大 22 个方块——护栏要放过
+    outside = Diff(blocks=664, terrain_positions=[p for i in range(28) for p in blob(1000 * i, 3)])
+    ring = Diff(blocks=200, terrain_positions=[p for i in range(25) for p in blob(1000 * i, 22 if i == 0 else 3)])
+    assert seam_guard(ring, outside) == []
+
+
+def test_seam_guard_catches_much_worse():
+    outside = Diff(blocks=664, terrain_positions=[p for i in range(10) for p in blob(1000 * i, 3)])
+    worse = Diff(blocks=200, terrain_positions=[p for i in range(20) for p in blob(1000 * i, 3)])  # 约 6.6 倍
+    bad = seam_guard(worse, outside)
+    assert len(bad) == 1 and "倍" in bad[0], bad
+    huge = Diff(blocks=200, terrain_positions=blob(0, SEAM_GUARD_CLUSTER_MAX + 1))
+    assert any("方块" in b for b in seam_guard(huge, outside))
+    assert seam_guard(Diff(blocks=200, terrain_positions=blob(0, 67)), outside) == [], "边界上 67 个方块的一处在护栏以内（tile 里照样是 66）"
+
+
+def test_seam_guard_decor_and_empty_outside():
+    assert seam_guard(Diff(blocks=10**6, decor=400), Diff(blocks=10**6, decor=100)) == []
+    assert len(seam_guard(Diff(blocks=10**6, decor=600), Diff(blocks=10**6, decor=100))) == 1
+    # 外面一处都没有时，按 1 处算底，边界上一两处不报
+    assert seam_guard(Diff(blocks=200, terrain_positions=blob(0, 3)), Diff(blocks=664, terrain_positions=[])) == []
+    assert SEAM_GUARD_FACTOR == 5.0
