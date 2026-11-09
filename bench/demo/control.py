@@ -120,7 +120,9 @@ class Controller:
     def donor_off(self):
         """关找需求，停掉所有 worker，等 coordinator 那边一个都不剩。"""
         self.runner.rcon('donor demand off')
-        self.runner.compose('stop', *ALL_WORKERS, timeout=300)
+        # 只停 compose 里有的（main 里还没有 worker3，compose stop 不认识的服务会报错）
+        have = set(self.runner.services())
+        self.runner.compose('stop', *[w for w in ALL_WORKERS if w in have], timeout=300)
         self._wait(lambda: self.status().get('workers', []) == [], 'donor 都断开')
 
     def feature(self, name, on):

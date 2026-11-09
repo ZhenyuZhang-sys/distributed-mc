@@ -25,6 +25,10 @@ class Runner:
     def compose(self, *args, timeout=120) -> str:
         return compose(*args, timeout=timeout)
 
+    def services(self) -> list:
+        """compose 里定义了的服务（不管起没起）。"""
+        return compose('config', '--services').split()
+
     def script(self, name, *args, env=None, timeout=600) -> str:
         if '/' in name or not (SCRIPTS / name).is_file():
             raise ValueError(f'没有这个脚本：{name}')
