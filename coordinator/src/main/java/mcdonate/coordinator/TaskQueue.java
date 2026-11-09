@@ -105,6 +105,10 @@ public final class TaskQueue {
         int lateral = Integer.MAX_VALUE;
         /** 派出时离截止（importBy，不知道时 due）还有多少毫秒；不知道是 -1。 */
         long slackAtLease = -1;
+        /** 11-09 加速模式：后台 tile（找需求范围外一圈一圈往外排的），只给开了加速的 donor。有了截止时间就变成普通任务。 */
+        boolean background;
+        /** 这次是当后台任务派出去的（统计用）。 */
+        boolean leasedAsBackground;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -148,6 +152,9 @@ public final class TaskQueue {
         Task t = tasks.get(taskId);
         if (t != null) {
             t.doneWorld = world;
+            if (t.leasedAsBackground) {
+                backgroundAccepted.merge(t.worker, 1, Integer::sum);
+            }
         }
     }
 
@@ -309,11 +316,20 @@ public final class TaskQueue {
      * @param dueOk 这个 worker 能不能在 due 之前做完（7.3：慢的 donor 只派时间宽裕的）；due 不知道的任务不问
      */
     public synchronized Optional<Assignment> assign(int worker, int maxInFlight, java.util.function.LongPredicate dueOk) {
+        return assign(worker, maxInFlight, dueOk, false);
+    }
+
+    /**
+     * 同上，boost：这个 worker 开了加速模式（11-09）。后台任务（{@link #backgroundTask}）只给开了加速的，而且：
+     * 队里没有它能做的普通任务、它手上没有有截止的任务、后台的在途不超过名额的一半（{@link BoostPolicy#backgroundSlots}）。
+     */
+    public synchronized Optional<Assignment> assign(int worker, int maxInFlight, java.util.function.LongPredicate dueOk, boolean boost) {
         if (inFlight(worker) >= Math.max(1, maxInFlight) || queue.isEmpty()) {
             return Optional.empty();
         }
         boolean byDue = features.on(Features.DEADLINE);
         Task t = null;
+        Task bg = null;
         for (var it = queue.iterator(); it.hasNext(); ) {
             Task c = tasks.get(it.next());
             if (features.on(Features.TERRITORY) && c.hardWorld == null) {
@@ -332,6 +348,12 @@ public final class TaskQueue {
             if (!eligible(c, worker)) {
                 continue;
             }
+            if (backgroundTask(c, byDue)) {
+                if (boost && bg == null) {
+                    bg = c; // 后台的按入队顺序（一圈一圈往外排进来的），留到最后
+                }
+                continue;
+            }
             if (byDue && SKIP_NO_DEADLINE && c.scored && deadlineKey(c) == Long.MAX_VALUE) {
                 continue; // 11-09：找需求算过、玩家不会去的（侧后方）不派
             }
@@ -348,8 +370,16 @@ public final class TaskQueue {
                 t = c; // 7.2：最急的先派（11-09：知道前沿时按 importBy，和 pruneHopeless 的顺序一致）
             }
         }
+        if (t == null && bg != null && !holdsDeadlineTask(worker)
+                && backgroundInFlight(worker) < BoostPolicy.backgroundSlots(Math.max(1, maxInFlight))) {
+            t = bg;
+        }
         if (t == null) {
             return Optional.empty();
+        }
+        t.leasedAsBackground = t == bg;
+        if (t.leasedAsBackground) {
+            backgroundLeased.merge(worker, 1, Integer::sum);
         }
         queue.remove(t.id);
         if (t.hardWorld == null) {
@@ -369,6 +399,74 @@ public final class TaskQueue {
         t.deadline = Math.min(t.leasedAt + leaseMs, t.leasedAt + MAX_LEASE_TOTAL_MS);
         leaseAdd(worker, t.id);
         return Optional.of(new Assignment(t.id, t.tx, t.tz, leaseMs));
+    }
+
+    /**
+     * 后台任务：明确的后台 tile；开 deadline 时还有找需求算过、没有截止时间的（侧后方，对不开加速的照旧不派）。
+     */
+    private static boolean backgroundTask(Task t, boolean byDue) {
+        return t.background || (byDue && SKIP_NO_DEADLINE && t.scored && deadlineKey(t) == Long.MAX_VALUE);
+    }
+
+    private boolean holdsDeadlineTask(int worker) {
+        Set<Long> s = leases.get(worker);
+        if (s != null) {
+            for (long id : s) {
+                Task x = tasks.get(id);
+                if (x != null && !x.leasedAsBackground && deadlineKey(x) != Long.MAX_VALUE) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private int backgroundInFlight(int worker) {
+        int n = 0;
+        Set<Long> s = leases.get(worker);
+        if (s != null) {
+            for (long id : s) {
+                Task x = tasks.get(id);
+                if (x != null && x.leasedAsBackground) {
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
+    private final Map<Integer, Integer> backgroundLeased = new HashMap<>();
+    private final Map<Integer, Integer> backgroundAccepted = new HashMap<>();
+
+    /** 11-09 加速模式：放一个后台 tile（找需求范围外，一圈一圈往外）。已经在队里、在做、做完的不放。 */
+    public synchronized boolean enqueueBackground(int tx, int tz, String hardWorld) {
+        if (!enqueue(tx, tz, hardWorld)) {
+            return false;
+        }
+        Task t = tasks.get(byTile.get(tileKey(tx, tz)));
+        t.background = true;
+        t.scored = true; // 没有截止时间：不算进找需求的队列上限
+        return true;
+    }
+
+    /** 排着的后台任务数（后台扫描按它限量）。 */
+    public synchronized int backgroundQueued() {
+        int n = 0;
+        for (long id : queue) {
+            if (tasks.get(id).background) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** 这个 worker 当后台任务领过几个、被接受导入几个（/donor status）。 */
+    public synchronized int backgroundLeased(int worker) {
+        return backgroundLeased.getOrDefault(worker, 0);
+    }
+
+    public synchronized int backgroundAccepted(int worker) {
+        return backgroundAccepted.getOrDefault(worker, 0);
     }
 
     /** 7.2：更新 tile 的预计"被玩家看到"时间（找需求每次扫描时算）。 */
@@ -393,6 +491,9 @@ public final class TaskQueue {
             t.importBy = importBy;
             t.lateral = lateral;
             t.scored = true;
+            if (due != Long.MAX_VALUE || importBy != Long.MAX_VALUE) {
+                t.background = false; // 玩家要看到了：普通任务，谁都能做
+            }
         }
     }
 
@@ -458,6 +559,11 @@ public final class TaskQueue {
      * （f3 实测几轮 donor 写入的 chunk 几乎全在玩家身后）。开关关着（v0，先来先服务）不动，它是对照组。
      */
     public synchronized Stale dropPassed(TileFilter inDemand) {
+        return dropPassed(inDemand, (x, z) -> false);
+    }
+
+    /** 同上，后台任务在后台范围（inBackground）里的留着（11-09 加速模式）。 */
+    public synchronized Stale dropPassed(TileFilter inDemand, TileFilter inBackground) {
         List<Long> dropped = new ArrayList<>();
         List<Cancelled> cancelled = new ArrayList<>();
         if (!features.on(Features.DEADLINE)) {
@@ -465,6 +571,9 @@ public final class TaskQueue {
         }
         for (Task t : tasks.values()) {
             if (!t.scored || t.due != Long.MAX_VALUE || inDemand.test(t.tx, t.tz)) {
+                continue;
+            }
+            if (t.background && inBackground.test(t.tx, t.tz)) {
                 continue;
             }
             if (t.state == State.QUEUED) {
