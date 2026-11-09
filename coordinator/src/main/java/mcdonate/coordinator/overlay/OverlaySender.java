@@ -56,6 +56,12 @@ public final class OverlaySender {
             }
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> server.execute(() -> c.remove(handler.getPlayer().getUUID())));
+        // 换维度、重生（codex-audit K7）：每 20 tick 才看一次所在维度，1 秒内去别的维度又回来会漏掉重同步；换的那一刻就记下，
+        // 下一次从整片快照重来（这两个事件都在主线程上）
+        net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register(
+                (player, origin, destination) -> c.away(player.getUUID()));
+        net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents.AFTER_RESPAWN.register(
+                (oldPlayer, newPlayer, alive) -> c.away(newPlayer.getUUID()));
         Provenance.addListener(c::onEvent);
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             if (server.getTickCount() % EVERY_TICKS == 0) {

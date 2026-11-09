@@ -87,15 +87,46 @@ public record ProvenanceUpdate(int version, boolean full, int centerX, int cente
         return summary == null || (summary.donorsOnline() >= 0 && summary.importedTotal() >= 0 && summary.importedByYou() >= 0);
     }
 
-    /** 拆成每包不超过 {@link #MAX_CHUNKS} 条：donor 表放第一包，摘要放最后一包，只有第一包带 full。 */
+    /**
+     * 拆包：每包不超过 {@link #MAX_CHUNKS} 条、donor 表不超过 {@link #MAX_DONORS} 个（codex-audit K6），每包带上它引用的 donor；
+     * 没被引用的 donor 放第一包（放得下的话）。按 donor 排过序再切，包数少。摘要放最后一包，只有第一包带 full。
+     */
     public static List<ProvenanceUpdate> split(boolean full, int centerX, int centerZ, List<Donor> donors, List<Entry> chunks,
             Summary summary) {
+        java.util.Map<Integer, Donor> byIndex = new java.util.HashMap<>();
+        for (Donor d : donors) byIndex.putIfAbsent(d.index(), d);
+        List<Entry> sorted = new ArrayList<>(chunks);
+        sorted.sort(java.util.Comparator.comparingInt(e -> e.source() == Source.DONOR ? e.donor() : -1));
+        List<List<Entry>> parts = new ArrayList<>();
+        List<java.util.LinkedHashSet<Integer>> refs = new ArrayList<>();
+        List<Entry> cur = new ArrayList<>();
+        java.util.LinkedHashSet<Integer> curRefs = new java.util.LinkedHashSet<>();
+        for (Entry e : sorted) {
+            boolean newDonor = e.source() == Source.DONOR && !curRefs.contains(e.donor());
+            if (cur.size() >= MAX_CHUNKS || (newDonor && curRefs.size() >= MAX_DONORS)) {
+                parts.add(cur);
+                refs.add(curRefs);
+                cur = new ArrayList<>();
+                curRefs = new java.util.LinkedHashSet<>();
+            }
+            cur.add(e);
+            if (e.source() == Source.DONOR) curRefs.add(e.donor());
+        }
+        parts.add(cur);
+        refs.add(curRefs);
+        java.util.Set<Integer> referenced = new java.util.HashSet<>();
+        refs.forEach(referenced::addAll);
+        for (Donor d : donors) {   // 没被引用的：第一包放得下就放（老调用方的行为）
+            if (!referenced.contains(d.index()) && refs.get(0).size() < MAX_DONORS) refs.get(0).add(d.index());
+        }
         List<ProvenanceUpdate> out = new ArrayList<>();
-        int n = Math.max(1, (chunks.size() + MAX_CHUNKS - 1) / MAX_CHUNKS);
-        for (int i = 0; i < n; i++) {
-            List<Entry> part = chunks.subList(i * MAX_CHUNKS, Math.min(chunks.size(), (i + 1) * MAX_CHUNKS));
-            out.add(new ProvenanceUpdate(full && i == 0, centerX, centerZ, i == 0 ? donors : List.of(), part,
-                    i == n - 1 ? summary : null));
+        for (int i = 0; i < parts.size(); i++) {
+            List<Donor> table = new ArrayList<>();
+            for (int idx : refs.get(i)) {
+                Donor d = byIndex.get(idx);
+                if (d != null) table.add(d);
+            }
+            out.add(new ProvenanceUpdate(full && i == 0, centerX, centerZ, table, parts.get(i), i == parts.size() - 1 ? summary : null));
         }
         return out;
     }

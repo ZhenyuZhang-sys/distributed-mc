@@ -142,4 +142,31 @@ class OverlayPayloadTest {
         ProvenanceUpdate inc = new ProvenanceUpdate(false, 0, 0, List.of(), List.of(new Entry(0, 0, Source.DONOR, 5)), null);
         assertTrue(ProvenanceUpdate.CODEC.decode(enc(inc)).valid());
     }
+
+    @Test
+    void splitAlsoLimitsDonorsPerPacket() {
+        // codex-audit K6：整片快照里引用的 donor 超过 MAX_DONORS（64）时，原来第一包的 donor 表超限、整包无效。
+        // 按 chunk 数和 donor 数一起分包，每包只带它引用的 donor
+        List<Donor> donors = new ArrayList<>();
+        List<Entry> many = new ArrayList<>();
+        for (int d = 0; d < 100; d++) {
+            donors.add(new Donor(d, "d" + d, "key-" + d));
+            for (int k = 0; k < 3; k++) many.add(new Entry(d % 64 - 32, d / 64 * 3 + k - 32, Source.DONOR, d));
+        }
+        for (int i = 0; i < 3000; i++) many.add(new Entry(i % 65 - 32, i / 65 - 32, Source.SERVER, -1));
+        List<ProvenanceUpdate> parts = ProvenanceUpdate.split(true, 0, 0, donors, many, new Summary(100, 1, 0));
+        assertEquals(many.size(), parts.stream().mapToInt(p -> p.chunks().size()).sum());
+        java.util.Set<Integer> known = new java.util.HashSet<>();
+        for (int i = 0; i < parts.size(); i++) {
+            ProvenanceUpdate p = parts.get(i);
+            assertTrue(p.donors().size() <= ProvenanceUpdate.MAX_DONORS && p.chunks().size() <= ProvenanceUpdate.MAX_CHUNKS);
+            assertTrue(ProvenanceUpdate.CODEC.decode(enc(p)).valid(), "第 " + i + " 包无效");
+            assertEquals(i == 0, p.full());
+            p.donors().forEach(d -> known.add(d.index()));
+            for (Entry e : p.chunks()) {
+                if (e.source() == Source.DONOR) assertTrue(known.contains(e.donor()), "引用了没给过的 donor " + e.donor());
+            }
+        }
+        assertEquals(100, known.size());
+    }
 }
