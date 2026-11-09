@@ -153,6 +153,11 @@ public final class Coordinator implements ModInitializer {
             if (server.getTickCount() % 100 == 0) {
                 flushLedger(server);
             }
+            // 11-09（A10）：按每 tick 预算做排着的导入
+            CoordinatorServer n = network;
+            if (n != null) {
+                n.drainImports();
+            }
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
         // 游戏内来源上色（docs/overlay-plan.md，kexu）：订阅了的客户端收玩家附近 chunk 的来源。

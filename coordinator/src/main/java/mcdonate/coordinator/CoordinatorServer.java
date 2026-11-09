@@ -383,7 +383,8 @@ final class CoordinatorServer {
                         }
                     });
                 } else {
-                    server.execute(() -> importResult(c, r, epoch));
+                    // 11-09（A10）：排进导入队列，每个 tick 结束时按预算做（drainImports），不再各自 server.execute
+                    pendingImports.add(() -> importResult(c, r, epoch));
                 }
             }
             case REQUEUE -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
@@ -493,6 +494,15 @@ final class CoordinatorServer {
         return java.util.Optional.of(WorkerName.of(p, sp == null ? null : sp.getGameProfile().getName(), c.world, c.name));
     }
 
+    /** 每个 tick 导入最多用多少毫秒（至少做一个）。 */
+    static final long IMPORT_BUDGET_MS = Config.getLong("importBudgetMs", 10);
+    private final java.util.Queue<Runnable> pendingImports = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    /** 主线程上，每个 tick 结束时调：按预算做排着的导入。 */
+    void drainImports() {
+        ImportBudget.drain(pendingImports, IMPORT_BUDGET_MS * 1_000_000, System::nanoTime);
+    }
+
     /** 排队剪枝估一个 tile 要多久：最快那个 donor 的延迟；没有 donor 是 0。纯函数。 */
     static long pruneTileMs(long[] latencies) {
         return java.util.Arrays.stream(latencies).min().orElse(0);
@@ -519,7 +529,7 @@ final class CoordinatorServer {
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
-                + ",\"maxLeaseTotalMs\":" + TaskQueue.MAX_LEASE_TOTAL_MS
+                + ",\"maxLeaseTotalMs\":" + TaskQueue.MAX_LEASE_TOTAL_MS + ",\"importBudgetMs\":" + IMPORT_BUDGET_MS
                 + ",\"corridorChunks\":" + TaskQueue.CORRIDOR_CHUNKS + ",\"skipNoDeadline\":" + TaskQueue.SKIP_NO_DEADLINE
                 + ",\"importFrontier\":" + DemandScanner.IMPORT_FRONTIER + ",\"importMarginMs\":" + TaskQueue.IMPORT_MARGIN_MS
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS

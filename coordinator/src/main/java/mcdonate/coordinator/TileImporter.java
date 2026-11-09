@@ -158,6 +158,28 @@ final class TileImporter {
         Map<Long, Integer> incoming = new HashMap<>();
         Map<Long, ExportedChunk> byPos = new HashMap<>();
         checkTileSize(file);
+        // 11-09（codex-audit A10）：先只看内存（很快），有在内存里的就整个丢弃，不去读 36 个存档（来晚了的结果最常见）
+        for (ExportedChunk c : file.chunks()) {
+            long key = ChunkPos.asLong(c.x(), c.z());
+            if (inMemory(access, key)) {
+                current.put(key, RegionRules.ChunkInfo.loaded());
+                incoming.put(key, ChunkStatus.byName(c.status()).getIndex());
+                RegionRules.ImportPlan<Long> early = RegionRules.importPlan(current, file.worldId(), incoming);
+                if (!early.accepted()) {
+                    LAST_SPLIT_NS[0] = System.nanoTime() - t0;
+                    LAST_SPLIT_NS[1] = 0;
+                    TilePos t = file.tile();
+                    for (int x = t.minChunkX(); x <= t.maxChunkX(); x++) {
+                        for (int z = t.minChunkZ(); z <= t.maxChunkZ(); z++) {
+                            Provenance.report(x, z, Provenance.Kind.REJECTED, workerId);
+                        }
+                    }
+                    return new StrictResult(false, early.reason(), 0, 0, 0, early.discard());
+                }
+                current.clear();
+                incoming.clear();
+            }
+        }
         for (ExportedChunk c : file.chunks()) {
             long key = ChunkPos.asLong(c.x(), c.z());
             current.put(key, chunkInfo(chunkMap, access, key));
@@ -203,6 +225,15 @@ final class TileImporter {
             Provenance.report((int) k, (int) (k >>> 32), Provenance.Kind.DONOR, workerId);
         }
         return new StrictResult(true, "", written, overwritten, skipped, RegionRules.Discard.NONE);
+    }
+
+    /** 这个 chunk 在不在内存里（和 chunkInfo 里的判断一样，不读存档）。在主线程上调用。 */
+    static boolean inMemory(ChunkMapAccessor access, long key) {
+        net.minecraft.server.level.ChunkHolder holder = access.mcdonate$getUpdatingChunkIfPresent(key);
+        return WaitDonor.on()
+                ? access.mcdonate$pendingUnloads().containsKey(key)
+                        || (holder != null && (holder.getLatestChunk() != null || WaitDonor.loadStarted(key)))
+                : holder != null || access.mcdonate$pendingUnloads().containsKey(key);
     }
 
     /** 一个 chunk 现在的情况：在内存里、空、归属某个 donor 世界、服务器的。在主线程上调用。 */
