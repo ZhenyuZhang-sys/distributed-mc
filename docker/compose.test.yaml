@@ -4,8 +4,11 @@ services:
   minecraft:
     environment:
       # 自动找需求默认关：别的测试的假玩家周围不要自动放任务。第 6 步的找需求测试用 /donor demand on 打开
+      # 第 9 步：测试服务器用离线模式（只绑 127.0.0.1），无头客户端用离线账号进服。正式的服务器开 online-mode（docs/config.md）
+      ONLINE_MODE: "FALSE"
       # 第 9 步：Docker 里的本地 worker 没有玩家、没有 token，测试里放行（正式默认不放）
-      JVM_OPTS: "-Dmcdonate.demand=off -Dmcdonate.allowTokenless=true ${MCD_JVM_EXTRA:-}"
+      # publicHost：装了客户端 mod 的玩家进服时收到的 coordinator 地址（compose 网络里的主机名）。原版客户端收不到邀请（9.1 测这个）
+      JVM_OPTS: "-Dmcdonate.demand=off -Dmcdonate.allowTokenless=true -Dmcdonate.publicHost=minecraft ${MCD_JVM_EXTRA:-}"
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。
@@ -61,3 +64,13 @@ services:
       - ./test-data-worker3:/data
       - ../build/mods-worker:/mods:ro
       - ./test-exchange:/exchange
+
+  # 第 9 步 9.1：没装 mod 的原版客户端（协议层，mineflayer）。单独的 profile client，只有第 9 步的测试会起（compose run）。
+  # 跑一次就退出：node join.js <host> <port> <玩家名> [停留秒数]，输出一行 JSON。
+  mineflayer:
+    profiles: ["client"]
+    build: ./mineflayer
+    image: mcdonate-mineflayer:4.23.0
+    cpuset: ${CLIENT_CPUSET:-${WORKER_CPUSET:-8-11}}
+    cpus: 1
+    mem_limit: 1g

@@ -93,7 +93,8 @@
 
 ### 9.1 原版客户端照常进服
 
-- [ ] 用协议层的无头客户端 mineflayer 连测试服务器：
+- [x] 用协议层的无头客户端 mineflayer 连测试服务器（11-09 通过：tests/step9/test_01_vanilla_join.py；镜像在 docker/mineflayer，
+  mineflayer 4.23.0 + minecraft-data 3.119.0，lock 已提交；测试服务器离线模式只在 compose.test.yaml，配了 publicHost 时原版客户端收不到邀请）：
     - **版本固定**：`package.json` 里写死 `"mineflayer": "4.23.0"`（这一版的 minecraft-data 支持 1.21.1；开工时先确认，不支持就换到支持的最早一版并写死），`package-lock.json` 一起提交。
     - **在哪跑**：测试 compose 里加一个 `mineflayer` 服务（profile `client`），镜像 `node:20.18.1-bookworm-slim`（固定版本），脚本挂进去，`npm ci` 装依赖。
     - **退路**：mineflayer 不支持 1.21.1 时，用 Python 写一个最小协议客户端（握手 + 登录 + 收第一批区块），只判断"能进服、不被踢"。
