@@ -64,7 +64,7 @@ ssh -N -L 25575:127.0.0.1:25575 -L 25585:127.0.0.1:25585 <你在服务器上的�
 ## 5. 怎么确认自己的 donor 在干活
 
 - **游戏里**：设置界面最下面一行是"worker 在跑"；帧率低时会变成"worker 在跑（帧率低，暂停中）"，见下面"帧率低时会自动暂停"。
-  算力面板：聊天框输入 `/mcdonate hud on`（`/mcdonate overlay on` 按 donor 给 chunk 上色，`/mcdonate show` 两个都开）。
+  算力面板：聊天框输入 `/mcdonate hud on`（`/mcdonate overlay on` 按 donor 给 chunk 上色，`/mcdonate show` 两个都开）。小地图中间的白色箭头是你的朝向（无头测试看不到画面，请在真机上看一眼方向对不对）。
 - **服务器上**（ssh 上去）：
 
   ```bash

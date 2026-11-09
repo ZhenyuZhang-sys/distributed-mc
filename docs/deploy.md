@@ -105,7 +105,7 @@ docker compose down                                # 停止并删容器（存档
 6. **帧率低时自动暂停**：最近 10 秒帧时间的中位数超过**帧时间目标**（默认 50 ms）持续 5 秒就暂停 worker，低于目标的 0.8 倍（恢复线，默认 40 ms）持续 5 秒恢复。
    集显、开光影、平时就 40 ms 以上的电脑会**一直暂停、不贡献算力**：设置界面状态行是"worker 在跑（帧率低，暂停中）"，
    算力面板（`/mcdonate hud on`）显示"暂停（帧率限速）"。在设置界面的"帧时间目标"里改成 100 或 200 ms（马上生效）。
-7. 游戏内显示：`/mcdonate overlay on` 按 donor 给附近的 chunk 上色，`/mcdonate hud on` 显示自己贡献了多少（线程、CPU、做了多少 tile），`/mcdonate show` 两个都开。
+7. 游戏内显示：`/mcdonate overlay on` 按 donor 给附近的 chunk 上色，`/mcdonate hud on` 显示自己贡献了多少（线程、CPU、做了多少 tile），`/mcdonate show` 两个都开。小地图中间的白色箭头是你的朝向。
 
 worker 用游戏自带的 Java 21。没装客户端 mod 的玩家照常能玩，只是不帮忙。详细说明和排错见 `docs/client-install.md`。
 
