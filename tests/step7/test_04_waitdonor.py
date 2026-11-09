@@ -20,6 +20,7 @@
 """
 
 import json
+import os
 import threading
 import time
 
@@ -99,7 +100,11 @@ def ready(server, worker):
     print("预热后", next(w for w in status(server)["workers"] if w["id"] == wid))
     server.rcon("bench track on")
     server.rcon("donor feature waitdonor on")
+    # 变异检查用（docs/step7-plan.md 7.6a）：MCD_MUTATE_WAITIMPORT=server 时导入故意改回 server.execute
+    if os.environ.get("MCD_MUTATE_WAITIMPORT") == "server":
+        assert "server" in server.rcon("donor waitimport server")
     yield wid
+    server.rcon("donor waitimport chunkcache")
     server.rcon("donor feature waitdonor off")
     server.rcon("bench track off")
 
