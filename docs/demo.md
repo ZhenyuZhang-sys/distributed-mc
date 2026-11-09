@@ -67,6 +67,8 @@ ssh -L 8765:127.0.0.1:8765 <这台机器>
 
 ## 一键 A/B
 
+**默认设置**是演示矩阵 demo-v2 挑出来的、donor 效果最大也最稳的一组（见 docs/demo-report.md）：服务器 2 核、3 个 donor（worker3 提到 4 核）、deadline、提前量 8。worker3 的核：设环境变量 `MCD_DEMO_WORKER3_CPUSET`（比如 `88-91`），没设就用这个槽位 `docker/.env.local` 里的 `WORKER3_CPUSET`——那里如果只有 1 个核，3 个 donor 的效果会小很多。下拉框里也能选 2 个 donor。
+
 用上面选的速度和时长（默认鞘翅 120 秒），服务器默认 2 核（下拉框可以选 1 / 2 / 4；核取这个槽位服务器核的前几个，换世界时按这个核数重建服务器容器）：
 
 1. A：换一个全新世界（seed 424242），donor 关，飞一轮。
