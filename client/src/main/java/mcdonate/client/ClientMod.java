@@ -232,6 +232,8 @@ public final class ClientMod implements ClientModInitializer {
                 }
                 WorkerFiles f = files();
                 f.writeServerProperties(port);
+                // 每次都按客户端 jar 里带的放 worker mod（客户端升级后不再用旧的）
+                f.syncMods(name -> ClientMod.class.getResourceAsStream("/mcdonate/worker-mods/" + name));
                 String exe = System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows") ? "java.exe" : "java";
                 WorkerLaunch.Options o = new WorkerLaunch.Options(Path.of(System.getProperty("java.home"), "bin", exe),
                         s.memoryMb(), s.threads(), ProcessHandle.current().pid(), invite.host() + ":" + invite.port(), invite.seed());
