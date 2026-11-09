@@ -353,7 +353,7 @@ final class CoordinatorServer {
                 + ",\"motionWindowMs\":" + Motion.WINDOW_MS
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
-                + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicAddress\":\"" + Coordinator.PUBLIC_ADDRESS + "\""
+                + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
                 + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))

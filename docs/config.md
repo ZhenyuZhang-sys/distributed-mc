@@ -41,7 +41,8 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `motionHorizonS` | 120 | 按玩家速度往前预测多少秒 | |
 | `tokenTtlMs` | 60000 | 发给客户端的一次性 token 多久作废 | |
 | `allowTokenless` | false | 没带 token 的 worker 放不放进来。测试的 compose 里设 true（Docker 里的本地 worker 没有玩家）；正式部署保持 false | 第 9 步 |
-| `publicAddress` | 空 | 发给玩家客户端的 coordinator 地址（`host:port`）。空就不发邀请，玩家的 worker 起不来 | 第 9 步 |
+| `publicHost` | 空 | 发给玩家客户端的 coordinator 地址（主机名或 IP）。空就不发邀请，玩家的 worker 起不来 | 第 9 步 |
+| `publicPort` | 同 `port` | 发给玩家客户端的 coordinator 端口（端口转发时和监听端口不一样） | 第 9 步 |
 | `features` | 空 | 第 7 步的功能开关，逗号分隔 | 见 docs/step7-plan.md |
 | `demand` | on | `off` 关掉自动找需求（测试里手动派任务时用） | |
 | `port` | 25580 | donor 连进来的端口 | |

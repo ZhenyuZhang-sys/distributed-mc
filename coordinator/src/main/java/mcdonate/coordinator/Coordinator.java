@@ -137,15 +137,21 @@ public final class Coordinator implements ModInitializer {
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
         // 第 9 步：玩家进服时，装了客户端 mod 的（注册了 mcdonate:invite 频道）收到 coordinator 地址、一次性 token、seed；
-        // 原版客户端不发。没配公开地址（mcdonate.publicAddress，host:port）就不发。玩家退出：作废没用过的 token，断开他的 worker。
+        // 原版客户端不注册这个频道，canSend 为假，不发。没配公开地址（mcdonate.publicHost）就不发。玩家退出：作废没用过的 token，断开他的 worker。
         PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             CoordinatorServer n = network;
-            if (n == null || PUBLIC_ADDRESS.isEmpty() || !ServerPlayNetworking.canSend(handler.player, DonorInvite.TYPE)) {
+            if (n == null || PUBLIC_HOST.isEmpty() || !ServerPlayNetworking.canSend(handler.player, DonorInvite.TYPE)) {
                 return;
             }
             String token = n.tokens.issue(handler.player.getUUID());
-            ServerPlayNetworking.send(handler.player, new DonorInvite(PUBLIC_ADDRESS, token, server.overworld().getSeed()));
+            DonorInvite invite = new DonorInvite(PUBLIC_HOST, PUBLIC_PORT, token, server.overworld().getSeed());
+            if (!invite.valid()) {
+                LOG.warn("公开地址 {}:{} 不合法，不发 donor 邀请", PUBLIC_HOST, PUBLIC_PORT);
+                n.tokens.revoke(handler.player.getUUID());
+                return;
+            }
+            ServerPlayNetworking.send(handler.player, invite);
             LOG.info("给 {} 发了 donor 邀请（token {}）", handler.player.getGameProfile().getName(), TokenRegistry.redact(token));
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
@@ -185,8 +191,9 @@ public final class Coordinator implements ModInitializer {
 
     private static volatile CoordinatorServer network;
 
-    /** 第 9 步：发给玩家的 coordinator 公开地址（host:port），空 = 不发邀请。 */
-    static final String PUBLIC_ADDRESS = Config.get("publicAddress", "");
+    /** 第 9 步：发给玩家的 coordinator 公开地址，空 = 不发邀请；端口默认和监听端口一样。 */
+    static final String PUBLIC_HOST = Config.get("publicHost", "");
+    static final int PUBLIC_PORT = Config.getInt("publicPort", Config.getInt("port", 25580));
 
     /** 最近的来源事件（测试用；实时地图的正式记录在 bench 的 provenance.jsonl，第 4 步 4.3）。 */
     private static final java.util.Deque<String> PROVENANCE = new java.util.concurrent.ConcurrentLinkedDeque<>();
