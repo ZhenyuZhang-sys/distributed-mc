@@ -1,7 +1,9 @@
 package mcdonate.bench.mixin;
 
 import mcdonate.bench.SyncLoads;
+import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerChunkCache;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import org.spongepowered.asm.mixin.Final;
@@ -22,8 +24,10 @@ abstract class ServerChunkCacheSyncLoadMixin {
             at = @At("HEAD"))
     private void mcdonate$syncLoadStart(int x, int z, ChunkStatus status, boolean load, CallbackInfoReturnable<ChunkAccess> cir) {
         if (load && Thread.currentThread() == mainThread) {
-            // 先不加载地查一下：已经在内存里的，慢了也不是同步加载（主线程被调度走之类）
-            SyncLoads.enter(((ServerChunkCache) (Object) this).getChunk(x, z, status, false) != null);
+            // 先不阻塞地查一下：已经到了要的状态的，慢了也不是同步加载（主线程被调度走之类）。
+            // 不能用 getChunk(load=false)：holder 在的时候它也会 managedBlock 等。
+            ChunkHolder holder = ((ChunkMapAccess) ((ServerChunkCache) (Object) this).chunkMap).mcdonate$visibleHolder(ChunkPos.asLong(x, z));
+            SyncLoads.enter(holder != null && holder.getChunkIfPresent(status) != null);
         }
     }
 
