@@ -177,8 +177,14 @@ public final class OverlayClient {
                 }
             }
         }
-        int mid = MAP_RADIUS * cell;
-        g.fill(x0 + mid, y0 + mid, x0 + mid + cell, y0 + mid + cell, 0xFFFFFFFF);   // 玩家所在的 chunk
+        // 玩家：所在 chunk 里按朝向画一个箭头（用户 11-09：鞘翅飞的时候看出往哪飞），北朝上，地图不转。
+        // 位置按玩家在 chunk 里的实际坐标，深色描边加白色箭头
+        float px = x0 + (MAP_RADIUS + (float) (mc.player.getX() / 16 - pcx)) * cell;
+        float py = y0 + (MAP_RADIUS + (float) (mc.player.getZ() / 16 - pcz)) * cell;
+        float len = PlayerArrow.size(cell);
+        g.flush();   // 先把上面攒着的格子画出去，箭头才压在格子上面
+        triangle(g, PlayerArrow.outline(mc.player.getYRot(), px, py, len), 0xFF101010);
+        triangle(g, PlayerArrow.triangle(mc.player.getYRot(), px, py, len), 0xFFFFFFFF);
         // 图例：四类 + donor（最多 8 个，多的折成"其他 N 个"）
         int y = y0 + size + 4;
         y = legend(g, mc, x0, y, DonorColors.of(Source.SERVER), "服务器自己生成");
@@ -193,6 +199,20 @@ public final class OverlayClient {
             y += 10;
         }
         g.drawString(mc.font, "没颜色 = 来源不明", x0, y, 0xFFAAAAAA, true);
+    }
+
+    private static void triangle(GuiGraphics g, float[] t, int argb) {
+        org.joml.Matrix4f m = g.pose().last().pose();
+        com.mojang.blaze3d.systems.RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionColorShader);
+        com.mojang.blaze3d.systems.RenderSystem.enableBlend();
+        com.mojang.blaze3d.systems.RenderSystem.disableCull();   // 朝向不同时顶点的绕向会反过来
+        com.mojang.blaze3d.vertex.BufferBuilder b = com.mojang.blaze3d.vertex.Tesselator.getInstance().begin(
+                com.mojang.blaze3d.vertex.VertexFormat.Mode.TRIANGLES, com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_COLOR);
+        for (int i = 0; i < 6; i += 2) {
+            b.addVertex(m, t[i], t[i + 1], 0).setColor(argb);
+        }
+        com.mojang.blaze3d.vertex.BufferUploader.drawWithShader(b.buildOrThrow());
+        com.mojang.blaze3d.systems.RenderSystem.enableCull();
     }
 
     private static int legend(GuiGraphics g, Minecraft mc, int x, int y, int rgb, String text) {
