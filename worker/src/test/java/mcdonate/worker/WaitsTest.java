@@ -38,5 +38,17 @@ class WaitsTest {
         assertEquals(30_000, Waits.tileTimeoutMs(-1), "没有样本：30 秒");
         assertEquals(30_000, Waits.tileTimeoutMs(1_000), "最少 30 秒");
         assertEquals(50_000, Waits.tileTimeoutMs(5_000), "平均的 10 倍");
+        assertEquals(120_000, Waits.tileTimeoutMs(20_000), "最多 120 秒（和 coordinator 的租约总上限一致；codex-audit A5）");
+    }
+
+    @Test
+    void fatalStopsTheWaitAndIsDistinguishable() {
+        // A5：原版生成出致命错误时（setFatalException），原版的 managedBlock 会抛出来；我们的循环也要查，并且和普通超时分得开
+        AtomicLong clock = new AtomicLong();
+        Waits.Fatal f = assertThrows(Waits.Fatal.class, () -> Waits.until(() -> false, () -> false, 10_000, clock::get, "x",
+                () -> {
+                    throw new IllegalStateException("世界生成出错");
+                }));
+        assertEquals("世界生成出错", f.getCause().getMessage());
     }
 }
