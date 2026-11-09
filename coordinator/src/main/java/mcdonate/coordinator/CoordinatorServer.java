@@ -231,6 +231,9 @@ final class CoordinatorServer {
                     c.close();
                     continue;
                 }
+                if (c.paused) {
+                    continue; // 第 9 步：玩家那边帧率低、worker 暂停了：不派新任务，手上的照常续租、等结果
+                }
                 // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个
                 int max = thr ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
                 java.util.function.LongPredicate canMeet = thr
@@ -390,6 +393,7 @@ final class CoordinatorServer {
                     .append("\",\"task\":").append(c.currentTask).append(",\"done\":").append(c.doneTiles.get())
                     .append(",\"idleMs\":").append(now - c.lastSeen)
                     .append(",\"inFlight\":").append(tasks.inFlight(c.workerId))
+                    .append(",\"paused\":").append(c.paused)
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
                     .append('}');
         }
@@ -431,6 +435,8 @@ final class CoordinatorServer {
         volatile long lastSeen = System.currentTimeMillis();
         volatile int workerId = -1;
         volatile String name = "";
+        /** 第 9 步：worker 在心跳里报的暂停状态（限速），暂停时不派新任务。 */
+        volatile boolean paused;
         /** 第 9 步：这个 worker 属于哪个玩家（token 换来的）；免 token 的本地 worker 是 null。 */
         volatile java.util.UUID player;
         /** 这个 worker 的 donor 世界（从它交的第一个结果里知道）。 */
@@ -522,6 +528,10 @@ final class CoordinatorServer {
             switch (m) {
                 case Heartbeat h -> {
                     currentTask = h.taskId();
+                    if (paused != h.paused()) {
+                        LOG.info("worker {} {}", workerId, h.paused() ? "暂停（玩家那边帧率低）" : "恢复");
+                    }
+                    paused = h.paused();
                     if (h.taskId() >= 0) {
                         tasks.heartbeat(workerId, h.taskId());
                     }
