@@ -1,0 +1,71 @@
+# mc-donate 正式部署（docs/deploy.md）。和仓库里开发用的 docker/compose.yaml 分开，互不影响。
+# 用法：cp .env.example .env，按注释填好，把 coordinator mod 放进 mods/，然后 docker compose up -d。
+name: ${COMPOSE_PROJECT:-mc-donate}
+
+services:
+  minecraft:
+    # 固定镜像版本（11-06 构建的 java21，开发和测试用的同一个）
+    image: itzg/minecraft-server@sha256:04b5ee189f5f2c1992fa557e366cf2e4d09fe2abfbd57d2d1f977d8c038c1b98
+    restart: unless-stopped
+    stop_grace_period: 2m
+    ports:
+      # 游戏端口：玩家连这个
+      - "${MC_PORT:-25565}:25565/tcp"
+      # coordinator 端口：玩家电脑上的 worker 连这个，要对外开放
+      - "${COORD_PORT:-25580}:25580/tcp"
+    environment:
+      # 阅读 https://aka.ms/MinecraftEULA 后，由运行服务器的人自己在 .env 里改成 TRUE
+      EULA: ${EULA:-FALSE}
+      TYPE: FABRIC
+      VERSION: "1.21.1"
+      FABRIC_LOADER_VERSION: "0.16.14"
+      FABRIC_LAUNCHER_VERSION: "1.1.2"
+      # 只从 Modrinth 官方下载 Fabric API；不带 bench、carpet、chunky 这些开发用的 mod
+      MODRINTH_PROJECTS: |
+        fabric-api:0.116.6+1.21.1
+      MODRINTH_DOWNLOAD_DEPENDENCIES: "none"
+      INIT_MEMORY: ${MC_INIT_MEMORY:-1G}
+      MAX_MEMORY: ${MC_MAX_MEMORY:-4G}
+      UID: ${MC_UID:-1000}
+      GID: ${MC_GID:-1000}
+      TZ: ${TZ:-America/New_York}
+      MOTD: ${MC_MOTD:-mc-donate | Fabric 1.21.1}
+      LEVEL: ${MC_LEVEL:-world}
+      SEED: ${MC_SEED:-}
+      VIEW_DISTANCE: ${MC_VIEW_DISTANCE:-10}
+      SIMULATION_DISTANCE: ${MC_SIMULATION_DISTANCE:-6}
+      MAX_PLAYERS: ${MC_MAX_PLAYERS:-8}
+      # 正版验证默认开：关掉时游戏连接不加密，邀请里的 token 能被同网的人抓到（docs/deploy.md 安全注意）
+      ONLINE_MODE: ${ONLINE_MODE:-TRUE}
+      # RCON 只在容器里用（docker compose exec minecraft rcon-cli ...），端口不对外
+      ENABLE_RCON: "TRUE"
+      RCON_PASSWORD: ${RCON_PASSWORD:?在 .env 里设 RCON_PASSWORD}
+      ENABLE_QUERY: "FALSE"
+      # coordinator 的配置（docs/config.md）：
+      #   publicHost  邀请里告诉玩家 worker 连哪个地址，必填：这台服务器的公网 IP 或域名
+      #   publicPort  邀请里的端口，默认等于对外的 COORD_PORT（有端口转发、对外端口不同时单独设 COORD_PUBLIC_PORT）
+      #   demand      自动找需求（玩家周围要生成的 tile）
+      #   features    调度开关，默认 deadline
+      #   allowTokenless=false  只让带一次性 token 的 worker 连（不要改）
+      JVM_OPTS: >-
+        -Dmcdonate.publicHost=${PUBLIC_HOST:?在 .env 里设 PUBLIC_HOST（这台服务器的公网 IP 或域名）}
+        -Dmcdonate.publicPort=${COORD_PUBLIC_PORT:-${COORD_PORT:-25580}}
+        -Dmcdonate.demand=${MCD_DEMAND:-on}
+        -Dmcdonate.features=${MCD_FEATURES:-deadline}
+        -Dmcdonate.allowTokenless=false
+        ${MCD_JVM_EXTRA:-}
+    volumes:
+      - ./data:/data
+      # mc-donate 的 coordinator mod（mcdonate-coordinator-*.jar）放这里；镜像启动时同步进服务器的 mods 目录
+      - ./mods:/mods:ro
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      start_period: 3m
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

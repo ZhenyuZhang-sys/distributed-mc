@@ -44,9 +44,23 @@ final class WorkerClient {
     private volatile Socket socket;
     private volatile boolean running = true;
     private volatile boolean seedMismatch;
+    /** 第 9 步：一次性 token（客户端起的 worker 从环境变量拿；Docker 里的本地 worker 没有）。 */
+    final TokenState tokens = new TokenState(System.getenv(WORKER_TOKEN_ENV));
+    /** 第 9 步：玩家那边帧率低，暂停：心跳里报 paused，coordinator 不再派新任务；手上的照常做完。 */
+    private volatile boolean paused;
+    /** 第 9 步：给客户端看的行（标准输出，带 MCDONATE 前缀）。 */
+    private final java.util.function.Consumer<String> controlOut;
+
+    /** 和客户端 mod 的 WorkerLaunch.TOKEN_ENV 一样。 */
+    static final String WORKER_TOKEN_ENV = "MCDONATE_TOKEN";
 
     WorkerClient(MinecraftServer server, String address) {
+        this(server, address, line -> System.out.println(line));
+    }
+
+    WorkerClient(MinecraftServer server, String address, java.util.function.Consumer<String> controlOut) {
         this.server = server;
+        this.controlOut = controlOut;
         this.generating = new OneAtATime<>(server::execute);
         String[] hp = address.split(":");
         this.host = hp[0];
@@ -79,11 +93,21 @@ final class WorkerClient {
     private void connectLoop() {
         long wait = 1000;
         while (running) {
+            if (tokens.needsNew()) {
+                // token 用过了或被拒：请客户端再要一个（mcdonate:invite_request），拿到前不连
+                controlOut.accept(ControlLine.out("NEED_TOKEN"));
+                while (running && tokens.needsNew()) {
+                    sleep(500);
+                }
+                if (!running) {
+                    return;
+                }
+            }
             try (Socket s = new Socket()) {
                 s.connect(new InetSocketAddress(host, port), 5000);
                 s.setSoTimeout(READ_TIMEOUT_MS);
                 socket = s;
-                send(new Hello(Protocol.VERSION, hostName()));
+                send(new Hello(Protocol.VERSION, hostName(), tokens.forHello()));
                 wait = 1000;
                 readLoop(s);
             } catch (IOException | ProtocolException e) {
@@ -119,9 +143,15 @@ final class WorkerClient {
     private void handle(Message m) throws IOException {
         switch (m) {
             case Welcome w -> {
+                if (w.workerId() == Welcome.BAD_TOKEN) {
+                    tokens.rejected();
+                    throw new IOException("coordinator 拒绝：token 不对或过期");
+                }
                 if (w.workerId() < 0) {
                     throw new IOException("coordinator 拒绝：协议版本 " + w.protocol() + "，本机 " + Protocol.VERSION);
                 }
+                tokens.connected();
+                controlOut.accept(ControlLine.out("CONNECTED " + w.workerId()));
                 long mine = server.overworld().getSeed();
                 seedMismatch = !seedOk(w, mine);
                 if (seedMismatch) {
@@ -176,6 +206,34 @@ final class WorkerClient {
         deliver(r);
     }
 
+    /** 第 9 步：控制通道的一条命令（游戏经 worker 的标准输入发来）。STOP 由调用方处理（要停服务器）。 */
+    void control(ControlLine.Command c) {
+        switch (c.kind()) {
+            case PAUSE -> {
+                paused = true;
+                send(new Heartbeat(System.currentTimeMillis(), currentTask, true)); // 马上告诉 coordinator
+                LOG.info("暂停（玩家那边帧率低）：手上的做完，不领新的");
+            }
+            case RESUME -> {
+                paused = false;
+                send(new Heartbeat(System.currentTimeMillis(), currentTask, false));
+                LOG.info("恢复");
+            }
+            case TOKEN -> {
+                if (tokens.offer(c.arg())) {
+                    LOG.info("收到新 token");
+                }
+            }
+            case STATUS -> controlOut.accept(ControlLine.out("STATUS {\"paused\":" + paused + ",\"task\":" + currentTask
+                    + ",\"connected\":" + (socket != null) + ",\"needToken\":" + tokens.needsNew() + "}"));
+            case STOP -> { }
+        }
+    }
+
+    boolean paused() {
+        return paused;
+    }
+
     /** Welcome 里的 seed 和自己建世界用的一样才领任务（第 5 步；第 9 步建世界的 seed 来自邀请，这里是唯一的核对）。 */
     static boolean seedOk(Welcome w, long worldSeed) {
         return w.seed() == worldSeed;
@@ -219,7 +277,7 @@ final class WorkerClient {
     private void heartbeatLoop() {
         while (running) {
             sleep(HEARTBEAT_MS);
-            send(new Heartbeat(System.currentTimeMillis(), currentTask));
+            send(new Heartbeat(System.currentTimeMillis(), currentTask, paused));
         }
     }
 

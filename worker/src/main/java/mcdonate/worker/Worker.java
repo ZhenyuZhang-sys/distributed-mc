@@ -1,6 +1,7 @@
 package mcdonate.worker;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import java.io.InputStream;
 import mcdonate.common.ModIds;
 import mcdonate.common.TilePos;
 import net.fabricmc.api.ModInitializer;
@@ -64,11 +65,14 @@ public final class Worker implements ModInitializer {
                                                         new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
                                                                 IntegerArgumentType.getInteger(ctx, "tz")))))))));
         // 第 5 步：配了 coordinator（系统属性 mcdonate.coordinator=host:port）就连上去领任务
+        // 客户端起的 worker：服务器起来之前把标准输入拿给控制通道，不让原版控制台读走（ControlStdin）
+        InputStream control = mcdonate.common.Config.getLong("parentPid", -1) > 0 ? ControlStdin.claim() : null;
         String address = SeedHandshake.address();
         if (address != null) {
             ServerLifecycleEvents.SERVER_STARTED.register(server -> {
                 client = new WorkerClient(server, address);
                 client.start();
+                startParentWatch(server, control);
             });
             ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
                 if (client != null) {
@@ -80,6 +84,32 @@ public final class Worker implements ModInitializer {
     }
 
     private static volatile WorkerClient client;
+
+    /**
+     * 第 9 步：客户端 mod 起的 worker（系统属性 mcdonate.parentPid）：游戏没了（PID 不在、标准输入 EOF）就停服务器退出；
+     * 标准输入同时是控制通道（ControlLine：PAUSE、RESUME、STOP、STATUS、TOKEN）。Docker 里的 worker 没有 parentPid，不启动。
+     */
+    private static void startParentWatch(net.minecraft.server.MinecraftServer server, InputStream control) {
+        long pid = mcdonate.common.Config.getLong("parentPid", -1);
+        if (pid <= 0 || control == null) {
+            return;
+        }
+        Runnable exit = () -> {
+            LOG.info("游戏没了或要求停止，worker 退出");
+            server.execute(() -> server.halt(false));
+        };
+        new ParentWatch(ParentWatch.pidAlive(pid), control, line -> {
+            ControlLine.Command c = ControlLine.parse(line);
+            if (c == null) {
+                LOG.warn("读不懂的控制命令：{}", ControlLine.redact(line));
+            } else if (c.kind() == ControlLine.Kind.STOP) {
+                exit.run();
+            } else if (client != null) {
+                client.control(c);
+            }
+        }, exit).start();
+        LOG.info("看着父进程 {}（游戏），标准输入是控制通道", pid);
+    }
 
     private static int hold(CommandSourceStack source, boolean on) {
         WorkerClient c = client;

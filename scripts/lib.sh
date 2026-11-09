@@ -80,6 +80,17 @@ tc() {
   # 先建好挂载的目录，否则 docker 会用 root 建空目录
   mkdir -p "$REPO_ROOT/build/mods" "$REPO_ROOT/build/mods-worker" "$TEST_DATA" "$WORKER_DATA" "$WORKER2_DATA" "$WORKER3_DATA" "$EXCHANGE"
   [[ -f "$WORLD_ENV" ]] && args+=(--env-file "$WORLD_ENV")
+  # 第 9 步给用户自己的电脑测（槽位 u1）：coordinator 端口映射到宿主机，只绑 127.0.0.1，用户 ssh 转发过去。
+  # 环境变量或 .env.local 里有 MCD_COORD_HOST_PORT 才加，默认不映射（coordinator 只在容器网络里）
+  local coord_port="${MCD_COORD_HOST_PORT:-}"
+  if [[ -z "$coord_port" && -f "$LOCAL_ENV" ]]; then
+    coord_port="$(sed -n 's/^MCD_COORD_HOST_PORT=//p' "$LOCAL_ENV" | tail -1)"
+  fi
+  if [[ -n "$coord_port" ]]; then
+    [[ "$coord_port" =~ ^[0-9]+$ ]] || die "MCD_COORD_HOST_PORT 要是端口号：$coord_port"
+    export MCD_COORD_HOST_PORT="$coord_port"
+    args+=(-f "$DOCKER_DIR/compose.coord-port.yaml")
+  fi
   # 停服、关服时总带上 worker（它是按需启动的），免得漏关
   case "${1:-}" in
     stop|down) args+=(--profile worker --profile worker2 --profile worker3) ;;

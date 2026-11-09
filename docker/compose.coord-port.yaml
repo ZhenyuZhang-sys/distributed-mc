@@ -1,0 +1,6 @@
+# 第 9 步给用户自己的电脑测（槽位 u1）：coordinator 端口映射到宿主机，只绑 127.0.0.1（用户 ssh 转发过来）。
+# scripts/lib.sh 在 MCD_COORD_HOST_PORT 有值时才叠加这个文件；默认不映射。
+services:
+  minecraft:
+    ports:
+      - "127.0.0.1:${MCD_COORD_HOST_PORT:?}:25580/tcp"

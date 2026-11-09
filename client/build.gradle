@@ -4,3 +4,27 @@ dependencies {
     include project(':common')
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
+
+// 第 9 步 b：worker 子进程要的 mod（worker mod 和服务器用的 Fabric API）打在客户端 jar 的 mcdonate/worker-mods/ 里，
+// 第一次开启时解到 .minecraft/mc-donate/worker/mods/。Fabric API 用 Maven 上发布的原样 jar（生产环境的映射），不经 Loom 重映射。
+// Loader 只加载 fabric.mod.json 里 "jars" 列出的嵌套 jar，这些只是普通资源，客户端不会加载它们。
+configurations {
+    workerBundle { transitive = false }
+}
+dependencies {
+    workerBundle "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+def workerModsDir = layout.buildDirectory.dir('generated/worker-mods')
+tasks.register('bundleWorkerMods', Sync) {
+    from(project(':worker').tasks.named('remapJar'))
+    from(configurations.workerBundle)
+    into workerModsDir.map { it.dir('mcdonate/worker-mods') }
+    doLast {
+        def dir = workerModsDir.get().dir('mcdonate/worker-mods').asFile
+        def names = dir.listFiles().findAll { it.name.endsWith('.jar') }.collect { it.name }.sort()
+        new File(dir, 'index.txt').text = names.join('\n') + '\n'
+    }
+}
+sourceSets.main.resources.srcDir(workerModsDir)
+tasks.named('processResources') { dependsOn 'bundleWorkerMods' }
