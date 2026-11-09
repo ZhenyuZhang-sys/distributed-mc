@@ -139,4 +139,19 @@ class OverlayCoreTest {
         core.subscribe(ALICE, new OverlaySubscribe(9, 1));
         assertEquals(0, core.subscribers());
     }
+
+    @Test
+    void historyIsCappedByDroppingChunksFarFromEveryone() {
+        // 一直记来源要有上限：超过 maxState 时，离所有在线玩家都超过 pruneRadius 的 chunk 删掉
+        OverlayCore c = new OverlayCore(id -> Optional.empty(), () -> 0, 3, 4);
+        c.onEvent(0, 0, Provenance.Kind.VANILLA, -1);
+        c.onEvent(1, 1, Provenance.Kind.VANILLA, -1);
+        c.onEvent(100, 100, Provenance.Kind.VANILLA, -1);
+        c.onEvent(-50, 7, Provenance.Kind.VANILLA, -1);
+        c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2)));
+        assertEquals(2, c.stateSize(), "超过上限 3：离玩家 4 圈以外的两个删掉");
+        c.onEvent(2, 2, Provenance.Kind.VANILLA, -1);
+        c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2)));
+        assertEquals(3, c.stateSize(), "没超过上限不删");
+    }
 }
