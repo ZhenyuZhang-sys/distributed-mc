@@ -1,12 +1,12 @@
-package mcdonate.bench.mixin;
+package mcdonate.common.mixin;
 
-import mcdonate.bench.FromDisk;
+import mcdonate.common.gen.FromDisk;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 @Mixin(ProtoChunk.class)
-abstract class ProtoChunkMixin implements FromDisk {
+abstract class ProtoChunkFromDiskMixin implements FromDisk {
     @Unique
     private volatile boolean mcdonate$fromDisk;
 
