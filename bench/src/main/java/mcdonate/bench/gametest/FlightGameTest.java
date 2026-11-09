@@ -73,9 +73,12 @@ public class FlightGameTest implements FabricGameTest {
     }
 
     static List<JsonObject> lines(GameTestHelper h, String run, String file) {
+        Path f = dir(h, run).resolve(file);
+        // 没有文件按断言失败处理（重试到超时）；别的异常会让 GameTest 服务器整个崩掉
+        if (!Files.exists(f)) throw new GameTestAssertException("没有 " + file + "：" + run);
         try {
             List<JsonObject> out = new ArrayList<>();
-            for (String line : Files.readAllLines(dir(h, run).resolve(file)))
+            for (String line : Files.readAllLines(f))
                 if (!line.isBlank()) out.add(JsonParser.parseString(line).getAsJsonObject());
             return out;
         } catch (IOException e) {
