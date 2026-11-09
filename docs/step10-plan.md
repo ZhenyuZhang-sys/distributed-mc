@@ -178,6 +178,66 @@
 - **作弊被抓**：verify 单元里，地图上把被打回的 chunk（`rejected`）标红，配上拉黑那一刻的日志行。
 - **原版和有 donor 的并排视频**：需要真实客户端录屏，留给人做；这一步只准备好服务器端的场景脚本。
 
+### 7.1 演示面板（调度 11-09 安排，**计划待审**）
+
+目的：给用户看"mod 起作用了"。是演示，不是测量：数字标"演示，粗测"，不进第 10 步的矩阵和假设表。
+
+**放在哪**：还是 `bench/map/server.py` 这个小服务器（标准库 `http.server`，只绑 127.0.0.1），加一个 `/demo` 页面。页面左边是实时地图（复用现在的画图代码，抽成 `map.js` 两页共用），右边是曲线和控制。后端新代码放 `bench/demo/`：
+
+| 模块 | 做什么 |
+| --- | --- |
+| `bench/demo/poll.py` | 每秒采一次样，存进内存里的环形缓冲（最近 30 分钟），给 `/api/live`、`/api/series?since=N` |
+| `bench/demo/control.py` | 控制动作的白名单，每个动作对应一串固定的命令；不接受任意命令 |
+| `bench/demo/ab.py` | 一键 A/B 的编排，跑在后台线程里，状态给 `/api/ab` |
+
+**1. 实时曲线（每秒刷新）**，每个量一张小图，不画双轴：
+
+| 曲线 | 从哪来 |
+| --- | --- |
+| MSPT 均值和最大值（最近 1 秒）、TPS | `/bench stats` 加三个字段：`tick`（`getTickCount()`）、最近 20 个 tick 的 MSPT 均值和最大值（`getTickTimesNanos()`）。TPS = 两次采样之间的 tick 数 ÷ 宿主机墙钟。现在的 `mspt` 是 100 tick 平均，太平滑，留着不动 |
+| 容器 CPU 核数 | 宿主机 cgroup，复用 `bench/metrics.py` 的 `Cgroup.sample()`，两次采样的差 ÷ 墙钟 |
+| 视野虚空率、卡住占比、实际 / 理想距离 | 正在飞时读这一轮的 `seconds.jsonl`（和地图一样增量读完整的行）：每秒的 `void_rate`、`stalled_ticks / ticks`，距离用 `x` 和起飞后的理想位置算。不在飞时这几张图空着 |
+| donor 在线数、导入数、丢弃数（按原因：来晚、别的 donor 世界、碰到服务器的 chunk） | `/donor status`：`workers` 的个数，`accepted` 和 `discarded.*` 每秒的增量 |
+| donor 写入时在玩家前方的比例 | 正在飞时读 `provenance.jsonl` 的 donor 事件，和同一时刻 `seconds.jsonl` 的玩家 x 比（和 fish 对比脚本的 `donor_lead` 同一算法，抽成共用函数）；每秒一个点，另给整轮累计 |
+
+每秒发 2 条 RCON（`bench stats`、`donor status`），在服务器主线程上各占几十微秒；页面上注明"面板自己也占一点服务器时间"。某一项拿不到（比如没起 coordinator，`/donor status` 报错）就那张图写"无数据"，其他照常。
+
+**2. 控制**：都是 `POST /api/control`，JSON 里一个 `action`；后端按白名单拼命令，走现有入口（`bench.server.Server.rcon` → `scripts/rcon.sh`，`bench.server.compose` → `lib.sh` 的 `tc`），不另开控制通道。
+
+| 动作 | 背后 |
+| --- | --- |
+| donor 开 | `compose up -d --wait worker worker2`，等两个都在 `/donor status` 里出现，再 `donor demand on` |
+| donor 关 | `donor demand off`，`compose stop worker worker2 worker3`，等 `/donor status` 的 workers 为空 |
+| 第 7 步开关 | `donor feature <名字> on|off`，名字只能是 territory、deadline、throughput、hedge、waitdonor |
+| 飞行开始 | 选速度（走路 / 骑马 / 鞘翅）和时长，后台线程调第 4 步的 `bench.layer2.fly`（放假玩家、等初始视野就绪、`/bench fly start`、归档）；航线每次换一条没生成过的（z 方向隔 8000 格，计数记在 artifacts 里） |
+| 飞行停止 | `bench fly stop <run>`；这一轮标"提前停下"，归档照留，不出汇总 |
+
+安全：只绑 127.0.0.1；控制接口只收 `POST`、`Content-Type: application/json`、带自定义头 `X-Demo: 1`（跨站表单发不出来），并检查 `Host` 是 `127.0.0.1` 或 `localhost`（防 DNS 重绑定）。同一时间只允许一个动作在跑，其他返回 409。页面上每个按钮先弹确认框。
+
+**3. 一键 A/B**：`POST /api/ab`（速度、时长，开关默认 `deadline`）。步骤：
+
+1. 记下开始时间（后面查 `docker events` 标"有并发"）。
+2. A：donor 关（上面的动作），`scripts/new_world.sh` 换新世界（同一个 seed 424242），飞一轮。
+3. B：再换一个新世界（同 seed），`donor reset`，donor 开，开 deadline，飞同一条航线、同样速度和时长。两组都用全新世界、同一条航线，地形一样；只用一个世界换 z 的话地形不同，不公平。
+4. 有效性：两轮玩家同步加载都是 0；B 飞行窗口内 donor 来源事件 > 0；B 起飞前后 `/donor status` 的 worker id 没变（中途没被看门狗杀掉）。不满足的在结果里标"无效"和原因，照样显示。
+5. 结果存 `artifacts/demo-ab-<时间>/`：`A/`、`B/`（`layer2.fly` 的归档）、`ab.json`（两轮汇总、有效性、并发、参数）、`README.md`（写明"演示，粗测"）。
+
+页面并排显示：表格（卡住时长和占比、实际 / 理想距离、虚空率、就绪 p95、MSPT 均值 / 最大、服务器 CPU、导入 / 丢弃、donor 写入在前方的比例、有效性），同一张小图里两条曲线（A、B 两条线，图例 + 直接标注），下面两个地图回放（用现有 `/replay`）。
+
+**4. 怎么用**：`docs/demo.md` 写：在测试槽位上起测试服务器和 worker（`scripts/test_server.sh up`，用这个槽位的 `.env.local`）；起面板 `scripts/demo.sh`（`python -m bench.map.server` 加演示参数，端口默认 8765）；本地浏览器 `ssh -L 8765:127.0.0.1:8765 <这台机器>` 再开 `http://127.0.0.1:8765/demo`；每个按钮是什么意思；A/B 大约要多久（两次换世界 + 两次飞行，鞘翅 120 秒约 8～10 分钟）。
+
+**测试（先写）**，都放 `tests/step10/test_06_demo.py`，不起服务器：
+
+- 数据接口：假的 rcon 和 cgroup，造两次采样 → `/api/live` 的 TPS、MSPT、CPU、donor 增量算得对；`since` 增量正确；某个来源报错时那一项为空、其他照常。
+- 飞行中的曲线：合成 `seconds.jsonl` 和 `provenance.jsonl` → 虚空率、卡住占比、距离、前方比例对。
+- 控制接口：每个动作调到的命令序列对（假的 runner 记下来）；不认识的动作 / 开关名 400；没有 `X-Demo`、不是 JSON、`Host` 不对 403；GET 不能控制；忙的时候 409。
+- A/B：假的 fly、new_world、compose → 步骤顺序对（A 时 donor 关、B 时 deadline 开、两次都换了新世界、同一条航线）；B 没有 donor 事件或 worker id 变了标无效；artifacts 里有 `ab.json` 和"演示，粗测"。
+- 前端冒烟：`/demo` 返回的页面有各张图的 canvas、控制按钮和确认框代码。
+- Java：GameTest 查 `/bench stats` 新加的 `tick` 每次调用变大、最近 1 秒的 MSPT 字段存在。
+- 真机冒烟（long，第 10 步验收里跑一次）：在测试服务器上起面板，`/api/live` 的 MSPT > 0、`/donor status` 有数，跑一次很短的 A/B（30 秒）出结果。
+
+**顺序**：计划过审后，等手上的完整测试过了、第 4 步的 RESUMED 改动进 main，再动手；控制和 A/B 要用 fish 第 7 步的 `/donor feature`、`demand`、`reset`，等它们进 main 再接真机，之前先用假 runner 把接口和编排做完。
+
 ## 8. 依赖和接口
 
 | 依赖 | 谁 | 状态 |
