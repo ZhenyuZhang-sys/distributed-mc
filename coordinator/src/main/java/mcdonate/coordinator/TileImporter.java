@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import mcdonate.common.TileFile;
+import mcdonate.common.Provenance;
 import mcdonate.common.TilePos;
 import mcdonate.common.TileFile.ExportedChunk;
 import mcdonate.coordinator.mixin.ChunkMapAccessor;
@@ -112,7 +113,7 @@ final class TileImporter {
             DemandScanner.diskChanged(pos.toLong(), incoming.getIndex());
             written++;
         }
-        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), "", recorded, System.currentTimeMillis());
+        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), -1, "", recorded, System.currentTimeMillis());
         return new Result(label, file.chunks().size(), written, loaded, exists);
     }
 
@@ -138,6 +139,11 @@ final class TileImporter {
     }
 
     static StrictResult importStrict(ServerLevel level, TileFile file) {
+        return importStrict(level, file, -1);
+    }
+
+    /** workerId：交这个结果的 worker（账本、来源事件用），不知道是 -1。 */
+    static StrictResult importStrict(ServerLevel level, TileFile file, int workerId) {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         Map<Long, RegionRules.ChunkInfo> current = new HashMap<>();
@@ -152,6 +158,13 @@ final class TileImporter {
         }
         RegionRules.ImportPlan<Long> plan = RegionRules.importPlan(current, file.worldId(), incoming);
         if (!plan.accepted()) {
+            // 实时地图：这个 tile 的结果被整个丢弃（只报 tile 里的 chunk，外圈是借来的）
+            TilePos t = file.tile();
+            for (int x = t.minChunkX(); x <= t.maxChunkX(); x++) {
+                for (int z = t.minChunkZ(); z <= t.maxChunkZ(); z++) {
+                    Provenance.report(x, z, Provenance.Kind.REJECTED, workerId);
+                }
+            }
             return new StrictResult(false, plan.reason(), 0, 0, 0, plan.discard());
         }
         int written = 0, overwritten = 0, skipped = 0;
@@ -172,8 +185,12 @@ final class TileImporter {
             recorded.add(e.getKey());
             DemandScanner.diskChanged(e.getKey(), ChunkStatus.byName(c.status()).getIndex());
         }
-        // 第 9 步有了 token 以后由调用方传进来；现在空串
-        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), "", recorded, System.currentTimeMillis());
+        // 玩家 UUID 第 9 步起由调用方传进来；现在空串
+        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), workerId, "", recorded, System.currentTimeMillis());
+        // 实时地图：这些 chunk 是 donor 生成的（第 4 步 4.3 的来源事件）
+        for (long k : recorded) {
+            Provenance.report((int) k, (int) (k >>> 32), Provenance.Kind.DONOR, workerId);
+        }
         return new StrictResult(true, "", written, overwritten, skipped, RegionRules.Discard.NONE);
     }
 

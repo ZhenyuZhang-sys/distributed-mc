@@ -262,7 +262,7 @@ final class CoordinatorServer {
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
             String tile = "[" + file.tile().x() + "," + file.tile().z() + "]";
             if (strict) {
-                TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file);
+                TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file, workerId);
                 if (!res.accepted()) {
                     discardedConflict.incrementAndGet();
                     discardedBy.get(res.discard()).incrementAndGet();

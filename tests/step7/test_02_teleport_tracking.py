@@ -13,15 +13,16 @@ from mcd import wait_until
 
 
 def view(server, name):
+    """这个假玩家的 /bench view；还没出生（spawn 是异步的）时是 None。"""
     # Carpet 会把假玩家名字改成首字母大写（tpbot → TpBot）
-    return next(p for p in json.loads(server.rcon("bench view"))["players"] if p["name"].lower() == name.lower())
+    return next((p for p in json.loads(server.rcon("bench view"))["players"] if p["name"].lower() == name.lower()), None)
 
 
 def test_tp_updates_tracked_position(server):
     a, b = (40000, 40000), (40000 + 16 * 64, 40000)   # 相隔 64 个 chunk
     server.rcon(f"player tpbot spawn at {a[0]} 200 {a[1]} facing 0 0 in minecraft:overworld in spectator")
     try:
-        wait_until(lambda: view(server, "tpbot")["tracked"] == [a[0] // 16, a[1] // 16], timeout=30, interval=0.5,
+        wait_until(lambda: (v := view(server, "tpbot")) and v["tracked"] == [a[0] // 16, a[1] // 16], timeout=30, interval=0.5,
                    what="出生后 ChunkMap 记录的位置")
         wait_until(lambda: (v := view(server, "tpbot"))["ready"] / v["total"] > 0.9, timeout=120, interval=1,
                    what="出生点周围加载好")

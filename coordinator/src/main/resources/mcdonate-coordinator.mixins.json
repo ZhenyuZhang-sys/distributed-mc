@@ -6,7 +6,8 @@
     "ChunkMapAccessor",
     "ChunkMapSaveMixin",
     "ChunkMapWaitDonorMixin",
-    "ServerChunkCacheSyncMixin"
+    "ServerChunkCacheSyncMixin",
+    "ChunkStatusTasksFullMixin"
   ],
   "injectors": {
     "defaultRequire": 1

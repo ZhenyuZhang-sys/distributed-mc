@@ -36,6 +36,7 @@ public final class Coordinator implements ModInitializer {
         //   /donor rules strict|legacy        测试用：导入规则（默认 strict；legacy 是第 3 步的旧规则）
         //   /donor demand on|off    自动找需求的开关（正式默认开；测试服务器默认关）
         //   /donor feature <名字> on|off  第 7 步的开关（territory、deadline、throughput、hedge、waitdonor）
+        //   /donor provenance       测试用：最近 64 条来源事件（coordinator 报给 common.Provenance 的 DONOR/REJECTED）
         //   /donor syncload <x> <z>  测试用：在主线程上同步要这个 chunk（FULL），回复用了多少毫秒（7.6a）
         //   /donor waitimport chunkcache|server  测试用：等 donor 的导入走哪个队列（7.6a，正确的是 chunkcache）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
@@ -69,6 +70,7 @@ public final class Coordinator implements ModInitializer {
                                                 StringArgumentType.getString(ctx, "name"), true)))
                                         .then(Commands.literal("off").executes(ctx -> setFeature(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name"), false)))))
+                        .then(Commands.literal("provenance").executes(ctx -> reply(ctx.getSource(), recentProvenance())))
                         .then(Commands.literal("syncload")
                                 .then(Commands.argument("x", IntegerArgumentType.integer())
                                         .then(Commands.argument("z", IntegerArgumentType.integer())
@@ -160,6 +162,22 @@ public final class Coordinator implements ModInitializer {
     }
 
     private static volatile CoordinatorServer network;
+
+    /** 最近的来源事件（测试用；实时地图的正式记录在 bench 的 provenance.jsonl，第 4 步 4.3）。 */
+    private static final java.util.Deque<String> PROVENANCE = new java.util.concurrent.ConcurrentLinkedDeque<>();
+
+    static {
+        mcdonate.common.Provenance.addListener((cx, cz, kind, donor) -> {
+            PROVENANCE.addLast("[" + cx + "," + cz + ",\"" + kind.name().toLowerCase() + "\"," + donor + "]");
+            while (PROVENANCE.size() > 64) {
+                PROVENANCE.pollFirst();
+            }
+        });
+    }
+
+    private static String recentProvenance() {
+        return "[" + String.join(",", PROVENANCE) + "]";
+    }
 
     static java.nio.file.Path ledgerDir(net.minecraft.server.MinecraftServer server) {
         return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("mcdonate").resolve("ledger");

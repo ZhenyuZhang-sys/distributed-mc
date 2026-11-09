@@ -354,12 +354,19 @@ class Server:
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         csv_path.write_text("".join(f"{x},{z}\n" for x, z in chunks))
         xs, zs = [c[0] for c in chunks], [c[1] for c in chunks]
+        # 外框必须是正方形：corners 不等边时 Chunky 1.4.23 把形状改成 rectangle，
+        # 而 rectangle/ellipse 一律用 loop 遍历、不管 CSV（ChunkIteratorFactory），会把整个外框都生成一遍。
+        side = max(max(xs) - min(xs), max(zs) - min(zs)) + 1
         for command in ["chunky world minecraft:overworld", "chunky shape square",
-                        f"chunky corners {16 * min(xs)} {16 * min(zs)} {16 * max(xs) + 15} {16 * max(zs) + 15}",
-                        f"chunky pattern csv {name}"]:
+                        f"chunky corners {16 * min(xs)} {16 * min(zs)} {16 * (min(xs) + side) - 1} {16 * (min(zs) + side) - 1}",
+                        "chunky shape square", f"chunky pattern csv {name}"]:
             self.rcon(command)
         cursor = len(self.logs().splitlines())
-        start_chunky(self)
+        started = start_chunky(self)
+        if "square region" not in started:  # 不是正方形就不走 CSV，立刻报错，不白等
+            if "confirm" in self.rcon("chunky cancel"):
+                self.rcon("chunky confirm")
+            raise RuntimeError("Chunky 选区不是正方形，CSV 不生效：" + started.strip())
 
         def finished():
             lines = self.logs().splitlines()
@@ -368,6 +375,8 @@ class Server:
 
         count = wait_until(finished, timeout=timeout, interval=2, what="Chunky 生成给定的 chunk")
         self.rcon("chunky pattern loop")
+        if count != len(set(chunks)):
+            raise AssertionError(f"Chunky 没按清单生成：期望 {len(set(chunks))}，实际 {count}")
         return count
 
     def error_lines(self) -> list[str]:
