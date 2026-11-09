@@ -2,7 +2,7 @@
 
 依据：[开发总计划](../DEV_PLAN.md) 第 4 步、[README](../README.md) 第 2 层定义、[第 1 步计划](step1-plan.md) 已有的测量框架。
 
-状态：**计划已通过（调度 11-08 有条件通过，两条补充已写入 3.3、4.3、4.6）**。4.1、4.2、4.4、4.5 已完成，连同 4.6 的纯逻辑部分在 11-09 合进 main；4.3、4.6 的真实回放、4.7、4.8 未完成。负责人 kexu。
+状态：**计划已通过（调度 11-08 有条件通过，两条补充已写入 3.3、4.3、4.6）**。4.1、4.2、4.4、4.5 已完成，连同 4.6 的纯逻辑部分在 11-09 合进 main；之后 4.3、4.6 也已完成（在 kexu 上）；4.7、4.8、4.9 未完成。负责人 kexu。
 
 **11-08 降级（用户："到时候生成也不是这台服务器……先把功能做好"，调度转达）**：正式矩阵改成冒烟测量，每种速度 1～2 次，两条指标自检各 1 次。速度、视距、时长、轮数、核数都做成配置（`bench/layer2-protocol.json`），以后在部署机器上改配置就能跑满 15 轮 + 4 核 5 轮。下面标"降级"的地方是改过的。
 
@@ -147,7 +147,7 @@ bench 注册监听写文件；coordinator 写入成功时报 `DONOR`，验证打
 | 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated`；跨 mod 检查（3.3 的 1～4 条） | 通过。**已做**（11-09，先提交失败的测试 `b678b80`）：`Generation` 让计数和来源事件在同一把读锁里发，飞行开始 / 结束拿写锁读计数快照，所以 `done.json` 里原版事件数严格等于 `full_generated + full_resumed` 的增量（JUnit 4 线程并发验证）。GameTest 改用 `getChunk` 强制生成 3 个新 chunk（不用 Chunky，GameTest 并发跑时计数不好对），每个正好一条 vanilla；跨 mod 1～4 条都过。读盘的成品记 `loaded`，读盘的半成品做完记 `vanilla`。变异检查（不加锁、不发事件）都被抓到。飞行的 t0 改成起飞命令执行时，起飞前一刻的来源事件也有 t_ms |
 | 4.4 | Python 离线合成和统计 | pytest：已知事件算出的虚空率、分位数（含删失）、CSV 列；时间对齐 | 通过 |
 | 4.5 | 单轮端到端 | pytest 冒烟（非 slow）：新世界里走路速度飞 15 秒，CSV 有 15 行左右，每行视野数等于 453，日志无 ERROR | 通过 |
-| 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过 |
+| 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过。**已做**（11-09）：真实回放放在 `tests/step4/test_10_smoke.py` 里，和 4.5 共用同一次飞行（模块级 fixture），不另开 test_11。原版事件数对照 `done.json` 里飞行期间的计数增量，不用全局 `bench stats`：后者还含起飞前生成初始视野的那些。实测一轮：100 条 vanilla，计数增量 100 |
 | 4.7 | 指标自检（slow） | 见 5.3 | 两条都满足 |
 | 4.8 | 冒烟测量（slow，降级） | 按 `layer2-protocol.json` 跑完（默认每种速度 1～2 次 + 4 核鞘翅 1 次）；每轮输出 p50/p95/p99；有 2 次的配置给出波动 | `scripts/test.sh step4 --slow` 退出码 0；非 slow 的 test_90 复核已发布的冒烟结果 |
 | 4.9 | 收尾 | 报告、README 第 2 层数字、DEV_PLAN 勾选 | 文档对上数据 |
@@ -172,7 +172,7 @@ bench/src/main/java/mcdonate/bench/gametest/FlightGameTest.java
 common/src/test/java/mcdonate/common/ProvenanceTest.java
 tests/step4/test_01_layer2_math.py    纯逻辑
 tests/step4/test_02_map.py            地图服务器（合成数据）
-tests/step4/test_11_map_replay.py     回放 4.5 的真实 run，自动判定
+tests/step4/test_10_smoke.py          （4.6 的真实回放也在这里，共用 4.5 那次飞行）
 tests/step4/test_10_smoke.py          短飞行端到端
 tests/step4/test_90_baseline.py       slow：自检 + 冒烟测量；非 slow 部分复核已发布结果（同第 1 步）
 ```
