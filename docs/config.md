@@ -39,6 +39,8 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `throughputWindow` | 10 | donor 耗时按最近几个任务平均 | |
 | `motionWindowMs` | 3000 | 估玩家速度用最近多久的位置 | |
 | `motionHorizonS` | 120 | 按玩家速度往前预测多少秒 | |
+| `importFrontier` | true | 开 deadline 时实测服务器前沿（玩家前进方向上最远有 holder 的圈数，/donor status 的 scan.frontier），按它算每个 tile 的 importBy；派之前问 donor 能不能在 importBy 之前做完，做不完的不派，importBy 过了的丢掉 | 11-09 kexu 演示里前沿约 14 圈，比 inner（22）近 8 圈。false 退回只按 due（玩家看到的时间）|
+| `importMarginMs` | 1000 | importBy 前面再留多少毫秒（结果在主线程排队、前沿每秒才测一次） | 看 /donor imports 的 seg.main_wait |
 | `tokenTtlMs` | 60000 | 发给客户端的一次性 token 多久作废 | |
 | `allowTokenless` | false | 没带 token 的 worker 放不放进来。测试的 compose 里设 true（Docker 里的本地 worker 没有玩家）；正式部署保持 false | 第 9 步 |
 | `publicHost` | 空 | 发给玩家客户端的 coordinator 地址（主机名或 IP）。空就不发邀请，玩家的 worker 起不来 | 第 9 步 |
