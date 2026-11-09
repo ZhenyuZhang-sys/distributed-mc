@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>coordinator 初始化时调一次 {@link #install}（fish 加的那一行）：登记两个 payload、收订阅、在 Provenance 上挂监听、
  * 每 20 tick 在主线程上算一次并发给订阅了的玩家。只给 {@code canSend} 为真的玩家发（原版客户端不注册频道，也不会订阅）。
- * 两样都关的玩家不在 OverlayCore 里，没人订阅时 Provenance 监听直接返回。
+ * 两样都关的玩家不在 OverlayCore 里；没人订阅时每秒只把事件记进来源表，不发。
  */
 public final class OverlaySender {
     private static final Logger LOG = LoggerFactory.getLogger("mcdonate-overlay");
@@ -58,7 +58,7 @@ public final class OverlaySender {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> server.execute(() -> c.remove(handler.getPlayer().getUUID())));
         Provenance.addListener(c::onEvent);
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            if (c.active() && server.getTickCount() % EVERY_TICKS == 0) {
+            if (server.getTickCount() % EVERY_TICKS == 0) {
                 send(server, c);
             }
         });

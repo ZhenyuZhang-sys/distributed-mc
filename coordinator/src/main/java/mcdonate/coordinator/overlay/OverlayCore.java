@@ -26,7 +26,9 @@ import mcdonate.common.net.ProvenanceUpdate.Summary;
  * 游戏内来源上色的服务器端逻辑（docs/overlay-plan.md 第 4 节），纯逻辑，不碰 Minecraft 服务器；{@link OverlaySender} 把它接到网络和 tick 上。
  *
  * <ul>
- *   <li>{@link #onEvent}（任何线程，Provenance 监听）：没人订阅时直接返回（一次 volatile 读）；有人订阅时排进队列。
+ *   <li>{@link #onEvent}（任何线程，Provenance 监听）：排进队列。来源一直记着（每个 chunk 约 12 字节），没人订阅时只是不发，
+ *       这样打开 overlay 时整片快照里有之前生成的 chunk。超过 {@code maxState}（默认 100 万个，约 16 MB）时，离所有在线玩家都超过
+ *       {@code pruneRadius}（默认 64）个 chunk 的删掉。只在内存里，服务器重启后清空。
  *   <li>{@link #tick}（主线程，每秒一次）：取出事件更新来源表；给每个订阅了的玩家算要发的包：订阅后第一次是视距内的整片快照，
  *       之后只发变化了的、和走动时新进入范围的 chunk。donor 表每个 donor 只给每个玩家发一次。hud 开着时带摘要。
  *   <li>donor 的名字在主线程上查（{@code names}，fish 的 Coordinator.workerName：会读玩家列表），按稳定名字分配编号，
@@ -52,8 +54,12 @@ public final class OverlayCore {
         long packets;
     }
 
+    public static final int MAX_STATE = 1_000_000;
+    public static final int PRUNE_RADIUS = 64;
+
     private final IntFunction<Optional<Name>> names;
     private final IntSupplier donorsOnline;
+    private final int maxState, pruneRadius;
     private final ConcurrentLinkedQueue<Event> queue = new ConcurrentLinkedQueue<>();
     private volatile boolean active;
 
@@ -69,9 +75,23 @@ public final class OverlayCore {
     private final Map<UUID, Long> sentPackets = new HashMap<>();
 
     public OverlayCore(IntFunction<Optional<Name>> names, IntSupplier donorsOnline) {
+        this(names, donorsOnline, MAX_STATE, PRUNE_RADIUS);
+    }
+
+    OverlayCore(IntFunction<Optional<Name>> names, IntSupplier donorsOnline, int maxState, int pruneRadius) {
         this.names = names;
         this.donorsOnline = donorsOnline;
+        this.maxState = maxState;
+        this.pruneRadius = pruneRadius;
         state.defaultReturnValue(-1);
+    }
+
+    /** 超过上限：删掉离所有在线玩家都远的。 */
+    private void prune(List<View> views) {
+        if (state.size() <= maxState) {
+            return;
+        }
+        state.keySet().removeIf(k -> views.stream().noneMatch(v -> inside(k, v.cx(), v.cz(), pruneRadius)));
     }
 
     // ---- 编码：低 3 位是来源，高位是 donor 编号 + 1（没有 donor 是 0） ----
@@ -95,9 +115,7 @@ public final class OverlayCore {
     // ---- 任何线程 ----
 
     public void onEvent(int cx, int cz, Provenance.Kind kind, int worker) {
-        if (active) {
-            queue.add(new Event(cx, cz, kind, worker));
-        }
+        queue.add(new Event(cx, cz, kind, worker));
     }
 
     public boolean active() {
@@ -126,7 +144,6 @@ public final class OverlayCore {
         subs.remove(player);
         if (subs.isEmpty()) {
             active = false;
-            queue.clear();
         }
     }
 
@@ -199,6 +216,7 @@ public final class OverlayCore {
         while ((e = queue.poll()) != null) {
             apply(e);
         }
+        prune(views);
         Map<UUID, List<ProvenanceUpdate>> out = new LinkedHashMap<>();
         for (View v : views) {
             Sub sub = subs.get(v.player());
