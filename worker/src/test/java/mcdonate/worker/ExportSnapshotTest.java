@@ -17,7 +17,7 @@ class ExportSnapshotTest {
         long[] live = {1, 2, 3};
         CompoundTag fromSerializer = new CompoundTag();
         fromSerializer.put("Heightmaps", new LongArrayTag(live));   // 和 ChunkSerializer 一样，不复制
-        CompoundTag snap = TileExporter.snapshot(fromSerializer);
+        CompoundTag snap = NbtSnapshot.of(fromSerializer);
         live[0] = 99;                                               // 生成线程接着改了 chunk
         assertArrayEquals(new long[] {1, 2, 3}, ((LongArrayTag) snap.get("Heightmaps")).getAsLongArray());
     }

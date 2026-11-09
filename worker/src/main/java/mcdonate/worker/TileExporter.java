@@ -269,7 +269,9 @@ final class TileExporter {
                     throw new Refused("refused: chunk (" + x + ", " + z + ") is already full (player or spawn nearby)");
                 }
                 String name = BuiltInRegistries.CHUNK_STATUS.getKey(status).toString();
-                chunks.add(new ExportedChunk(x, z, name, ChunkSerializer.write(level, chunk)));
+                // 深拷贝（codex-audit 第九节 P1）：ChunkSerializer.write 的高度图、光照数组和活 chunk 共用，
+                // 结果在发送线程上编码时相邻 tile 可能已经接着生成、改了它们
+                chunks.add(new ExportedChunk(x, z, name, NbtSnapshot.of(ChunkSerializer.write(level, chunk))));
                 rings.get(tile.ring(x, z)).merge(name, 1, Integer::sum);
             }
         }
