@@ -273,4 +273,22 @@ public class FlightGameTest implements FabricGameTest {
             check(notReady == 0, "初始视野还没全部就绪：" + notReady + " 个，按圈（切比雪夫距离）：" + notReadyByRing(h, p));
         });
     }
+
+    /** 路线飞行（调度 11-09 真实场景）：先往东再往南，终点在起点东南；done.json 带路线、理想距离是各段之和。 */
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
+    public void routeFlightTurns(GameTestHelper h) {
+        ServerPlayer p = player(h);
+        double x0 = p.getX(), z0 = p.getZ();
+        String run = newRun("route");
+        check(run(h, "bench fly route " + p.getStringUUID() + " " + run + " -90,8,2;0,8,2") == 1, "fly route 失败");
+        h.succeedWhen(() -> {
+            JsonObject done = done(h, run);
+            check("-90,8,2;0,8,2".equals(field(done, "route").getAsString()), "done.json 没带路线：" + done);
+            check(Math.abs(field(done, "ideal_distance").getAsDouble() - 32) < 1e-6, "理想距离：" + done);
+            double ex = field(done, "end_x").getAsDouble(), ez = field(done, "end_z").getAsDouble();
+            check(ex > x0 + 1 && ez > z0 + 1, "终点应在起点东南：" + x0 + "," + z0 + " → " + ex + "," + ez);
+            check(field(done, "distance").getAsDouble() <= 32 + 1e-6, "走得比理想还远：" + done);
+            delete(h, run);
+        });
+    }
 }
