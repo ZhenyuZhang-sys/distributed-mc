@@ -110,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.demo['controller'].do(body))
             if not isinstance(body, dict):
                 raise BadRequest('要一个 JSON 对象')
-            self.demo['ab'].start(body.get('speed', 'elytra'), body.get('seconds', 120))
+            self.demo['ab'].start(body.get('speed', 'elytra'), body.get('seconds', 120), body.get('server_cpus', 2))
             return self.send(202, self.demo['ab'].status())
         except (BadRequest, json.JSONDecodeError) as e:
             return self.send(400, dict(error=str(e)))

@@ -20,6 +20,31 @@ DONORS = ('worker', 'worker2')
 ALL_WORKERS = ('worker', 'worker2', 'worker3')
 NETEM_ARGS = ('35ms', '1%', '20mbit')   # 延迟、丢包、限速（fish 的 netem.sh：on [延迟] [丢包] [限速]）
 SECONDS_RANGE = (10, 600)
+SERVER_CPUS = (1, 2, 4)   # A/B 时服务器几个核；默认 2（调度 11-09：和第 4 步基线、第 10 步 X 的配置一样）
+
+
+def expand_cpus(spec: str) -> list:
+    """'16-19' 或 '16,18' → [16, 17, 18, 19] / [16, 18]（和 lib.sh 的 expand_cpus 一样）。"""
+    out = []
+    for part in spec.split(','):
+        lo, _, hi = part.strip().partition('-')
+        out += list(range(int(lo), int(hi or lo) + 1))
+    return out
+
+
+def server_cpuset(n: int, slot_cpuset: str) -> str:
+    """这个槽位服务器核的前 n 个，写成 cpuset。"""
+    cpus = expand_cpus(slot_cpuset)
+    if n not in SERVER_CPUS or n > len(cpus):
+        raise BadRequest(f'服务器核数只能是 {list(SERVER_CPUS)}，而且不能多于这个槽位的 {len(cpus)} 个核')
+    parts, run = [], []
+    for c in cpus[:n]:   # 连着的写成 a-b（和 .env.local 的写法一样）
+        if run and c != run[-1] + 1:
+            parts.append(run)
+            run = []
+        run.append(c)
+    parts.append(run)
+    return ','.join(f'{r[0]}-{r[-1]}' if len(r) > 1 else str(r[0]) for r in parts)
 ACTIONS = ('donor_on', 'donor_off', 'feature', 'fly_start', 'fly_stop', 'netem', 'record_start', 'record_stop')
 PLAYER_NAME = re.compile(r'[A-Za-z0-9_]{1,16}')   # 原版玩家名的规则；拼进命令前先查，不让选择器（@a）或空格进去
 

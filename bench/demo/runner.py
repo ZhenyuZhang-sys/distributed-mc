@@ -25,6 +25,18 @@ class Runner:
     def compose(self, *args, timeout=120) -> str:
         return compose(*args, timeout=timeout)
 
+    def slot_cpuset(self) -> str:
+        """这个槽位服务器的核：环境变量 > docker/.env.local > docker/n100.env（和 lib.sh 的 test_cpuset 一样）。"""
+        if os.environ.get('MC_CPUSET'):
+            return os.environ['MC_CPUSET']
+        for name in ('.env.local', 'n100.env'):
+            p = SCRIPTS.parent / 'docker' / name
+            if p.exists():
+                for line in p.read_text().splitlines():
+                    if line.startswith('MC_CPUSET='):
+                        return line.split('=', 1)[1].strip()
+        raise RuntimeError('找不到服务器的核（MC_CPUSET）')
+
     def services(self) -> list:
         """compose 里定义了的服务（不管起没起）。"""
         return compose('config', '--services').split()

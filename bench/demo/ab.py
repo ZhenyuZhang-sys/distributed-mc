@@ -10,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 
-from bench.demo.control import FEATURES, SPEEDS, Busy, check_flight
+from bench.demo.control import FEATURES, SPEEDS, Busy, check_flight, server_cpuset
 
 NOTE = '演示，粗测：每组 1 次，这台机器上限核跑，可能有别的测试并行，不进第 10 步的矩阵和假设表。'
 DEFAULT_START = (-32000.5, 32008.5)   # 第 4 步协议的起点：远离出生点，全新世界里一定没生成过
@@ -35,10 +35,12 @@ def _concurrent(events, project):
     return out
 
 
-def _judge(out_dir, b, ids_before=None, ids_after=None):
+def _judge(out_dir, b, cpus, ids_before=None, ids_after=None):
     summary = json.loads((out_dir / 'summary.json').read_text())
     done = json.loads((out_dir / 'raw' / 'done.json').read_text())
     invalid = []
+    if summary.get('available_processors') != cpus:
+        invalid.append(f"服务器核数不对：要 {cpus} 个，容器里是 {summary.get('available_processors')} 个（换世界时核数没生效）")
     if summary.get('sync_loads'):
         invalid.append(f"玩家实体 tick 里同步加载了 {summary['sync_loads']} 次（假玩家跑到了生成前面），这一轮的卡住不可信")
     donor_events = done.get('provenance', {}).get('donor', 0)
@@ -54,8 +56,10 @@ def _judge(out_dir, b, ids_before=None, ids_after=None):
 
 
 def run_ab(runner, controller, flyer, out_root, speed='elytra', seconds=120, features=('deadline',), seed=424242,
-           start=DEFAULT_START, events=None, clock=time.time):
+           start=DEFAULT_START, events=None, clock=time.time, server_cpus=2):
     check_flight(speed, seconds)
+    cpuset = server_cpuset(server_cpus, runner.slot_cpuset())
+    world_env = {'MC_CPUS': str(server_cpus), 'MC_CPUSET': cpuset}   # 换世界时服务器容器按这个核数重建
     if any(f not in FEATURES for f in features):
         raise ValueError(f'开关名只能是 {list(FEATURES)}')
     events = events or _docker_events
@@ -72,17 +76,17 @@ def run_ab(runner, controller, flyer, out_root, speed='elytra', seconds=120, fea
 
     # A：没有 donor
     step('A：换全新世界')
-    runner.script('new_world.sh', f'demoa{ts.lower()}', str(seed), timeout=900)
+    runner.script('new_world.sh', f'demoa{ts.lower()}', str(seed), env=world_env, timeout=900)
     step('A：donor 关')
     controller.donor_off()
     for f in FEATURES:
         controller.feature(f, False)
     step('A：飞')
     flyer.fly_sync(f'demo-a-{ts}', start, v, seconds, root / 'A')
-    a = _judge(root / 'A', False)
+    a = _judge(root / 'A', False, server_cpus)
     # B：有 donor，开关按参数
     step('B：换全新世界')
-    runner.script('new_world.sh', f'demob{ts.lower()}', str(seed), timeout=900)
+    runner.script('new_world.sh', f'demob{ts.lower()}', str(seed), env=world_env, timeout=900)
     runner.rcon('donor reset')
     step('B：donor 开')
     controller.donor_on()
@@ -92,17 +96,18 @@ def run_ab(runner, controller, flyer, out_root, speed='elytra', seconds=120, fea
     step('B：飞')
     flyer.fly_sync(f'demo-b-{ts}', start, v, seconds, root / 'B')
     ids_after = controller.worker_ids()
-    b = _judge(root / 'B', True, ids_before, ids_after)
+    b = _judge(root / 'B', True, server_cpus, ids_before, ids_after)
     step('完成')
     conc = _concurrent(events(t0, clock()), getattr(runner, 'project', None))
     a['run'], b['run'] = f'demo-a-{ts}', f'demo-b-{ts}'
     result = dict(name=name, note=NOTE, speed=speed, speed_blocks_per_s=v, seconds=seconds, seed=seed, start=list(start),
+                  server_cpus=server_cpus, server_cpuset=cpuset,
                   features=list(features), netem=bool(getattr(controller.poller, 'netem', False)), A=a, B=b,
                   concurrent=conc, steps=steps, dir=str(root))
     (root / 'ab.json').write_text(json.dumps(result, ensure_ascii=False, indent=1) + '\n')
     (root / 'README.md').write_text(
         f'# 演示 A/B：{name}\n\n{NOTE}\n\n'
-        f'- A：donor 关；B：donor 开，开关 {", ".join(features) or "无"}；{speed} {v} 格/秒，{seconds} 秒，seed {seed}，两轮各一个全新世界，同一条航线。\n'
+        f'- A：donor 关；B：donor 开，开关 {", ".join(features) or "无"}；服务器 {server_cpus} 核（{cpuset}）；{speed} {v} 格/秒，{seconds} 秒，seed {seed}，两轮各一个全新世界，同一条航线。\n'
         f'- 模拟网络：{"开（35ms / 20mbit / 1% 丢包）" if result["netem"] else "关"}。\n'
         f'- 有效性：A {"有效" if a["valid"] else "无效：" + "；".join(a["invalid"])}；B {"有效" if b["valid"] else "无效：" + "；".join(b["invalid"])}。\n'
         f'- 并发：{"；".join(conc) if conc else "无"}。\n\n两轮的汇总和有效性在 ab.json，归档在 A/、B/。\n')
@@ -117,19 +122,22 @@ class Job:
         self.thread = None
         self.state, self.result, self.error, self.params = 'idle', None, None, None
 
-    def start(self, speed, seconds):
+    def start(self, speed, seconds, server_cpus=2):
         check_flight(speed, seconds)
+        from bench.demo.control import SERVER_CPUS, BadRequest
+        if server_cpus not in SERVER_CPUS or type(server_cpus) is not int:
+            raise BadRequest(f'服务器核数只能是 {list(SERVER_CPUS)}')
         if self.thread and self.thread.is_alive():
             raise Busy('A/B 正在跑')
-        self.state, self.result, self.error, self.params = 'running', None, None, dict(speed=speed, seconds=seconds)
+        self.state, self.result, self.error, self.params = 'running', None, None, dict(speed=speed, seconds=seconds, server_cpus=server_cpus)
 
         def go():
             try:
                 if self.controller:
                     with self.controller.busy('A/B 对比'):
-                        self.result = self.fn(speed=speed, seconds=seconds)
+                        self.result = self.fn(speed=speed, seconds=seconds, server_cpus=server_cpus)
                 else:
-                    self.result = self.fn(speed=speed, seconds=seconds)
+                    self.result = self.fn(speed=speed, seconds=seconds, server_cpus=server_cpus)
                 self.state = 'done'
             except Exception as e:
                 self.error, self.state = repr(e), 'failed'
