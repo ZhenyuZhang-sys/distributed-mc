@@ -265,17 +265,23 @@ def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str
 # 护栏只抓明显变坏的情况。7.8 修好后收紧回 relative_check 的判法。
 SEAM_GUARD_FACTOR = 5.0
 SEAM_GUARD_CLUSTER_MAX = 2 * TERRAIN_CLUSTER_MAX  # 132
+# 基准取"同一轮没导入部分"和历史下限里大的（调度 11-09 定，看过数据后改的，第四次也是最后一次：以后再因噪声挂，
+# 按 docs/step6-report.md 第 12 节挪到 slow、多轮合计判）。同一轮没导入部分处数很少时波动太大：f2 那轮只有 1 处，
+# 边界 10 处就显得是 6.4 倍，按前几轮的水平只有约 2 倍。
+# 地形互换的历史下限：前 4 轮原版互比合计 28 处 ÷ (4 × 664 chunk) = 0.0105 处/chunk；一个 chunk 按 16×16×384 个方块算。
+SEAM_GUARD_MIN_CLUSTERS_PER_CHUNK = 28 / (4 * 664)
+BLOCKS_PER_CHUNK = 16 * 16 * 384
 
 
 def seam_guard(ring: Diff, outside: Diff, factor: float = SEAM_GUARD_FACTOR) -> list[str]:
     """导入边界附近（tile 外面一圈、两圈）的护栏。返回不满足的说明，空列表表示通过。
 
-    - 装饰类差异率不超过没导入部分的 factor 倍（下限 VANILLA_DECOR_FLOOR）。
-    - 地形互换的处数密度（按方块数）不超过没导入部分的 factor 倍；没导入部分一处都没有时按 1 处算底。
+    - 装饰类差异率不超过 factor × max(没导入部分, VANILLA_DECOR_FLOOR)。
+    - 地形互换的处数密度（按方块数）不超过 factor × max(没导入部分, 历史下限 SEAM_GUARD_MIN_CLUSTERS_PER_CHUNK)。
     - 每一处不超过 SEAM_GUARD_CLUSTER_MAX 个方块。
     """
     bad = []
-    limit = max(outside.decor_rate * factor, VANILLA_DECOR_FLOOR)
+    limit = factor * max(outside.decor_rate, VANILLA_DECOR_FLOOR)
     if ring.decor_rate > limit:
         bad.append(f"边界装饰类：{ring.decor_rate:.5%} > 没导入部分的 {factor:g} 倍 {limit:.5%}")
     ring_clusters = terrain_clusters(ring.terrain_positions or [])
@@ -285,7 +291,7 @@ def seam_guard(ring: Diff, outside: Diff, factor: float = SEAM_GUARD_FACTOR) -> 
         bad.append(f"边界地形互换有 {len(big)} 处超过 {SEAM_GUARD_CLUSTER_MAX} 个方块（{big}）")
     if ring.blocks and outside.blocks:
         ring_density = len(ring_clusters) / ring.blocks
-        out_density = max(len(out_clusters), 1) / outside.blocks
+        out_density = max(len(out_clusters) / outside.blocks, SEAM_GUARD_MIN_CLUSTERS_PER_CHUNK / BLOCKS_PER_CHUNK)
         if ring_density > factor * out_density:
             bad.append(f"边界地形互换 {len(ring_clusters)} 处，密度是没导入部分（{len(out_clusters)} 处）的 "
                        f"{ring_density / out_density:.1f} 倍 > {factor:g} 倍")

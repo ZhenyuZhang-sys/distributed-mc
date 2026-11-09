@@ -5,7 +5,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from analysis.mca.chunk import AIR, BlockState, Chunk
-from analysis.mca.decor import (SEAM_GUARD_CLUSTER_MAX, SEAM_GUARD_FACTOR, Diff, binomial_tail, classify, compare_chunks,
+from analysis.mca.decor import (BLOCKS_PER_CHUNK, SEAM_GUARD_CLUSTER_MAX, SEAM_GUARD_FACTOR, Diff, binomial_tail, classify, compare_chunks,
                                 is_decor_diff, relative_check, seam_guard)
 
 STONE = BlockState("minecraft:stone")
@@ -153,9 +153,28 @@ def test_seam_guard_catches_much_worse():
     assert seam_guard(Diff(blocks=200, terrain_positions=blob(0, 67)), outside) == [], "边界上 67 个方块的一处在护栏以内（tile 里照样是 66）"
 
 
+def test_seam_guard_uses_history_floor_when_outside_is_quiet():
+    # f2 11-09 那轮：边界（ring1+ring2，480 chunk）10 处，没导入部分（384 chunk）只有 1 处；装饰类边界 0.035%、没导入 0.0063%。要放过
+    chunk = BLOCKS_PER_CHUNK
+    outside = Diff(blocks=384 * chunk, decor=int(384 * chunk * 0.0000634), terrain_positions=blob(0, 4))
+    ring = Diff(blocks=480 * chunk, decor=int(480 * chunk * 0.000354),
+                terrain_positions=[p for i in range(10) for p in blob(1000 * i, 6)])
+    assert seam_guard(ring, outside) == []
+    # 同一轮基准一样低，但边界真的超过 5 倍历史水平（0.0105 处/chunk）：480 chunk 里 30 处 = 0.0625，约 6 倍，要抓到
+    worse = Diff(blocks=480 * chunk, terrain_positions=[p for i in range(30) for p in blob(1000 * i, 3)])
+    bad = seam_guard(worse, outside)
+    assert len(bad) == 1 and "倍" in bad[0], bad
+
+
 def test_seam_guard_decor_and_empty_outside():
-    assert seam_guard(Diff(blocks=10**6, decor=400), Diff(blocks=10**6, decor=100)) == []
-    assert len(seam_guard(Diff(blocks=10**6, decor=600), Diff(blocks=10**6, decor=100))) == 1
-    # 外面一处都没有时，按 1 处算底，边界上一两处不报
-    assert seam_guard(Diff(blocks=200, terrain_positions=blob(0, 3)), Diff(blocks=664, terrain_positions=[])) == []
+    # 装饰类上限 = 5 × max(没导入部分, VANILLA_DECOR_FLOOR)
+    from analysis.mca.decor import VANILLA_DECOR_FLOOR
+    out = Diff(blocks=10**6, decor=int(10**6 * VANILLA_DECOR_FLOOR * 2))   # 外面是下限的 2 倍
+    assert seam_guard(Diff(blocks=10**6, decor=int(10**6 * VANILLA_DECOR_FLOOR * 9)), out) == []      # 4.5 倍，放过
+    assert len(seam_guard(Diff(blocks=10**6, decor=int(10**6 * VANILLA_DECOR_FLOOR * 11)), out)) == 1  # 5.5 倍，抓到
+    # 外面很安静（低于下限）时按下限算：边界 4 倍下限放过
+    assert seam_guard(Diff(blocks=10**6, decor=int(10**6 * VANILLA_DECOR_FLOOR * 4)), Diff(blocks=10**6, decor=0)) == []
+    # 外面一处地形互换都没有时按历史下限算，边界上一两处不报
+    assert seam_guard(Diff(blocks=200 * BLOCKS_PER_CHUNK, terrain_positions=blob(0, 3)),
+                      Diff(blocks=664 * BLOCKS_PER_CHUNK, terrain_positions=[])) == []
     assert SEAM_GUARD_FACTOR == 5.0
