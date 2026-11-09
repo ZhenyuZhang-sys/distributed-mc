@@ -168,4 +168,155 @@ class TaskQueueDeadlineTest {
         assertEquals(0, q.inFlight(1));
         assertTrue(q.leasesWithDue().isEmpty());
     }
+
+    // ---- 11-09 调度：来不及导入的不派（7.3 的 canMeet，不开 throughput 也生效）----
+    // importBy = 预计这个 tile 的区域进服务器前沿的时间；之后交回会被判"在内存里"整个丢掉。
+    // 派之前用 dueOk 问"这个 donor 在 importBy − 余量之前做得完吗"，做不完的留在队列里（快的 donor 可能做得完），
+    // importBy 过了还没派的丢掉，交给服务器。
+
+    @Test
+    void dispatchSkipsTilesThatCannotBeImportedInTime() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 5);
+        q.setDue(0, 0, now.get() + 4_000, now.get() + 2_000);   // 最先看到，但 2 秒后就进前沿
+        q.setDue(5, 5, now.get() + 9_000, now.get() + 7_000);
+        long[] asked = new long[1];
+        var a = q.assign(1, 1, limit -> {
+            asked[0] = limit;
+            return now.get() + 5_000 <= limit;                   // 这个 donor 要 5 秒
+        });
+        assertEquals(5, a.orElseThrow().tx(), "(0,0) 来不及，派 (5,5)");
+        assertEquals(now.get() + 7_000 - TaskQueue.IMPORT_MARGIN_MS, asked[0], "问的是 importBy 减余量");
+        assertEquals(State.QUEUED, q.state(q.find(0, 0)), "来不及的先留着，快的 donor 也许做得完");
+    }
+
+    @Test
+    void earliestDueFirstAmongFeasible() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(9, 9);
+        q.enqueue(5, 5);
+        q.setDue(9, 9, now.get() + 30_000, now.get() + 28_000);
+        q.setDue(5, 5, now.get() + 12_000, now.get() + 10_000);
+        assertEquals(5, q.assign(1, 1, limit -> true).orElseThrow().tx(), "能做完的里面，玩家最先看到的先派");
+    }
+
+    @Test
+    void withoutImportByFallsBackToDue() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 4_000);
+        long[] asked = new long[1];
+        q.assign(1, 1, limit -> {
+            asked[0] = limit;
+            return true;
+        });
+        assertEquals(now.get() + 4_000, asked[0], "不知道前沿时照旧按 due 问");
+    }
+
+    @Test
+    void importLateQueuedTasksDropped() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 5);
+        long a = q.find(0, 0);
+        q.setDue(0, 0, now.get() + 6_000, now.get() + 1_000);
+        q.setDue(5, 5, now.get() + 20_000, now.get() + 15_000);
+        now.addAndGet(2_000);
+        assertEquals(List.of(a), q.dropLate(), "区域已经进了服务器前沿：交回也会被丢，不派了");
+        assertEquals(State.DROPPED, q.state(a));
+        assertTrue(q.staleJson().contains("\"import_late\":1"), q.staleJson());
+    }
+
+    @Test
+    void enqueueTimeKept() {
+        TaskQueue q = queue("");
+        q.enqueue(0, 0);
+        long id = q.find(0, 0);
+        now.addAndGet(700);
+        q.assign(1);
+        assertEquals(now.get() - 700, q.enqueuedAt(id));
+        assertEquals(-1, q.enqueuedAt(999));
+    }
+
+    // ---- 11-09 调度：排队排太久（f2 实测入队→派出 p50 4～10 秒、p90 22～43 秒，派出→交回只要约 1.4 秒）----
+    // 按 importBy（不知道时按 due）从早到晚排，第 i 个大约在 now + (i + 在租的一半) / 总吞吐 开始、再过一个 tile 的耗时做完；
+    // 做完晚于 importBy − 余量的，现在就丢掉交给服务器，不占队列（排在它后面的往前挪）。
+
+    private static final double ONE_PER_2S = 1.0 / 2_000; // 总吞吐：每 2 秒 1 个 tile
+
+    @Test
+    void hopelessTasksPruned() {
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 5; i++) {
+            q.enqueue(i, 0);
+            q.setDue(i, 0, now.get() + 5_000 + i, now.get() + 3_000 + i); // 都是 3 秒后进前沿
+        }
+        // 第 0 个：0 秒开始、1 秒做完 ≤ 3 − 1 秒，留着；第 1 个：2 秒开始、3 秒做完 > 2 秒，丢；后面的也一样
+        List<Long> dropped = q.pruneHopeless(ONE_PER_2S, 1_000);
+        assertEquals(4, dropped.size(), dropped.toString());
+        assertEquals(State.QUEUED, q.state(q.find(0, 0)), "最急的那个来得及，留着");
+        assertTrue(q.staleJson().contains("\"hopeless\":4"), q.staleJson());
+    }
+
+    @Test
+    void droppedOnesDoNotTakeAPlace() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(1, 0);
+        q.enqueue(2, 0);
+        q.setDue(0, 0, now.get() + 3_000, now.get() + 2_000);   // 第 0 位：1 秒做完 ≤ 1 秒，留
+        q.setDue(1, 0, now.get() + 3_500, now.get() + 2_500);   // 第 1 位：3 秒做完 > 1.5 秒，丢
+        q.setDue(2, 0, now.get() + 6_000, now.get() + 5_000);   // 丢掉的不占位置：仍是第 1 位，3 秒做完 ≤ 4 秒，留
+        assertEquals(List.of(q.find(1, 0)), q.pruneHopeless(ONE_PER_2S, 1_000));
+    }
+
+    @Test
+    void leasedTasksDelayTheQueue() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(9, 9);
+        q.assign(1);            // 在租 1 个：排队的要等它做完一半
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 3_000, now.get() + 2_500);   // 1 秒后才开始、2 秒做完 > 1.5 秒
+        assertEquals(List.of(q.find(0, 0)), q.pruneHopeless(ONE_PER_2S, 1_000));
+    }
+
+    @Test
+    void unknownDeadlinesKeptAtTheEnd() {
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 4; i++) {
+            q.enqueue(i, 0);   // 没有 due（玩家不朝那边走）：永远不丢，也不挤占有 deadline 的位置
+        }
+        q.enqueue(9, 0);
+        q.setDue(9, 0, now.get() + 3_000, now.get() + 2_500);
+        assertEquals(List.of(), q.pruneHopeless(ONE_PER_2S, 1_000));
+    }
+
+    @Test
+    void noPruningWithoutDeadlineOrDonors() {
+        TaskQueue off = queue("");
+        off.enqueue(0, 0);
+        off.enqueue(1, 0);
+        off.setDue(1, 0, now.get() + 2_000, now.get() + 1_000);
+        assertEquals(List.of(), off.pruneHopeless(ONE_PER_2S, 1_000), "开关关着（v0 对照组）不动");
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 2_000, now.get() + 1_000);
+        assertEquals(List.of(), q.pruneHopeless(0, 1_000), "没有 donor（吞吐 0）时估不了，不丢");
+    }
+
+    @Test
+    void slackRecordedAtLease() {
+        // 派出时离截止（importBy，不知道时 due）还有多少毫秒；都不知道是 -1。看排队久的是不是没有 deadline 的
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 0);
+        q.setDue(0, 0, now.get() + 9_000, now.get() + 7_000);
+        long a = q.find(0, 0), b = q.find(5, 0);
+        q.assign(1);
+        q.assign(2);
+        assertEquals(7_000, q.slackAtLease(a));
+        assertEquals(-1, q.slackAtLease(b));
+        assertEquals(-1, q.slackAtLease(999));
+    }
 }

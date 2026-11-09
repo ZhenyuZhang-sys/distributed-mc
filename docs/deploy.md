@@ -57,7 +57,7 @@ cp .env.example .env
 | `COORD_PUBLIC_PORT` | 否 | 只有路由器做了端口转发、对外端口和 `COORD_PORT` 不一样时才设 |
 | `ONLINE_MODE` | 否 | 正版验证，默认 `TRUE`，正式部署不要关（见第 8 节） |
 | `MCD_DEMAND` | 否 | 自动找需求，默认 `on` |
-| `MCD_FEATURES` | 否 | 调度开关，默认 `deadline`（按玩家飞行方向先做最急的、飞过的撤回）。可选值见 `docs/config.md` |
+| `MCD_FEATURES` | 否 | 调度开关，默认 `territory,deadline`：相邻的 tile 尽量给同一个 donor；按玩家飞行方向先做最急的，来不及导入的不派、排队来不及的提前丢掉、飞过的撤回。可选值见 `docs/config.md`，实测见 `docs/step7-report.md` 开头 |
 | `MCD_JVM_EXTRA` | 否 | 其他 coordinator 配置，比如 `-Dmcdonate.demandLookahead=16`，全部配置项见 `docs/config.md` |
 | `MC_MAX_MEMORY` | 否 | 服务器堆大小，默认 4G |
 | `MC_SEED`、`MC_LEVEL` | 否 | 世界的 seed（留空随机）和名字 |
@@ -133,7 +133,7 @@ docker compose exec -T minecraft rcon-cli donor imports              # 每个导
 
    ```bash
    java -Xmx4G -Dmcdonate.publicHost=<公网 IP 或域名> -Dmcdonate.publicPort=25580 \
-        -Dmcdonate.demand=on -Dmcdonate.features=deadline -Dmcdonate.allowTokenless=false \
+        -Dmcdonate.demand=on -Dmcdonate.features=territory,deadline -Dmcdonate.allowTokenless=false \
         -jar fabric-server-launch.jar nogui
    ```
 5. 防火墙放行 25565 和 25580（TCP）。`/donor status` 等命令在服务器控制台输入（不带 `/`）。

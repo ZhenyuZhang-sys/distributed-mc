@@ -178,13 +178,17 @@ final class WorkerClient {
             return;
         }
         currentTask = t.taskId();
+        received.put(t.taskId(), System.currentTimeMillis());
         // 一次只生成一个：主线程等 chunk 时会执行排着的任务，直接 server.execute 会让下一个 tile 嵌套在上一个里面跑（OneAtATime）
         generating.submit(t, this::generate);
     }
 
     private final OneAtATime<Task> generating;
+    /** 任务 → 收到的时间（分段耗时，11-09）。 */
+    private final java.util.Map<Long, Long> received = new ConcurrentHashMap<>();
 
     private void generate(Task t) {
+        Long got = received.remove(t.taskId());
         if (cancelled.remove(t.taskId())) {
             LOG.info("任务 {} 还没开始就被撤掉，不做", t.taskId());
             return;
@@ -192,8 +196,13 @@ final class WorkerClient {
         currentTask = t.taskId();
         Result r;
         try {
+            long g0 = System.currentTimeMillis();
             TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
-            r = Result.success(t.taskId(), g.file().toTag());
+            long g1 = System.currentTimeMillis();
+            net.minecraft.nbt.CompoundTag tag = g.file().toTag();
+            // 分段耗时：收到、开始生成、生成完、打包完（coordinator 写进 /donor imports 的 seg）
+            mcdonate.common.TaskTiming.stamp(tag, got == null ? g0 : got, g0, g1, System.currentTimeMillis());
+            r = Result.success(t.taskId(), tag);
         } catch (RuntimeException e) {
             LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
             r = Result.failure(t.taskId(), truncate(e.toString()));
