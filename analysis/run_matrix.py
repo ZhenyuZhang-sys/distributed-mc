@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bench.archive import seal, verify
+
+ROOT = Path(__file__).resolve().parent.parent
 from bench.models import atomic_json
 
 SPEEDS = ('walk', 'horse', 'elytra')
@@ -245,12 +247,36 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='第 10 步实验矩阵')
     parser.add_argument('--config', required=True)
     parser.add_argument('--plan', action='store_true', help='只展开并估时，不跑')
+    parser.add_argument('--run', action='store_true', help='在本槽位的测试服务器上真跑（只有 flight 有真驱动）')
+    parser.add_argument('--root', default=str(ROOT / 'analysis/results/runs'), help='结果放在哪')
     args = parser.parse_args(argv)
     config = load_config(args.config)
     if args.plan:
         print(json.dumps(plan(config), ensure_ascii=False, indent=1))
         return
-    raise SystemExit('跑矩阵（10.2 / 10.6）还没做；先用 --plan')
+    if not args.run:
+        raise SystemExit('加 --plan 估时，或 --run 真跑')
+    print(json.dumps(run_real(config, Path(args.root)), ensure_ascii=False, indent=1))
+
+
+def run_real(config: dict, root: Path) -> dict:
+    """真跑：flight 用 analysis/flight_driver（演示面板的部件），跑完写汇总表和演示图。"""
+    from analysis import demo_figures
+    from analysis.flight_driver import make_flight_driver
+    from analysis.matrix_summary import write_tables
+    from bench.demo.control import Controller, Flyer
+    from bench.demo.poll import Poller
+    from bench.demo.runner import Runner
+    from bench.server import TEST_DATA
+    runner = Runner()
+    poller = Poller(runner, runs_dir=TEST_DATA / 'bench-runs')
+    flyer = Flyer(runner, poller, ROOT / 'artifacts' / 'demo')
+    controller = Controller(runner, poller, flyer)
+    result = run(config, {'flight': make_flight_driver(runner, controller, flyer)}, root)
+    campaign = Path(result['campaign'])
+    write_tables(campaign)
+    result['figures'] = demo_figures.draw_all(campaign, campaign / 'figures')
+    return result
 
 
 if __name__ == '__main__':

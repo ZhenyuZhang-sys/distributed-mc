@@ -10,7 +10,7 @@ from analysis.matrix_summary import collect, hypotheses, write_tables
 from bench.demo.control import Controller, Flyer
 from bench.demo.poll import Poller
 
-from test_06_demo import Clock, FakeFly, FakeRunner   # 同一套假服务器
+from step10.test_06_demo import Clock, FakeFly, FakeRunner   # 同一套假服务器（--import-mode=importlib，按 tests 下的路径导入）
 
 
 
@@ -48,7 +48,8 @@ def test_driver_sets_up_each_config(tmp_path):
               'full_loaded', 'donor_events', 'netem'):
         assert k in out2, k
     assert out2['netem'] is True and out['netem'] is False
-    assert math.isinf(out2['latency_p95_ms'])                                      # 'inf' 变回无穷大，汇总按删失处理
+    # 封存的 JSON 不许有无穷大：删失写成 'inf'（和第 4 步一样），汇总读回来变成无穷大
+    assert out2['latency_p95_ms'] == 'inf'
 
 
 def test_driver_turns_netem_off_for_no_network_cells(tmp_path):
@@ -86,7 +87,7 @@ def synthetic_campaign(tmp_path):
         p = c['params']
         d, net = p['donors'], p['latency_ms'] > 0
         stall = .36 if d == 0 else (.27 if net else .24)
-        return dict(stall_fraction=stall + .01 * c['repeat'], stall_s=stall * 120, distance_ratio=1 - stall, latency_p95_ms=math.inf,
+        return dict(stall_fraction=stall + .01 * c['repeat'], stall_s=stall * 120, distance_ratio=1 - stall, latency_p95_ms='inf',
                     void_mean=.8 - (.1 if d else 0), mspt_p95=40.0, mspt_max=120.0, cpu_cores_mean=1.2,
                     full_generated=1100 if d == 0 else 700, full_resumed=0 if d == 0 else 350, full_loaded=0,
                     donor_events=0 if d == 0 else 400, ahead_total=None if d == 0 else (.9 if net else 1.0), netem=net, valid=True)
@@ -115,6 +116,7 @@ def test_demo_figures_without_data(tmp_path):
 
 def test_hypotheses_y_and_z_wording(tmp_path):
     rows = collect(synthetic_campaign(tmp_path))
+    assert all(math.isinf(r['latency_p95_ms']) for r in rows)   # 'inf' 读回来是无穷大
     h = {x['item']: x for x in hypotheses(rows)}
     assert h['Y']['verdict'] == '数据不足（第 8 步暂停）'
     assert h['Z']['verdict'] == '数据不足（要真显卡）'

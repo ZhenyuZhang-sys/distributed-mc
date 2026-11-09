@@ -343,6 +343,7 @@ class FakeFly:
                                                               mspt_mean=4.0, mspt_max=90.0, cpu_cores_mean=1.2,
                                                               sync_loads=0 if b else self.sync_a,
                                                               full_resumed=self.resumed_b if b else 0,
+                                                              full_generated=600 if b else 900, full_loaded=0,
                                                               available_processors=self.cpus)))
         return out_dir
 

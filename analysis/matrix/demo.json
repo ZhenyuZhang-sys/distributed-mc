@@ -1,0 +1,13 @@
+{
+ "name": "demo",
+ "seed": 424242,
+ "repeats": 2,
+ "rerun_on_interference": false,
+ "note": "用户 11-09：课程 project，能演示就好。2 核、鞘翅、120 秒；原版对 deadline，有网络（35ms / 20mbit / 1% 丢包）和没网络；每种 2 次。完整矩阵（full.json，约 41 小时）留到部署机器",
+ "experiments": {
+  "flight": [
+   {"donors": [0], "speed": ["elytra"], "server_cpus": [2], "latency_ms": [0], "features": ["v0"], "bots": [1], "duration_s": 120},
+   {"donors": [2], "speed": ["elytra"], "server_cpus": [2], "latency_ms": [0, 35], "features": ["deadline"], "bots": [1], "duration_s": 120}
+  ]
+ }
+}
