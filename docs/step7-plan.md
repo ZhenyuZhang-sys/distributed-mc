@@ -195,7 +195,10 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 
 **小步**：
 
-- [ ] 7.6a 原型（可行性）：只处理"一个 tile 正租给 donor、假玩家传送到 tile 中心"这一种情况。验证：tile 的 16 个 chunk 在服务器上没跑 noise、features（`/bench chunk`），读到的是 donor 的数据（和 donor 导出逐列一致），没有死锁，MSPT 不升。设计见 docs/step7-waitdonor-notes.md。
+- [x] 7.6a 原型（可行性）：只处理"一个 tile 正租给 donor、假玩家传送到 tile 中心"这一种情况。验证：tile 的 16 个 chunk 在服务器上没跑 noise、features（`/bench chunk`），读到的是 donor 的数据（和 donor 导出逐列一致），没有死锁，MSPT 不升。设计见 docs/step7-waitdonor-notes.md。
+  11-09 结果（tests/step7/test_04_waitdonor.py 3 条全过）：①接近时等 donor：闸门等到结果，36 个 chunk 全部写入，tile 的 16 个 chunk 服务器上 noise、features 都是 0，rcon 最慢 < 1 秒；②主线程同步要租着的 chunk 不等；③donor 卡住 2 秒超时，主线程不卡。
+  测试里的两个坑：donor 太快（约 1.5 秒）时常常在服务器排到 tile 之前就交了，直接导入、不经过闸门——用 worker 的测试命令 /donor hold 扣住结果，等 coordinator 报有 chunk 在等再放；
+  等的位置离 tile 中心 24 圈时 tile 外圈已经在依赖范围里、派任务前就开始加载，导入被整个丢弃——改成 27 圈。移动守新规矩：每步 ≤ 8 个 chunk、等视野就绪再走。
 - [ ] 7.6a 主线程同步等 chunk：有 gate 在等的任务，结果回来时导入提交到 chunk 缓存自己的任务队列（`ServerChunkCache` 的 `mainThreadProcessor`），不用 `server.execute`。原因：主线程同步等 chunk（`getChunk` 的 `managedBlock`）时只跑 chunk 缓存自己的队列，`server.execute` 的导入要等它结束才执行，gate 只能等到 2 秒超时，服务器卡 2 秒。测试：用测试命令在主线程上同步要一个卡在 gate 上的 chunk（`getChunk(x, z, FULL, true)`），donor 结果回来后同步等待在 1 秒内结束、最长 tick < 1 秒；把导入故意改回 `server.execute` 时这条测试要失败（证明它真的覆盖了这个坑）。
 - [ ] 7.6b 完整版：区域里部分 chunk 在等、部分不在的情况；超时；donor 掉线。
 - [ ] 7.6c 消融。

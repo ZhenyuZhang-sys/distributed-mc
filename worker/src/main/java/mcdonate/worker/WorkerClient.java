@@ -161,8 +161,38 @@ final class WorkerClient {
                 LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
                 return;
             }
-            send(r);
+            deliver(r);
         });
+    }
+
+    /** 测试用（/donor hold）：扣着做完的结果先不发，放开时一起发。7.6a 用它让服务器先碰到闸门、再收到结果。 */
+    private final java.util.List<Result> held = new java.util.ArrayList<>();
+    private boolean hold;
+
+    private void deliver(Result r) {
+        synchronized (held) {
+            if (hold) {
+                held.add(r);
+                LOG.info("任务 {} 做完了，按要求先扣着", r.taskId());
+                return;
+            }
+        }
+        send(r);
+    }
+
+    /** 打开或放开扣结果；放开时把扣着的发出去，返回发了几个。 */
+    int setHold(boolean on) {
+        java.util.List<Result> out;
+        synchronized (held) {
+            hold = on;
+            if (on) {
+                return 0;
+            }
+            out = new java.util.ArrayList<>(held);
+            held.clear();
+        }
+        out.forEach(this::send);
+        return out.size();
     }
 
     /** NBT 字符串最长 65535 字节，错误信息太长编码会失败：截到 4000 个字符。 */

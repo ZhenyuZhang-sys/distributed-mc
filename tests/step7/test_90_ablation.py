@@ -29,8 +29,20 @@ LABELS = ["default", "tile2", "tile8", "look16", "look24"]
 SPEED = 30
 SECONDS = 120
 
-# 守护计数（kexu 改 layer2 时加：主线程同步加载 chunk 超过 1 ms 的次数），测量时必须为 0。字段名以 summary.json 为准。
-GUARD_KEYS = ("sync_loads_over_1ms", "sync_load_guard")
+
+
+def flight_guard(out) -> dict:
+    """新 layer2 的守护计数（kexu 11-09）：done.json 的 sync_loads。
+    count 是玩家实体 tick 里的同步加载，必须为 0，否则这一轮测量无效（假玩家跑到了生成前面）；
+    world 是原版自己的（流体后处理等，真实服务器也有），只记录不判。旧 layer2 没有这一项时返回空。"""
+    done = json.loads((out / "raw" / "done.json").read_text())
+    return done.get("sync_loads") or {}
+
+
+def main_metrics(summary: dict) -> dict:
+    """主要指标：卡住时长占比、实际/理想距离（新 layer2，字段名含 stuck、distance），和虚空率、就绪延迟并列。"""
+    keys = ("void_mean", "void_p95", "latency_p50_ms", "latency_p95_ms", "cpu_cores_mean", "mspt_mean", "mspt_max")
+    return {k: v for k, v in summary.items() if k in keys or "stuck" in k or "distance" in k}
 
 
 def status(server) -> dict:
@@ -117,10 +129,12 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "ring_overhead": (n + 2) ** 2 / n ** 2 - 1,
                 **{k: d[k] for k in ("hedge_cancelled", "hedge_wasted_tiles", "waitdonor_hits", "waitdonor_timeouts",
                                      "waitdonor_abandoned", "donor_tiles")},
+                "main": main_metrics(summary), "sync_loads": flight_guard(out),
                 "summary": summary,
             }
             rows.append(row)
             print(json.dumps({k: v for k, v in row.items() if k != "summary"}, ensure_ascii=False))
+            assert row["sync_loads"].get("count", 0) == 0, f"{name} 测量无效（假玩家 tick 里同步加载），停下来查"
     finally:
         server.rcon("donor demand off")
         set_features(server, [])
@@ -130,5 +144,5 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
     assert len(rows) == len(names)
     for r in rows:
         assert r["imports_accepted"] > 0, f"{r['name']} 这一轮 donor 没导入，测量无效"
-        guard = [r["summary"][k] for k in GUARD_KEYS if k in r["summary"]]
-        assert all(g == 0 for g in guard), f"{r['name']} 主线程同步加载过 chunk，测量无效：{guard}"
+        assert "count" in r["sync_loads"], "layer2 还是旧的（没有 sync_loads 守护计数），不能做第 7 步对比"
+        assert r["sync_loads"]["count"] == 0, f"{r['name']} 假玩家 tick 里同步加载过 chunk，测量无效，要重跑：{r['sync_loads']}"

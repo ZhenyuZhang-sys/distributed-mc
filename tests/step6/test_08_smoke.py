@@ -8,7 +8,9 @@
 - 2 个 donor：两个 worker 起来、连上，打开找需求。
 - 每轮在不同的、没生成过的地方飞；每轮记下当时在跑的容器。
 - 判定只要求方向：2 个 donor 时服务器 CPU 比 0 个 donor 低（两轮均值），而且 donor 真的导入了 tile。
-  虚空率、就绪延迟只记录（1～2 次的波动太大）。
+  虚空率、就绪延迟、卡住时长占比、实际/理想距离只记录（1～2 次的波动太大），后两项是主要指标（调度 11-09）。
+- 测量有效的条件：新 layer2 的守护计数 sync_loads.count（假玩家 tick 里的同步加载）为 0。
+  11-09 第一次跑时假玩家越过没生成的区域，2 核原版被看门狗杀掉，那次数据作废；sync_loads.world 是原版自己的，只记录。
 跑法（2 核服务器，拿独占锁）：MC_CPUS=2 MC_CPUSET=32-33 scripts/test.sh step6 --slow -k smoke
 """
 
@@ -59,15 +61,19 @@ def test_elytra_smoke_0_vs_2_donors(server, worker, worker2, tmp_path_factory):
             out = layer2.fly(server, run=f"smoke{i}", player=f"smoke{i}", start=start, speed=SPEED, seconds=SECONDS,
                              out_dir=base / f"smoke-{i}-{kind}")
             summary = json.loads((out / "summary.json").read_text())
+            sync_loads = json.loads((out / "raw" / "done.json").read_text()).get("sync_loads") or {}
             status = json.loads(server.rcon("donor status"))
             server.rcon("donor demand off")
             row = {"round": i, "kind": kind, "services": services,
                    "imports_accepted": sum(1 for r in donor_imports(server)[before:] if r["accepted"]),
-                   "discard_ratio": status["discard_ratio"], "discarded": status["discarded"],
+                   "discard_ratio": status["discard_ratio"], "discarded": status["discarded"], "sync_loads": sync_loads,
+                   **{k: v for k, v in summary.items() if "stuck" in k or "distance" in k},
                    **{k: summary[k] for k in ("cpu_cores_mean", "void_mean", "void_p95", "latency_p95_ms",
                                                "mspt_mean", "mspt_max", "ticks_per_s")}}
             results.append(row)
             print(json.dumps(row, ensure_ascii=False))
+            assert "count" in sync_loads, "layer2 还是旧的（没有 sync_loads 守护计数）"
+            assert sync_loads["count"] == 0, f"第 {i} 轮假玩家 tick 里同步加载过 chunk，测量无效：{sync_loads}"
             if kind == "donors0":
                 assert not ({"worker", "worker2"} & set(services)), f"0 个 donor 那轮 worker 还在跑：{services}"
     finally:

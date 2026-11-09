@@ -1,6 +1,9 @@
 """第 6 步（6.5）：30 分钟浸泡测试（slow）。
 
-- 打开找需求，2 个 donor；1 个旁观假玩家从 (0, 30000) 沿 +x 每 0.5 秒前进 7 格（14 格/秒，骑马的速度），走 30 分钟。
+- 打开找需求，2 个 donor；1 个旁观假玩家从 (0, 30000) 沿 +x 以 14 格/秒（骑马的速度）走 30 分钟。
+  移动用第 4 步的飞行场景（bench.layer2.fly）：像客户端一样每 tick 前进，不越过没就绪的 chunk（11-09 起；
+  原来用 rcon tp 每 0.5 秒跳 7 格，假玩家会跑到生成前面，在实体 tick 里同步生成，2 核时被看门狗杀掉）。
+  守护计数 sync_loads.count 必须为 0，否则这次测量无效；卡住时长、实际距离记录。
 - 跑完：存档里每个 chunk 都读得出来；抽 1% 的 chunk 在全新世界（同 seed）里单独生成作对照，
   按"导入的 tile / 服务器生成的"分开逐块比（analysis/mca/decor.py 两层）：严格层两边都是 0，
   导入的装饰类差异率、地形互换率各自不高于服务器生成的 1.5 倍（同 5.4）；记录指标。
@@ -16,12 +19,12 @@ import pytest
 
 from analysis.mca import iter_chunk_positions, read_chunk
 from analysis.mca.decor import Diff, compare_chunks, relative_check
+from bench import layer2
 from mcd import SCRIPTS, donor_imports, run, worker_id
 
 START = (0, 30000)
 SPEED = 14          # 格/秒
 DURATION = 30 * 60  # 秒
-STEP_S = 0.5
 
 
 @pytest.mark.slow
@@ -29,24 +32,22 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     worker_id(server, "worker")
     worker_id(server, "worker2")
     before = len(donor_imports(server))
+    base = tmp_path_factory.mktemp("soak")  # 存档快照（大），不放 artifacts
+    flight_dir = server.artifact_dir or base
     server.rcon("bench reset")
     server.rcon("donor demand on")
-    server.rcon(f"player soakbot spawn at {START[0]} 200 {START[1]} facing 0 0 in minecraft:overworld in spectator")
-    x = START[0]
     try:
-        t0 = time.monotonic()
-        while time.monotonic() - t0 < DURATION:
-            x += SPEED * STEP_S
-            server.rcon(f"tp soakbot {x:.1f} 200 {START[1]}")
-            time.sleep(STEP_S)  # 移动节奏，不是等条件
+        out = layer2.fly(server, run=f"soak-{time.time_ns()}", player="soakbot", start=START, speed=SPEED,
+                         seconds=DURATION, out_dir=flight_dir / "soak-flight")
         status = json.loads(server.rcon("donor status"))
         stats = json.loads(server.rcon("bench stats"))
     finally:
         server.rcon("donor demand off")
-        server.rcon("player soakbot kill")
     assert status["scan"]["count"] > 0, "找需求没开起来，测试在空跑"
-
-    base = tmp_path_factory.mktemp("soak")
+    flight = json.loads((out / "summary.json").read_text())
+    sync_loads = json.loads((out / "raw" / "done.json").read_text()).get("sync_loads") or {}
+    assert "count" in sync_loads, "layer2 还是旧的（没有 sync_loads 守护计数）"
+    assert sync_loads["count"] == 0, f"假玩家 tick 里同步加载过 chunk，测量无效：{sync_loads}"
     snap = server.snapshot(base / "soak")
     # 1. 每个 chunk 都读得出来（读不出会抛异常）
     positions = list(iter_chunk_positions(snap))
@@ -79,6 +80,9 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
         "late_ratio": status["discarded"]["late"] / max(1, status["accepted"] + sum(status["discarded"].values())),
         "discarded": status["discarded"],
         "imports_accepted": len(imported_tiles), "sample": len(sample), "decor_rate": rate, "strict": strict,
+        "sync_loads": sync_loads,
+        "flight": {k: v for k, v in flight.items() if "stuck" in k or "distance" in k or k in
+                   ("void_mean", "void_p95", "latency_p95_ms", "cpu_cores_mean", "mspt_mean", "mspt_max", "ticks_per_s")},
         "strict_examples": acc["imported"].examples + acc["server"].examples,
     }
     print(json.dumps(report, ensure_ascii=False))
