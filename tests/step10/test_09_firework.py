@@ -57,3 +57,26 @@ def test_max_sustainable_speed():
     best = firework.max_sustainable(runs, limit=0.05)
     assert best['原版'] == 20 and best['1 donor 8 核'] == 25
     assert best['坏的'] is None                # 最低速度就扛不住：没有数（不跳过中间失败的速度）
+
+
+def test_driver_pregenerates_cache_and_flies_out(tmp_path):
+    from step10.test_08_scenarios import real_rig
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    real = runner.rcon
+
+    def rcon(cmd):
+        if cmd == 'chunky start':
+            runner.server_log.append('[12:00:00] [Server thread/INFO]: [Chunky] Task finished for minecraft:overworld. Processed: 1089 chunks')
+        return real(cmd)
+    runner.rcon = rcon
+    cell = dict(experiment='flight', repeat=1, params=dict(donors=1, donor_profile='1x8', speed='elytra', speed_bps=20, server_cpus=4,
+                                                          bots=1, features='deadline+throughput', latency_ms=0, duration_s=90,
+                                                          scenario='firework', cache_radius=16))
+    out = drive(cell, tmp_path / 'c')
+    cmds = [c[1] for c in runner.calls if c[0] == 'rcon']
+    start = flyer_start = __import__('bench.demo.ab', fromlist=['DEFAULT_START']).DEFAULT_START
+    assert f'chunky center {int(start[0])} {int(start[1])}' in cmds and 'chunky radius 256' in cmds   # 半径 16 个 chunk
+    assert cmds.index('chunky start') < cmds.index('donor demand on')       # 先生成缓存区，再开 donor
+    assert fly.calls[-1]['route'] == '-90,20,90'                          # 速度换成 20
+    assert out['cache_chunks'] == 1089 and 'stall_after_exit' in out and 'exit_s' in out

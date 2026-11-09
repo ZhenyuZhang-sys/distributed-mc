@@ -6,15 +6,19 @@
 - out_and_back：鞘翅去 60 秒、掉头回 60 秒：去程生成、回程读盘。
 - mixed：走路和骑马交替（每段 10～30 秒，方向小幅变化），偶尔停下 3～8 秒。
 - two_players：两个玩家同时飞，一个往东，一个往南偏东 60 度以外的方向。
+- firework：烟花鞘翅（用户 11-09 "最狠的场景"），从缓存区中心沿 +x 直线飞出去。
+- firework_turning：同上，出了缓存区以后每 20～40 秒转 30～90 度。
 同一个 seed 每次一样：同组的原版和有 donor 的两轮飞同一条路线。
+烟花速度：连续放烟花平飞约 33.5 格/秒（Minecraft Wiki 的 Elytra 页，烟花推进的最大水平速度约 33.5 m/s）。
 """
 from __future__ import annotations
 
 import random
 
 ELYTRA, HORSE, WALK = 30.0, 14.0, 4.3
+FIREWORK = 33.5
 EAST, SOUTH = -90.0, 0.0
-SCENARIOS = ('straight', 'turning', 'out_and_back', 'mixed', 'two_players')
+SCENARIOS = ('straight', 'turning', 'out_and_back', 'mixed', 'two_players', 'firework', 'firework_turning')
 MAX_SEGMENTS = 64
 
 
@@ -40,10 +44,22 @@ def _fill(rng, seconds, step, first_yaw):
     return out
 
 
-def routes(name: str, seed: int, seconds: float = 120) -> list[str]:
+def routes(name: str, seed: int, seconds: float = 120, speed: float | None = None, cache_radius_blocks: float = 256) -> list[str]:
+    """speed：烟花两个场景可以换速度（找能扛住的最高速度）；cache_radius_blocks：缓存区半径（格），转弯从出了缓存区以后才开始。"""
     if name not in SCENARIOS:
         raise ValueError(f'不认识的场景：{name}，只能是 {SCENARIOS}')
     rng = random.Random(f'{name}:{seed}')
+    if name in ('firework', 'firework_turning'):
+        v = float(speed or FIREWORK)
+        if name == 'firework':
+            return [_spec([(EAST, v, seconds)])]
+        first = min(seconds, cache_radius_blocks / v + rng.uniform(20, 40))   # 出了缓存区再飞 20～40 秒才第一次转
+
+        def turn(r, yaw, i):
+            if i == 0:
+                return EAST, v, round(first, 3)
+            return round(yaw + r.choice((-1, 1)) * r.uniform(30, 90), 1), v, round(r.uniform(20, 40), 3)
+        return [_spec(_fill(rng, seconds, turn, EAST))]
     if name == 'straight':
         return [_spec([(EAST, ELYTRA, seconds)])]
     if name == 'out_and_back':

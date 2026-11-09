@@ -105,6 +105,11 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）
             world_env['MCD_JVM_EXTRA'] = f'-Dmcdonate.demandLookahead={lookahead}'
         runner.script('new_world.sh', name, str(seed), env=world_env, timeout=900)
+        cache = p.get('cache_radius') or 0
+        cache_chunks = None
+        if cache:   # 缓存区：以起点为中心、半径 cache 个 chunk 的方形先用 Chunky 生成好（用户 11-09：从缓存区飞出去）
+            from bench.server import chunky
+            cache_chunks = chunky(_LogShim(runner), int(start[0]), int(start[1]), cache * 16, timeout=900)
         ids_before = []
         if donors == 0:
             controller.donor_off()
@@ -125,14 +130,16 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         services = list(controller.active) if donors else []
         cpu_before = runner.worker_cpu(services) if services and hasattr(runner, 'worker_cpu') else None
         scenario = p.get('scenario')
-        routes = scenarios.routes(scenario, seed=seed, seconds=p['duration_s']) if scenario else [None]
+        speed = float(p.get('speed_bps') or SPEEDS[p['speed']])
+        routes = (scenarios.routes(scenario, seed=seed, seconds=p['duration_s'], speed=p.get('speed_bps'), cache_radius_blocks=cache * 16)
+                  if scenario else [None])
         t_fly = time.time()
         dirs = [out / ('flight' if i == 0 else f'flight{i + 1}') for i in range(len(routes))]
         errors = []
 
         def one(i, route):
             try:
-                flyer.fly_sync(f'mx-{name}-p{i + 1}' if len(routes) > 1 else f'mx-{name}', start, SPEEDS[p['speed']],
+                flyer.fly_sync(f'mx-{name}-p{i + 1}' if len(routes) > 1 else f'mx-{name}', start, speed,
                                p['duration_s'], dirs[i], route=route,
                                player=None if i == 0 else f'{flyer.PLAYER}{i + 1}')
             except Exception as e:   # 一个玩家飞失败，这一轮就无效
@@ -189,6 +196,9 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             result['mspt_p95'] = _p95([r.get('mspt_mean') for r in seconds])
         prov = layer2_stats.load_jsonl(raw / 'provenance.jsonl') if (raw / 'provenance.jsonl').exists() else []
         leads = layer2_stats.donor_leads(prov, seconds)
+        if cache:   # 只看出了缓存区以后
+            from analysis.firework import after_exit
+            result.update(after_exit(seconds, start, cache * 16, speed), cache_chunks=cache_chunks)
         if counts_before is not None:
             result.update({k: counts_after[k] - counts_before[k] for k in counts_before})
             result['tile_s'] = result.pop('tiles_done') / p['duration_s']
@@ -200,6 +210,14 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         return result
 
     return drive
+
+
+class _LogShim:
+    """bench.server.chunky 要 server.rcon 和 server.logs。"""
+
+    def __init__(self, runner):
+        self.rcon = runner.rcon
+        self.logs = lambda: '\n'.join(runner.server_log_since(0))
 
 
 def run_cell_id(cell) -> str:
