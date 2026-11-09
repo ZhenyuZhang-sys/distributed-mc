@@ -183,6 +183,9 @@ def segments(imports: list) -> dict:
         out[kind]["queue_with_deadline"] = spread([r["seg"].get("queue") for r in rows if r.get("seg") and r.get("slack_ms", -1) >= 0])
         out[kind]["queue_no_deadline"] = spread([r["seg"].get("queue") for r in rows if r.get("seg") and r.get("slack_ms", -1) < 0])
         out[kind]["slack_ms"] = spread([r.get("slack_ms") for r in rows])
+        # 11-09：主线程导入的三段（毫秒）
+        for k in ("parse", "check", "write"):
+            out[kind][f"imp_{k}"] = spread([r["imp"][k] for r in rows if r.get("imp")])
     return out
 
 
