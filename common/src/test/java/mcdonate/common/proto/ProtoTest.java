@@ -326,7 +326,7 @@ class ProtoTest {
     }
 
     /** 可以缺的字段（缺了有默认值）。 */
-    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token", "kind", "paused");
+    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token", "kind", "paused", "worldId");
 
     // ---- 第 9 步：hello.token、welcome.workerId = -2 ----
 
@@ -338,6 +338,20 @@ class ProtoTest {
         old.putString("name", "old-worker");
         assertEquals(new Hello(Protocol.VERSION, "old-worker", ""), MessageCodec.fromTag(old));
         assertEquals(new Hello(Protocol.VERSION, "old-worker"), MessageCodec.fromTag(old));
+    }
+
+    // ---- 11-09：hello.worldId（worker 一连上就报自己的 donor 世界，coordinator 不用等第一个结果）----
+
+    @Test
+    void helloWorldIdRoundTripsAndOldDecodesAsEmpty() {
+        Hello h = new Hello(Protocol.VERSION, "w", "abc", "c99dcff6");
+        assertEquals(h, MessageCodec.fromTag(MessageCodec.toTag(h)));
+        assertEquals("c99dcff6", ((Hello) MessageCodec.fromTag(MessageCodec.toTag(h))).worldId());
+        assertEquals("", new Hello(Protocol.VERSION, "w", "abc").worldId(), "三个参数的照旧，世界不知道");
+        CompoundTag old = MessageCodec.toTag(new Hello(Protocol.VERSION, "old", "t"));
+        old.remove("worldId");                 // 旧版本 worker：没有这个字段
+        assertEquals("", ((Hello) MessageCodec.fromTag(old)).worldId());
+        assertThrows(NullPointerException.class, () -> new Hello(1, "w", "", null));
     }
 
     @Test
