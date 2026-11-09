@@ -352,3 +352,39 @@ def test_driver_forward_first_both_arms_are_checked(tmp_path):
     runner.status['config'] = {'demandForwardFirst': True}
     with pytest.raises(RuntimeError, match='demandForwardFirst没生效'):
         drive(cell, tmp_path / 'f9')
+
+
+def test_driver_ticket_throttle_applies_to_vanilla_too_and_checks_actual(tmp_path):
+    # 调度 11-09：fish-throttle 的 -Dmcdonate.playerTicketThrottle=N 改的是原版玩家票节流，原版（0 个 donor）也要能设；
+    # 用 /donor status 的 playerTicketThrottle.actual（各维度实际的 maxTasks）核对，主世界不对就判无效
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (name == 'new_world.sh' and envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles={'1x8': {'donors': 1, 'env': {}}})
+    for i, donors in enumerate((0, 1)):
+        cell = rcell('firework', donors=donors)
+        cell['params']['ticket_throttle'] = 16
+        runner.status['playerTicketThrottle'] = {'configured': 16, 'actual': {'minecraft:overworld': 16, 'minecraft:the_nether': 16}}
+        out = drive(cell, tmp_path / f't{i}')
+        assert '-Dmcdonate.playerTicketThrottle=16' in envs[-1]['MCD_JVM_EXTRA'].split()
+        assert out['ticket_throttle_effective'] == 16
+    runner.status['playerTicketThrottle'] = {'configured': 16, 'actual': {'minecraft:overworld': 4}}
+    with pytest.raises(RuntimeError, match='playerTicketThrottle没生效'):
+        drive(cell, tmp_path / 't9')
+
+
+def test_matrix_keeps_ticket_throttle_for_vanilla():
+    from analysis import run_matrix as rm
+    base = dict(donors=[0, 1], speed=['elytra'], server_cpus=[2], latency_ms=[0], features=['deadline'], bots=[1], duration_s=120,
+                scenario=['firework'], ticket_throttle=[4, 16], scan_budget_us=[2000])
+    cfg = dict(name='t', seed=1, repeats=1, experiments=dict(flight=[base]))
+    rm.validate(cfg)
+    got = sorted((c['params']['donors'], c['params'].get('ticket_throttle'), c['params'].get('scan_budget_us')) for c in rm.expand(cfg))
+    assert got == [(0, 4, None), (0, 16, None), (1, 4, 2000), (1, 16, 2000)]
+
+
+def test_firework_vanilla_label_shows_ticket_throttle():
+    from analysis import firework as f
+    assert '票节流 16' in f._cfg(dict(donors=0, ticket_throttle=16))
+    assert '票节流 4' in f._cfg(dict(donors=1, donor_profile='1x8', ticket_throttle=4))

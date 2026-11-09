@@ -376,6 +376,8 @@ ORDER = [PROFILE_NAME[None], PROFILE_NAME['1x8'], PROFILE_NAME['1x4'], PROFILE_N
 def _cfg(r):
     """配置名；行带 code（哪套代码，三臂对比用）时后面标上。"""
     base = PROFILE_NAME.get(r.get('donor_profile'), r.get('donor_profile')) if r.get('donors') else PROFILE_NAME[None]
+    if r.get('ticket_throttle'):   # 原版也有
+        base += f" · 票节流 {r['ticket_throttle']}"
     if r.get('donors'):
         for k, name, unit in (('lookahead', '提前量', ''), ('corridor_chunks', 'corridor', ''), ('max_concurrency', '并发', ''),
                               ('scan_budget_us', '扫描预算', ' µs'), ('forward_first', '前方优先', '')):

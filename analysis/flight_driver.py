@@ -75,9 +75,16 @@ def _features_on(features):
 
 # 矩阵维度 → coordinator 配置项（-Dmcdonate.<项>，/donor status 的 config 里核对）
 SERVER_PROPS = {'scan_budget_us': 'demandScanBudgetMicros', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency',
-                'forward_first': 'demandForwardFirst'}
+                'forward_first': 'demandForwardFirst', 'ticket_throttle': 'playerTicketThrottle'}
 SERVER_PROP_NAMES = {'scan_budget_us': '扫描预算', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency',
-                     'forward_first': 'demandForwardFirst'}
+                     'forward_first': 'demandForwardFirst', 'ticket_throttle': 'playerTicketThrottle'}
+
+
+def _prop_used(status, k):
+    """服务器实际用的值：一般在 /donor status 的 config 里；玩家票节流（fish-throttle）读 playerTicketThrottle.actual 主世界的 maxTasks。"""
+    if k == 'ticket_throttle':
+        return (status.get('playerTicketThrottle') or {}).get('actual', {}).get('minecraft:overworld')
+    return status.get('config', {}).get(SERVER_PROPS[k])
 
 
 def _prop_matches(want, used):
@@ -249,7 +256,8 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         if errors:
             raise errors[0]
         ids_after = controller.worker_ids() if donors else []
-        used = controller.status().get('config', {}) if props else {}
+        st = controller.status() if props else {}
+        used = {k: _prop_used(st, k) for k in props}
         counts_after = _status_counts(controller) if donors else None
         cpu_after = runner.worker_cpu(services) if cpu_before is not None else None
         log_lines = runner.server_log_since(t_fly) if hasattr(runner, 'server_log_since') else []
@@ -264,14 +272,14 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             judged['valid'] = False
             judged['invalid'].append(f"提前量没生效：要 {lookahead}，服务器用的是 {s.get('demand_lookahead')}")
         for k, v in props.items():
-            if not _prop_matches(v, used.get(SERVER_PROPS[k])):
+            if not _prop_matches(v, used[k]):
                 judged['valid'] = False
-                judged['invalid'].append(f"{SERVER_PROP_NAMES[k]}没生效：要 {v}，服务器用的是 {used.get(SERVER_PROPS[k])}")
+                judged['invalid'].append(f"{SERVER_PROP_NAMES[k]}没生效：要 {v}，服务器用的是 {used[k]}")
         if not judged['valid']:
             raise RuntimeError('这一轮无效：' + '；'.join(judged['invalid']))
         result = {k: _num(s[k]) for k in METRICS if k in s}
         for k in props:
-            result[f'{k}_effective'] = used.get(SERVER_PROPS[k])
+            result[f'{k}_effective'] = used[k]
         if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个
             stalls = [j['summary'].get('stall_fraction') for j in all_judged if j['summary'].get('stall_fraction') is not None]
             dists = [j['summary'].get('distance_ratio') for j in all_judged if j['summary'].get('distance_ratio') is not None]
