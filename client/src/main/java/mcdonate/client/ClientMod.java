@@ -239,7 +239,12 @@ public final class ClientMod implements ClientModInitializer {
                         s.memoryMb(), s.threads(), ProcessHandle.current().pid(), invite.host() + ":" + invite.port(), invite.seed());
                 worker = WorkerProcess.start(WorkerLaunch.command(o, System.getProperty("os.name")),
                         WorkerLaunch.environment(invite.token()), f.root(),
-                        line -> Minecraft.getInstance().execute(() -> controller.onWorkerLine(line)));
+                        line -> {
+                            if (!line.startsWith("STATUS ")) {
+                                LOG.info("worker：{}", line); // CONNECTED、NEED_TOKEN 这类少见的记下来（STATUS 每秒一次，不记）
+                            }
+                            Minecraft.getInstance().execute(() -> controller.onWorkerLine(line));
+                        });
                 throttle = null;
                 lastError = "";
                 LOG.info("worker 起来了（pid {}，{} 个线程、{} MB，coordinator {}:{}）", worker.pid(), s.threads(), s.memoryMb(),
