@@ -42,6 +42,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `tokenTtlMs` | 60000 | 发给客户端的一次性 token 多久作废 | |
 | `allowTokenless` | false | 没带 token 的 worker 放不放进来。测试的 compose 里设 true（Docker 里的本地 worker 没有玩家）；正式部署保持 false | 第 9 步 |
 | `publicHost` | 空 | 发给玩家客户端的 coordinator 地址（主机名或 IP）。空就不发邀请，玩家的 worker 起不来 | 第 9 步 |
+| `measureWireBytes` | false | 记每个 donor 结果的线上字节数（`/donor imports` 的 `wire_bytes`）：在网络线程上重新压缩一次，吃服务器 CPU，只给第 7 步对比用 | 测量用 |
 | `inviteRequestMinMs` | 10000 | 每个玩家多久最多再要一次邀请（`mcdonate:invite_request`），超了忽略并记 WARN | 第 9 步 |
 | `publicPort` | 同 `port` | 发给玩家客户端的 coordinator 端口（端口转发时和监听端口不一样） | 第 9 步 |
 | `features` | 空 | 第 7 步的功能开关，逗号分隔 | 见 docs/step7-plan.md |

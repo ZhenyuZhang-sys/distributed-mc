@@ -24,6 +24,8 @@ for g in "${groups[@]}"; do
     *) echo "不认识的组：$g" >&2; exit 2 ;;
   esac
   echo "==> $(date +%H:%M) 组 $g（MCD_JVM_EXTRA='$extra'）"
+  # 对比里量结果的线上字节数（coordinator 在网络线程上重新编码一次，吃一点服务器 CPU，平时关着）
+  extra="$extra -Dmcdonate.measureWireBytes=true"
   # 外面设了 MCD_ABLATION 就用外面的（比如第 7 步"有网络"那批：MCD_ABLATION=deadline+net scripts/ablation.sh look16）
   [[ -n "${MCD_ABLATION:-}" ]] && rounds="$MCD_ABLATION"
   env MCD_JVM_EXTRA="$extra" MCD_ABLATION_LABEL="$g" ${rounds:+MCD_ABLATION="$rounds"} \
