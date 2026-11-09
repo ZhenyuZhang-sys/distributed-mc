@@ -15,7 +15,7 @@ def write_run(d, rows=3, done=None, events=None):
     with (d / 'seconds.jsonl').open('w') as f:
         for t in range(1, rows + 1):
             f.write(json.dumps(dict(t_s=t, x=100.0 + 4.3 * t, z=8.5, view_chunks=453, void_rate=0.1 / t, void_rate_max=0.2 / t,
-                                    mspt_mean=12.0, mspt_max=20.0, ticks=20)) + '\n')
+                                    mspt_mean=12.0, mspt_max=20.0, ticks=20, stalled_ticks=5 if t == 2 else 0)) + '\n')
     with (d / 'chunks.jsonl').open('w') as f:
         for e in events if events is not None else [dict(t_ms=100, cx=7, cz=0, ev='enter'), dict(t_ms=200, cx=8, cz=0, ev='enter'),
                                                     dict(t_ms=600, cx=7, cz=0, ev='ready')]:
@@ -24,7 +24,9 @@ def write_run(d, rows=3, done=None, events=None):
                 start_x=100.0, start_z=8.5, end_x=100 + 4.3 * rows, end_z=8.5, view_distance=10, requested_view_distance=2,
                 available_processors=2, ticks=20 * rows, rows=rows, end_ms=rows * 1000, t0_nanotime=T0,
                 events=dict(enter=2, ready=1, leave=0), initial=dict(view=453, not_ready=0), scan_ms_total=1.5, scan_every_ticks=1,
-                stopped=False, aborted=None, coordinator_features=None, demand_lookahead=None)
+                stopped=False, aborted=None, coordinator_features=None, demand_lookahead=None,
+                distance=4.3 * rows - 1.0, ideal_distance=4.3 * rows, stall_ms=250.0, stalled_ticks=5, unready_ticks=0,
+                sync_loads=dict(count=0, max_ms=0.0, total_ms=0.0, stack='', world=dict(count=3, max_ms=5.0, total_ms=9.0, stack='fluid')))
     base.update(done or {})
     (d / 'done.json').write_text(json.dumps(base))
     return d
@@ -60,6 +62,12 @@ def test_compose_writes_seconds_chunks_and_summary(tmp_path):
     assert summary['available_processors'] == 2 and summary['requested_view_distance'] == 2
     assert summary['coordinator_features'] is None and summary['scan_ms_total'] == 1.5
     assert summary['scan_every_ticks'] == 1  # 扫视野的间隔必须记下，以后改成每 2 tick 扫时数才对得上
+    # 卡住（玩家停在没就绪的 chunk 前面）是真实玩家最直接的感受（调度 11-09）
+    assert summary['stall_s'] == .25 and summary['stalled_ticks_total'] == 5
+    assert math.isclose(summary['stall_fraction'], .25 / 3) and math.isclose(summary['distance_ratio'], (4.3 * 3 - 1) / (4.3 * 3))
+    assert summary['sync_loads'] == 0 and summary['sync_load_max_ms'] == 0.0 and summary['unready_ticks'] == 0
+    # 原版自己（流体 tick 等）造成的同步加载单列，只记录（11-09 冒烟里看到，真实玩家的服务器也会有）
+    assert summary['sync_loads_world'] == 3 and summary['sync_load_world_max_ms'] == 5.0 and summary['sync_load_world_total_ms'] == 9.0
 
 
 def test_compose_latency_and_censoring(tmp_path):

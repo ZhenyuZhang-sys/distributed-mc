@@ -1,0 +1,78 @@
+{
+ "schema": 1,
+ "note": "第 4 步冒烟测量（降级，调度 11-08）。部署机器上跑满：repeats 全改 5、extra 的 repeats 改 5、rerun_on_interference 改 true。定义见 docs/step4-plan.md 第 2、5 节",
+ "seed": 424242,
+ "view_distance": 10,
+ "simulation_distance": 6,
+ "seconds": 120,
+ "mode": "wall",
+ "y": 200,
+ "start": [
+  -32000.5,
+  32008.5
+ ],
+ "speeds": {
+  "walk": 4.3,
+  "horse": 14,
+  "elytra": 30
+ },
+ "cpus": 2,
+ "repeats": {
+  "walk": 1,
+  "horse": 1,
+  "elytra": 2
+ },
+ "extra": [
+  {
+   "speed": "elytra",
+   "cpus": 4,
+   "repeats": 1
+  }
+ ],
+ "selfcheck": [
+  {
+   "name": "pregen",
+   "speed": "elytra",
+   "cpus": 2,
+   "pregenerate": true
+  },
+  {
+   "name": "one_core",
+   "speed": "elytra",
+   "cpus": 1,
+   "pregenerate": false
+  }
+ ],
+ "selfcheck_criteria": {
+  "pregen_void_mean_lt": 0.01,
+  "pregen_latency_p95_ms_lt": 1000,
+  "one_core_void_mean_above_pregen": 0.1
+ },
+ "warmup_by_cpu": {
+  "1": 4096,
+  "2": 2048,
+  "4": 2048
+ },
+ "warm_origin_chunk": [
+  3000,
+  -3000
+ ],
+ "settle_idle_cores": 0.15,
+ "tail_exclude_ms": 10000,
+ "matrix_seed": 424242,
+ "rerun_on_interference": false,
+ "max_attempts": 3,
+ "interference_actions": [
+  "create",
+  "start",
+  "stop",
+  "die",
+  "destroy"
+ ],
+ "coordinator": {
+  "features": null,
+  "demand_lookahead": null,
+  "tile_size": null,
+  "donors": 0
+ }
+}

@@ -40,4 +40,55 @@ public record Flight(double startX, double startZ, double y, double dirX, double
     public boolean finished(double elapsed) {
         return elapsed >= seconds;
     }
+
+    // ---- 像真实客户端一样前进（11-09） ----
+    // 客户端 LocalPlayer.tick 先查 Level.hasChunkAt：自己所在的 chunk 没收到就不动。所以真实玩家不会走进服务器还没发的 chunk，
+    // 实体 tick 查脚下流体时也就不会在主线程上同步生成。假玩家要照这个走，否则会把服务器卡死（fish 6.6 看门狗）。
+
+    /** 这个 chunk 能不能走进去（就绪 = 原版会发给客户端）。 */
+    @FunctionalInterface
+    public interface Ready { boolean ready(int cx, int cz); }
+
+    /** 一步的结果：新位置；stalled = 被没就绪的 chunk 挡住了；moved = 实际走了几格。 */
+    public record Step(double x, double z, boolean stalled, double moved) {}
+
+    private static final double EDGE = 1e-6;   // 停在边界前面这么远
+    private static final double PAST = 1e-7;   // 过边界时多走这么一点，确定进了哪个 chunk
+
+    /**
+     * 从 (x, z) 沿航线走 速度 × dt 格，但不走进没就绪的 chunk：挡住就停在边界前面。
+     * dt 很大（服务器卡了）也一样：客户端按自己的帧率走，只能穿过已就绪的 chunk。
+     */
+    public Step advance(double x, double z, double dt, Ready ready) {
+        double remaining = blocksPerSecond * Math.max(0, dt), moved = 0;
+        while (remaining > 0) {
+            double t = Math.min(toBoundary(x, dirX), toBoundary(z, dirZ));
+            if (t >= remaining) {
+                return new Step(x + dirX * remaining, z + dirZ * remaining, false, moved + remaining);
+            }
+            double px = x + dirX * (t + PAST), pz = z + dirZ * (t + PAST);
+            if (!ready.ready(chunk(px), chunk(pz))) {
+                double stop = Math.max(0, t - EDGE);
+                return new Step(x + dirX * stop, z + dirZ * stop, true, moved + stop);
+            }
+            x = px;
+            z = pz;
+            moved += t + PAST;
+            remaining -= t + PAST;
+        }
+        return new Step(x, z, false, moved);
+    }
+
+    private static int chunk(double v) {
+        return (int) Math.floorDiv((long) Math.floor(v), 16L);
+    }
+
+    /** 沿一个坐标轴，到下一个 chunk 边界还要走多远（换算成沿航线的距离）。 */
+    private static double toBoundary(double v, double dir) {
+        if (dir == 0) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double base = Math.floor(v / 16) * 16;
+        return dir > 0 ? (base + 16 - v) / dir : (v - base) / -dir;
+    }
 }

@@ -29,6 +29,7 @@ public final class MessageCodec {
                 t.putInt("tx", k.tx());
                 t.putInt("tz", k.tz());
                 t.putLong("leaseMs", k.leaseMs());
+                t.putString("kind", k.kind().wire());
             }
             case Result r -> {
                 t.putString("type", "result");
@@ -60,7 +61,8 @@ public final class MessageCodec {
             return switch (type) {
                 case "hello" -> new Hello(i(t, "protocol"), str(t, "name"), optionalStr(t, "token"));
                 case "welcome" -> new Welcome(i(t, "protocol"), i(t, "workerId"), l(t, "seed"), i(t, "dataVersion"));
-                case "task" -> new Task(l(t, "taskId"), i(t, "tx"), i(t, "tz"), l(t, "leaseMs"));
+                case "task" -> new Task(l(t, "taskId"), i(t, "tx"), i(t, "tz"), l(t, "leaseMs"),
+                        t.contains("kind") ? Task.Kind.fromWire(str(t, "kind")) : Task.Kind.GENERATE);
                 case "result" -> new Result(l(t, "taskId"), bool(t, "ok"), str(t, "error"), compound(t, "tile"));
                 case "cancel" -> new Cancel(l(t, "taskId"));
                 case "heartbeat" -> new Heartbeat(l(t, "sentAtMs"), l(t, "taskId"));

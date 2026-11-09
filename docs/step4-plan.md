@@ -2,7 +2,7 @@
 
 依据：[开发总计划](../DEV_PLAN.md) 第 4 步、[README](../README.md) 第 2 层定义、[第 1 步计划](step1-plan.md) 已有的测量框架。
 
-状态：**计划已通过（调度 11-08 有条件通过，两条补充已写入 3.3、4.3、4.6）**。4.1、4.2、4.4、4.5 已完成，连同 4.6 的纯逻辑部分在 11-09 合进 main；4.3、4.6 的真实回放、4.7、4.8 未完成。负责人 kexu。
+状态：**计划已通过（调度 11-08 有条件通过，两条补充已写入 3.3、4.3、4.6）**。4.1、4.2、4.4、4.5 已完成，连同 4.6 的纯逻辑部分在 11-09 合进 main；之后 4.3、4.6 也已完成（在 kexu 上）；4.7、4.8、4.9 未完成。负责人 kexu。
 
 **11-08 降级（用户："到时候生成也不是这台服务器……先把功能做好"，调度转达）**：正式矩阵改成冒烟测量，每种速度 1～2 次，两条指标自检各 1 次。速度、视距、时长、轮数、核数都做成配置（`bench/layer2-protocol.json`），以后在部署机器上改配置就能跑满 15 轮 + 4 核 5 轮。下面标"降级"的地方是改过的。
 
@@ -58,7 +58,11 @@
 
 ### 2.4 飞行怎么动
 
-- 位置 = 起点 + 速度 × 起飞后的墙钟时间，每个 tick 开始时把假玩家放到这个位置。
+- **11-09 改（调度同意）**：模拟客户端，按速度积分前进，不越过没就绪的 chunk。每个 tick 开始时沿航线走 速度 × dt 格（墙钟模式 dt 是真实时间，tick 模式是 1/20 秒）；前面的 chunk 没就绪（`getChunkToSend()` 为空，客户端还没收到）就停在边界前面等，记为"卡住"。服务器卡的时候 dt 照算（客户端按自己的帧率走），但仍然只穿过已就绪的 chunk（`Flight.advance`）。
+  - 原因：原来按"起点 + 速度 × 墙钟时间"直接放玩家，假玩家能跑到生成前面。fish 6.6（2 核、0 donor、鞘翅）被看门狗杀掉，主线程栈：`EntityPlayerMPFake.tick` → `ServerPlayer.doTick` → `Entity.baseTick` → `updateInWaterStateAndDoFluidPushing` → `updateFluidHeightAndDoFluidPushing` → `Level.getFluidState` → `ServerChunkCache.getChunk(FULL, load=true)` → `managedBlock`，一个 tick 等满 60 秒。旁观模式也走这条。
+  - 真实玩家：`ServerGamePacketListenerImpl.tick` 每 tick 也调 `doTick`，但客户端 `LocalPlayer.tick` 先查 `Level.hasChunkAt`（1.21.1 字节码确认），自己所在的 chunk 没收到就不动，所以服务器上真实玩家脚下永远是已发的 chunk，不会同步生成。飞太快时原版的表现是在边缘停住。
+  - 新指标：每秒的 `stalled_ticks`，每轮的卡住时长、占比、实际距离对比理想距离（真实玩家最直接的感受，调度 11-09 要求和就绪 p95 并列）。守护计数 `sync_loads`：主线程 `getChunk(load=true)` ≥ 1 毫秒的次数、最长一次和调用栈，所有飞行都带，测量时必须是 0，否则这一轮无效重跑。`unready_ticks`（tick 结束时玩家在没就绪的 chunk 里）必须是 0。
+- 原定（已作废）：位置 = 起点 + 速度 × 起飞后的墙钟时间，每个 tick 开始时把假玩家放到这个位置。
 - DEV_PLAN 写的是"每 tick 前进固定距离"。这里改成按墙钟算：服务器卡到 10 TPS 时，按 tick 走的话玩家也跟着慢一半，虚空率反而被低估；真实客户端不会因为服务器卡就飞慢。**这一条请审阅者确认。**两种方式都实现，协议里选一个；默认墙钟。
 - 速度三档：走路 4.3、骑马 14、鞘翅 30 格/秒。方向固定 +x，高度固定 y=200，不受地形碰撞影响。
 - 每轮 120 秒，鞘翅一轮飞 3600 格，约 225 个 chunk。
@@ -144,13 +148,13 @@ bench 注册监听写文件；coordinator 写入成功时报 `DONOR`，验证打
 | --- | --- | --- | --- |
 | 4.1 | `Flight`、`ViewTracker` 纯逻辑 | JUnit：位置随时间；进入 / 就绪 / 删失；进出再进算两次；初始视野不计入；视野集合和 `ChunkTrackingView` 一致 | JUnit 通过 |
 | 4.2 | `FlightRecorder`、命令、文件输出 | GameTest：在测试结构里放一个 ServerPlayer，`fly start` 后位置按速度变化，`seconds.jsonl` 行数和时长对得上 | GameTest 通过。**已做**（11-08，先提交失败的测试 `8e6ad94`）：`SecondRows` 7 项 JUnit，`FlightGameTest` 4 项（墙钟 3 秒正好 3 行、位置按速度走、视野 453、tick 模式按 tick 走、中途 stop、同名 run 拒绝、初始视野全部就绪），连跑 3 次稳定；变异检查（去掉最后一秒的封顶、去掉飞完放到终点）都被抓到。实现记录见 4.2a |
-| 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated`；跨 mod 检查（3.3 的 1～4 条） | 通过 |
+| 4.3 | `Provenance` 接口和 `ProvenanceLog` | JUnit：无监听时 report 不报错；监听收到正确事件。GameTest：Chunky 生成后 `provenance.jsonl` 里原版事件数等于 `full_generated`；跨 mod 检查（3.3 的 1～4 条） | 通过。**已做**（11-09，先提交失败的测试 `b678b80`）：`Generation` 让计数和来源事件在同一把读锁里发，飞行开始 / 结束拿写锁读计数快照，所以 `done.json` 里原版事件数严格等于 `full_generated + full_resumed` 的增量（JUnit 4 线程并发验证）。GameTest 改用 `getChunk` 强制生成 3 个新 chunk（不用 Chunky，GameTest 并发跑时计数不好对），每个正好一条 vanilla；跨 mod 1～4 条都过。读盘的成品记 `loaded`，读盘的半成品做完记 `vanilla`。变异检查（不加锁、不发事件）都被抓到。飞行的 t0 改成起飞命令执行时，起飞前一刻的来源事件也有 t_ms |
 | 4.4 | Python 离线合成和统计 | pytest：已知事件算出的虚空率、分位数（含删失）、CSV 列；时间对齐 | 通过 |
 | 4.5 | 单轮端到端 | pytest 冒烟（非 slow）：新世界里走路速度飞 15 秒，CSV 有 15 行左右，每行视野数等于 453，日志无 ERROR | 通过 |
-| 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过 |
-| 4.7 | 指标自检（slow） | 见 5.3 | 两条都满足 |
-| 4.8 | 冒烟测量（slow，降级） | 按 `layer2-protocol.json` 跑完（默认每种速度 1～2 次 + 4 核鞘翅 1 次）；每轮输出 p50/p95/p99；有 2 次的配置给出波动 | `scripts/test.sh step4 --slow` 退出码 0；非 slow 的 test_90 复核已发布的冒烟结果 |
-| 4.9 | 收尾 | 报告、README 第 2 层数字、DEV_PLAN 勾选 | 文档对上数据 |
+| 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过。**已做**（11-09）：真实回放放在 `tests/step4/test_10_smoke.py` 里，和 4.5 共用同一次飞行（模块级 fixture），不另开 test_11。原版事件数对照 `done.json` 里飞行期间的计数增量，不用全局 `bench stats`：后者还含起飞前生成初始视野的那些。实测一轮：100 条 vanilla，计数增量 100 |
+| 4.7 | 指标自检（slow） | 见 5.3 | 两条都满足。**代码已做**（11-09）：`bench/layer2_campaign.py` 的自检槽位和判定，`tests/step4/test_04_campaign.py`；自检 1 预生成航线后重启再飞（共享锁下 5 秒小槽位验证过流程：0 条原版、50 条读盘）。测量等独占时间 |
+| 4.8 | 冒烟测量（slow，降级） | 按 `layer2-protocol.json` 跑完（默认每种速度 1～2 次 + 4 核鞘翅 1 次）；每轮输出 p50/p95/p99；有 2 次的配置给出波动 | `scripts/test.sh step4 --slow` 退出码 0；非 slow 的 test_90 复核已发布的冒烟结果 | **代码已做**（11-09）：协议 `bench/layer2-protocol.json`，编排和发布 `bench/layer2_campaign.py`，`tests/step4/test_05_publish.py`、`test_20_real_slot.py`、`test_90_baseline.py`。原版基线槽位期间停掉本项目的 donor worker。测量约 85 分钟独占，等调度通知。**发布前 test_90 的非 slow 部分会失败，kexu 测量完成前不进 main** |
+| 4.9 | 收尾 | 报告、README 第 2 层数字、DEV_PLAN 勾选 | 文档对上数据。**框架已做**（11-09）：报告 `baseline-layer2.md` 由 publish 生成；README 第 2 层一段在标记之间，由 `update_readme` 从发布结果生成，test_90 复核一致；DEV_PLAN 按实际降级如实勾（同第 1 步），测量后做 |
 
 **4.2a 实现记录（11-08）**
 
@@ -172,7 +176,7 @@ bench/src/main/java/mcdonate/bench/gametest/FlightGameTest.java
 common/src/test/java/mcdonate/common/ProvenanceTest.java
 tests/step4/test_01_layer2_math.py    纯逻辑
 tests/step4/test_02_map.py            地图服务器（合成数据）
-tests/step4/test_11_map_replay.py     回放 4.5 的真实 run，自动判定
+tests/step4/test_10_smoke.py          （4.6 的真实回放也在这里，共用 4.5 那次飞行）
 tests/step4/test_10_smoke.py          短飞行端到端
 tests/step4/test_90_baseline.py       slow：自检 + 冒烟测量；非 slow 部分复核已发布结果（同第 1 步）
 ```

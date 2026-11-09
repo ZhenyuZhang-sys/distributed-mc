@@ -111,4 +111,18 @@ class SecondRowsTest {
         r.finish();
         assertThrows(IllegalStateException.class, () -> r.tick(900 * MS, 1, 0, 0, snap(1, 0)));
     }
+
+    @Test
+    void stalledTicksCountedPerSecond() {
+        // 玩家被卡在没就绪的 chunk 前面的 tick 数，每秒一列（11-09：模拟真实客户端）
+        SecondRows r = rows(2);
+        r.tick(300 * MS, 5 * MS, 0, 0, snap(10, 1), true);
+        r.tick(600 * MS, 5 * MS, 0, 0, snap(10, 1), true);
+        r.tick(900 * MS, 5 * MS, 0, 0, snap(10, 0), false);
+        r.tick(1500 * MS, 5 * MS, 0, 0, snap(10, 0));
+        r.finish();
+        assertEquals(2, rows.get(0).stalledTicks());
+        assertEquals(0, rows.get(1).stalledTicks());
+        assertTrue(rows.get(0).json().contains("\"stalled_ticks\":2"));
+    }
 }

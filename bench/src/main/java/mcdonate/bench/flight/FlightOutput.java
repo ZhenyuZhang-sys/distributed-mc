@@ -19,7 +19,9 @@ final class FlightOutput {
 
     private final Path dir;
     private final ExecutorService writer;
-    private BufferedWriter seconds, chunks;
+    private BufferedWriter seconds, chunks, provenance;
+    /** 只在写线程上读写。done.json 写完以后，晚到的来源事件（比如 coordinator 并发 report）丢掉。 */
+    private boolean closed;
 
     FlightOutput(Path dir, ExecutorService writer) {
         this.dir = dir;
@@ -54,17 +56,33 @@ final class FlightOutput {
         });
     }
 
-    /** 关掉两个流（没有行也建空文件），再写 done.json。 */
+    void provenance(String line) {
+        writer.execute(() -> {
+            if (closed) return;
+            try {
+                if (provenance == null) provenance = Files.newBufferedWriter(dir.resolve("provenance.jsonl"), StandardCharsets.UTF_8);
+                provenance.write(line);
+                provenance.write('\n');
+            } catch (IOException e) {
+                LOG.error("写 provenance.jsonl 失败：{}", dir, e);
+            }
+        });
+    }
+
+    /** 关掉三个流（没有行也建空文件），再写 done.json。 */
     void done(String json) {
         writer.execute(() -> {
             try {
                 if (seconds == null) seconds = Files.newBufferedWriter(dir.resolve("seconds.jsonl"), StandardCharsets.UTF_8);
                 if (chunks == null) chunks = Files.newBufferedWriter(dir.resolve("chunks.jsonl"), StandardCharsets.UTF_8);
+                if (provenance == null) provenance = Files.newBufferedWriter(dir.resolve("provenance.jsonl"), StandardCharsets.UTF_8);
                 seconds.close();
                 chunks.close();
+                provenance.close();
             } catch (IOException e) {
                 LOG.error("关闭飞行输出失败：{}", dir, e);
             }
+            closed = true;
             write("done.json", json);
         });
     }

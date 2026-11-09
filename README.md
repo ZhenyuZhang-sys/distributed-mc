@@ -54,6 +54,12 @@ X、Y、Z 在阶段 0 测完基础数据后再定。
 - **不确定率**：同一 seed、两个全新世界，原版自己就有 ocean 约 31%、mountain 约 66%、jungle 约 91% 的 chunk 不完全一样（列差异率 2.9% / 30% / 74%，方块差异率 0.02% / 0.2% / 1.1%）。差异全在装饰和结构阶段：树叶、藤蔓、矿团、sculk、海带。和核数无关。所以判 donor 结果对不对、抽查重算都不能整块比：遮掉装饰类方块后严格比，装饰部分按统计阈值。
 - **X 的候选初值**：2 个 donor 时 p95 就绪延迟改善 2 倍。这只是待验证的目标，第 4、6 步实测。吞吐倍数不等于 X。Y、Z 还没测。
 
+<!-- layer2-smoke:begin 由 bench/layer2_campaign.py 从 analysis/results 生成，不要手改 -->
+### 第 4 步冒烟给的第 2 层初值
+
+（等第 4 步 4.8 冒烟测量。测完由 `bench/layer2_campaign.update_readme` 从 analysis/results 生成这一段，不手填。）
+<!-- layer2-smoke:end -->
+
 ## Benchmark（ChunkBench-mini）
 
 | 层 | 回答什么 | 怎么测 | 主要指标 |
