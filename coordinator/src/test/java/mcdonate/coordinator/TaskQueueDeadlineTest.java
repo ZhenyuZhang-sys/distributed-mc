@@ -334,4 +334,29 @@ class TaskQueueDeadlineTest {
         }
         assertEquals(State.QUEUED, q.state(id), "总时长到了上限，不再续租，收回");
     }
+
+    // ---- 11-09（kexu 烟花直线 33.5 格/秒：donor 写入的 chunk 只有 26% 在玩家前方）----
+    // 找需求算过、却没有截止时间的 tile（玩家不朝那边走：侧面、后面）不派；派活先做前方走廊（离飞行线近的），再做两侧
+
+    @Test
+    void scoredTilesWithoutDeadlineNotAssigned() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.setDue(0, 0, Long.MAX_VALUE, Long.MAX_VALUE, Integer.MAX_VALUE);   // 侧后方：找需求算过，到不了
+        assertTrue(q.assign(1).isEmpty(), "玩家不会去的 tile 不派");
+        q.enqueue(5, 0);
+        q.setDue(5, 0, now.get() + 9_000, now.get() + 7_000, 2);
+        assertEquals(5, q.assign(1).orElseThrow().tx());
+    }
+
+    @Test
+    void corridorBeforeSides() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 3);
+        q.enqueue(5, 0);
+        q.setDue(0, 3, now.get() + 5_000, now.get() + 4_000, 12);     // 更早看到，但在侧面 12 个 chunk
+        q.setDue(5, 0, now.get() + 8_000, now.get() + 7_000, 1);      // 正前方
+        assertEquals(5, q.assign(1).orElseThrow().tx(), "走廊里的先派");
+        assertEquals(0, q.assign(2).orElseThrow().tx(), "走廊里没有了再派两侧");
+    }
 }

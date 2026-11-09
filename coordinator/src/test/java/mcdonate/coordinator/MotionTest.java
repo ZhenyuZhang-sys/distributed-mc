@@ -83,4 +83,12 @@ class MotionTest {
             }
         }
     }
+
+    @Test
+    void lateralDistanceFromFlightLine() {
+        // 玩家在原点沿 +x 飞：tile (8, 2) 的中心在 chunk (33.5, 9.5)，离飞行线 9.5 个 chunk；正前方的 tile (8, 0) 中心离线 1.5
+        assertEquals(9.5, Motion.lateralChunks(new mcdonate.common.TilePos(8, 2), 0, 0, 30, 0), 1e-9);
+        assertEquals(1.5, Motion.lateralChunks(new mcdonate.common.TilePos(8, 0), 0, 0, 30, 0), 1e-9);
+        assertEquals(Double.POSITIVE_INFINITY, Motion.lateralChunks(new mcdonate.common.TilePos(8, 0), 0, 0, 0, 0), "不动：没有飞行线");
+    }
 }
