@@ -14,6 +14,7 @@ EVENTS = [
     dict(t_ms=20, cx=0, cz=1, kind='donor', donor=3),
     dict(t_ms=20, cx=2, cz=1, kind='rejected', donor=3),
     dict(t_ms=40, cx=5, cz=5, kind='loaded', donor=-1),
+    dict(t_ms=50, cx=0, cz=1, kind='resumed', donor=-1),
 ]
 
 
@@ -83,7 +84,7 @@ def test_replay_sorted_by_time_stable(base, runs):
     replay = get(base + '/replay?run=flight-a')
     assert [(e['t_ms'], e['cx'], e['cz']) for e in replay['events']] == [(10, 0, 0), (20, 0, 1), (20, 2, 1), (30, 1, 0)]
     assert replay['track'] == [dict(t_s=1, x=16.0, z=8.0)]
-    assert replay['counts'] == dict(vanilla=2, donor=1, rejected=1, loaded=0)
+    assert replay['counts'] == dict(vanilla=2, resumed=0, donor=1, rejected=1, loaded=0)
 
 
 @pytest.mark.parametrize('query', ['run=../etc&since=0', 'run=nope&since=0', 'run=flight-a&since=-1',
@@ -100,8 +101,21 @@ def test_unknown_path_404(base):
     assert e.value.code == 404
 
 
+def test_resumed_counted_and_painted_on_its_own(base, runs):
+    # fish 11-09：donor 导入的半成品被服务器接着做完，单独一类、地图上一种颜色，不算进原版
+    with (runs / 'flight-a' / 'provenance.jsonl').open('a') as f:
+        f.write(json.dumps(EVENTS[3]) + '\n' + json.dumps(EVENTS[4]) + '\n' + json.dumps(EVENTS[5]) + '\n')
+    replay = get(base + '/replay?run=flight-a')
+    assert replay['counts'] == dict(vanilla=2, resumed=1, donor=1, rejected=1, loaded=1)
+    last = replay['events'][-1]
+    assert last['kind'] == 'resumed' and last['color'] == color('resumed', -1)
+    assert '#' + color('resumed', -1).lstrip('#') in get(base + '/')  # 图例里有这种颜色
+
+
 def test_colors():
     assert color('vanilla', -1) != color('rejected', 3) != color('donor', 3)
+    others = {color(k, -1) for k in ('vanilla', 'rejected', 'loaded')} | {color('donor', d) for d in range(16)}
+    assert color('resumed', -1) not in others
     assert color('donor', 1) != color('donor', 2)
     assert color('donor', 7) == color('donor', 7)
     with pytest.raises(ValueError):

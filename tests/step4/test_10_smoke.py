@@ -69,6 +69,8 @@ def test_map_replays_the_smoke_run(smoke):
     assert [key(e) for e in replay['events']] == [key(e) for e in expected]
     vanilla = replay['counts']['vanilla']
     # 用 done.json 里飞行期间的计数增量，不用全局 bench stats：后者还含起飞前生成初始视野的那些
-    assert vanilla > 0 and vanilla == done['counters']['full_generated'] + done['counters']['full_resumed']
+    # 三类分开（fish 11-09）：vanilla 只算从头生成，接着做完的半成品是 resumed
+    assert vanilla > 0 and vanilla == done['counters']['full_generated']
+    assert replay['counts']['resumed'] == done['counters']['full_resumed'] == done['provenance']['resumed']
     assert done['provenance']['vanilla'] == vanilla
     assert [t['t_s'] for t in replay['track']] == list(range(1, 16))

@@ -46,8 +46,11 @@ public class ProvenanceGameTest implements FabricGameTest {
             JsonObject counts = done.getAsJsonObject("provenance"), delta = done.getAsJsonObject("counters");
             long vanilla = events.stream().filter(e -> e.get("kind").getAsString().equals("vanilla")).count();
             FlightGameTest.check(counts.get("vanilla").getAsLong() == vanilla, "done.json 的计数和文件不符：" + counts);
-            FlightGameTest.check(vanilla == delta.get("full_generated").getAsLong() + delta.get("full_resumed").getAsLong(),
-                    "原版事件 " + vanilla + " 不等于计数增量 " + delta);
+            // 三类分开（fish 11-09）：vanilla 只算从头生成，接着做完的半成品是 resumed
+            long resumed = events.stream().filter(e -> e.get("kind").getAsString().equals("resumed")).count();
+            FlightGameTest.check(vanilla == delta.get("full_generated").getAsLong(), "原版事件 " + vanilla + " 不等于计数增量 " + delta);
+            FlightGameTest.check(counts.has("resumed") && counts.get("resumed").getAsLong() == resumed
+                    && resumed == delta.get("full_resumed").getAsLong(), "resumed 事件 " + resumed + " 和计数对不上：" + counts + " " + delta);
             for (JsonObject e : events) FlightGameTest.check(e.has("t_ms"), "事件缺 t_ms：" + e);
             // 守护计数：主线程上同步生成新 chunk（这里的 getChunk）一定被记下，栈里能看到是谁调的。
             // 它不是玩家实体 tick 引起的，记在 world 里；玩家引起的 count 不受影响
