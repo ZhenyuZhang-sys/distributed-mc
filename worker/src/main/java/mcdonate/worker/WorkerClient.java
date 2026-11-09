@@ -106,8 +106,10 @@ final class WorkerClient {
             try (Socket s = new Socket()) {
                 s.connect(new InetSocketAddress(host, port), 5000);
                 s.setSoTimeout(READ_TIMEOUT_MS);
-                socket = s;
-                generations.connected();
+                synchronized (this) {   // 和 send 同一把锁：换 socket 和换代一起（codex-audit G2）
+                    socket = s;
+                    generations.connected();
+                }
                 // 带上 donor 世界编号：coordinator 一连上就知道是哪个世界（11-09：原来要等第一个结果，认主的任务派不出去）
                 send(new Hello(Protocol.VERSION, hostName(), tokens.forHello(), WorldId.of(server)));
                 wait = 1000;
@@ -117,10 +119,12 @@ final class WorkerClient {
                     LOG.info("和 coordinator 的连接断了（{}），{} 秒后重连", e.getMessage(), wait / 1000);
                 }
             } finally {
-                socket = null;
                 // 断线时手上的任务已被 coordinator 收回，做完也不发。11-09（codex-audit A1）：这一代收到的全部作废，
                 // 不只是正在做的那一个（排着的不做；做完的不经新连接发回去）
-                cancelled.addAll(generations.disconnected());
+                synchronized (this) {
+                    socket = null;
+                    cancelled.addAll(generations.disconnected());
+                }
                 long t = currentTask;
                 if (t >= 0) {
                     cancelled.add(t);
@@ -182,6 +186,9 @@ final class WorkerClient {
             return;
         }
         currentTask = t.taskId();
+        // codex-audit G3：租约到期时 coordinator 给原 worker 发了 Cancel(这个编号)，之后同一个编号可能再派过来，
+        // 是新的一次，清掉撤销标记（同一个连接上 Cancel 一定先到）
+        cancelled.remove(t.taskId());
         received.put(t.taskId(), System.currentTimeMillis());
         generations.received(t.taskId());
         // 11-09：收到就把它的 chunk 排上生成（加票、不等，很快），前一个 tile 还在导出时它已经在生成线程池里了。
@@ -240,13 +247,14 @@ final class WorkerClient {
             LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
             return;
         }
+        long gen = generations.generationOf(t.taskId());
         boolean current = generations.isCurrent(t.taskId());
         generations.finished(t.taskId());
         if (!current) {
             LOG.info("任务 {} 是上一次连接收到的，结果不发", t.taskId());
             return;
         }
-        deliver(r);
+        deliver(r, gen);
         if (r.ok()) {
             status.tileDone(chunkCount, 0); // 字节数在 send 里按帧记
         }
@@ -291,6 +299,11 @@ final class WorkerClient {
     private boolean hold;
 
     private void deliver(Result r) {
+        deliver(r, generations.current());
+    }
+
+    /** gen：这个任务是哪一代连接收到的；发的时候还是这一代才发（codex-audit G2）。 */
+    private void deliver(Result r, long gen) {
         synchronized (held) {
             if (hold) {
                 held.add(r);
@@ -299,13 +312,8 @@ final class WorkerClient {
             }
         }
         // 11-09：编码和压缩（Frame.encode：NBT 写出、gzip）放到发送线程上，不占主线程（主线程只有一条，序列化、调度都在上面）
-        // 排在发送线程里时断线重连了：不经新连接发（codex-audit 审 30a7c22）
-        long gen = generations.current();
-        SENDER.execute(() -> {
-            if (generations.current() == gen) {
-                send(r);
-            }
-        });
+        // 排在发送线程里时断线重连了：不经新连接发（检查和写 socket 在同一把锁里，codex-audit G2）
+        SENDER.execute(() -> sendIfGeneration(r, gen));
     }
 
     private static final java.util.concurrent.ExecutorService SENDER = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
@@ -338,6 +346,13 @@ final class WorkerClient {
         while (running) {
             sleep(HEARTBEAT_MS);
             send(new Heartbeat(System.currentTimeMillis(), currentTask, paused));
+        }
+    }
+
+    /** 只有连接还是 gen 这一代时才发（和换 socket 同一把锁）。 */
+    private synchronized void sendIfGeneration(Message m, long gen) {
+        if (generations.current() == gen) {
+            send(m);
         }
     }
 

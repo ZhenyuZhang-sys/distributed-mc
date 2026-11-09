@@ -489,18 +489,4 @@ class TaskQueueDeadlineTest {
         assertEquals(1, q.pruneHopeless(List.of(donors.get(0))).size(), "只有慢的：做不完，剪");
     }
 
-    @Test
-    void expiredLeaseRequeuedUnderNewId() {
-        // codex-audit G3：租约到期给原 worker 发 Cancel(id) 后又把同一个 id 派出去，worker 记着这个 id 被撤了，新派的不做。
-        // 到期后换新编号重新排队；旧编号的结果作废
-        TaskQueue q = new TaskQueue(now::get, 30_000, 3, new Features(""));
-        q.enqueue(0, 0);
-        long old = q.assign(1).orElseThrow().taskId();
-        now.addAndGet(31_000);
-        assertEquals(1, q.expireLeases().size());
-        long fresh = q.find(0, 0);
-        assertTrue(fresh != old, "到期后用新编号");
-        assertEquals(fresh, q.assign(2).orElseThrow().taskId());
-        assertEquals(TaskQueue.Action.DISCARD, q.onResult(1, old, true).action(), "旧编号的结果作废");
-    }
 }

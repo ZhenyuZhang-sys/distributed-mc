@@ -357,11 +357,11 @@ final class CoordinatorServer {
                 tasks.setWorkerWorld(c.workerId, world);
             }
         }
+        long epoch = tasks.epoch(); // codex-audit G1：在做决定之前取代次，reset 夹在中间时导入前比得出来
         TaskQueue.Decision d = tasks.onResult(c.workerId, r.taskId(), r.ok());
         switch (d.action()) {
             case IMPORT -> {
                 d.cancelWorker().map(workers::get).ifPresent(other -> other.send(new Cancel(r.taskId())));
-                long epoch = tasks.epoch(); // 11-09（A2）：导入前再比一次，中间 /donor reset 过就不导
                 if (waitDonor.hasGate(r.taskId())) {
                     // 7.6：有 chunk 在等这个结果。导入提交到 chunk 缓存自己的队列：主线程同步等 chunk 时
                     // （getChunk 的 managedBlock）只执行这个队列，server.execute 的要等它结束，闸门只能等到超时。

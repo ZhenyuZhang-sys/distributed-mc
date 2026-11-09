@@ -688,6 +688,8 @@ public final class TaskQueue {
                 t.state = State.FAILED;
                 t.worker = -1;
             } else {
+                // 同一个编号回到队首（第 5 步 2.4：租约到期后原 worker 迟到的成功结果照样收）。原 worker 收到了 Cancel(这个编号)，
+                // 再派给它时 worker 收到 Task 会清掉撤销标记（codex-audit G3，在 WorkerClient.onTask）
                 backToHead(t);
             }
         }

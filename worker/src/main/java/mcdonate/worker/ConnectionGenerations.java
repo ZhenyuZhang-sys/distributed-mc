@@ -27,6 +27,12 @@ final class ConnectionGenerations {
         taskGeneration.put(taskId, generation);
     }
 
+    /** 这个任务是哪一代收到的；不认识是 -1。 */
+    synchronized long generationOf(long taskId) {
+        Long g = taskGeneration.get(taskId);
+        return g == null ? -1 : g;
+    }
+
     /** 这个任务是这一代收到的（结果可以发）。 */
     synchronized boolean isCurrent(long taskId) {
         Long g = taskGeneration.get(taskId);
