@@ -62,10 +62,14 @@ def _group(r):
     return r.get('group') or f"{r['server_cpus']}c"
 
 
+SCENARIO_NAME = {'straight': '直飞', 'turning': '转弯鞘翅', 'out_and_back': '来回飞', 'mixed': '走路骑马', 'two_players': '两个玩家'}
+
+
 def label(r, vanilla_groups=None) -> str:
-    base = f"{r['server_cpus']} 核 "
+    scen = SCENARIO_NAME.get(r.get('scenario'), r.get('scenario'))
+    base = (f'{scen} · ' if scen else '') + f"{r['server_cpus']} 核 "
     if r['donors'] == 0:
-        many = vanilla_groups and len(vanilla_groups.get(r['server_cpus'], ())) > 1
+        many = vanilla_groups and len(vanilla_groups.get((r['server_cpus'], r.get('scenario')), ())) > 1
         return base + '原版' + (f'（{_group(r)} 组）' if many else '')
     s = base + f"{r['donors']} donor {r.get('features')}"
     if r.get('lookahead'):
@@ -76,7 +80,8 @@ def label(r, vanilla_groups=None) -> str:
 
 
 def _sort_key(r):
-    return (-r['server_cpus'], str(r.get('group') or ''), r['donors'] > 0, r.get('latency_ms') or 0, r.get('lookahead') or 0, r['donors'])
+    return (str(r.get('scenario') or ''), -r['server_cpus'], str(r.get('group') or ''), r['donors'] > 0, r.get('latency_ms') or 0,
+            r.get('lookahead') or 0, r['donors'])
 
 
 def configs(rows):
@@ -84,7 +89,7 @@ def configs(rows):
     vg = {}
     for r in rows:
         if r['donors'] == 0:
-            vg.setdefault(r['server_cpus'], set()).add(_group(r))
+            vg.setdefault((r['server_cpus'], r.get('scenario')), set()).add(_group(r))
     out = {}
     for r in sorted(rows, key=_sort_key):
         out.setdefault(label(r, vg), []).append(r)
@@ -105,7 +110,7 @@ def settings(rows) -> list[dict]:
     vg = {}
     for r in rows:
         if r['donors'] == 0:
-            vg.setdefault(r['server_cpus'], set()).add(_group(r))
+            vg.setdefault((r['server_cpus'], r.get('scenario')), set()).add(_group(r))
     vanilla = {(_group(r), r['repeat']): r for r in rows if r['donors'] == 0}
     by = {}
     for r in sorted(rows, key=_sort_key):
@@ -243,7 +248,8 @@ def demo4_network(groups, names, colors, out):
 DRAW = dict(zip(FIGURES, (demo1_stall, demo2_ahead, demo3_sources, demo4_network, demo5_discards)))
 KEYS = ('stall_fraction', 'stall_s', 'distance_ratio', 'ahead_total', 'void_mean', 'latency_p95_ms', 'mspt_p95', 'mspt_max',
         'cpu_cores_mean', 'full_generated', 'full_resumed', 'full_loaded', 'resumed_share', 'donor_events', 'imports_accepted',
-        'discard_late', 'discard_server', 'discard_other_world', 'stale_dropped', 'stale_cancelled')
+        'discard_late', 'discard_server', 'discard_other_world', 'stale_dropped', 'stale_cancelled',
+        'stall_fraction_max', 'cant_keep_up', 'moved_too_quickly', 'import_ms', 'worker_cores', 'tile_s', 'players')
 
 
 def draw_all(campaign, out_dir) -> dict:

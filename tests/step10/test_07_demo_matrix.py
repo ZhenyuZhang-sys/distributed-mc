@@ -185,3 +185,20 @@ def test_hypotheses_y_and_z_wording(tmp_path):
     assert h['Y']['verdict'] == '数据不足（第 8 步暂停）'
     assert h['Z']['verdict'] == '数据不足（要真显卡）'
     assert h['stall']['verdict'] == '记录' and h['stall']['value'] == pytest.approx((.25 + .37) / 2)
+
+
+def test_labels_include_scenario_so_groups_do_not_merge():
+    # 真实场景矩阵（调度 11-09）：不同场景的同一种 donor 配置不能被当成一种配置合在一起
+    rows = [dict(experiment='flight', group='a', scenario='turning', server_cpus=4, donors=3, features='deadline+throughput', repeat=1,
+                 latency_ms=0, lookahead=16, stall_fraction=.2),
+            dict(experiment='flight', group='b', scenario='out_and_back', server_cpus=4, donors=3, features='deadline+throughput', repeat=1,
+                 latency_ms=0, lookahead=16, stall_fraction=.3),
+            dict(experiment='flight', group='a', scenario='turning', server_cpus=4, donors=0, features='v0', repeat=1, latency_ms=0,
+                 stall_fraction=.4),
+            dict(experiment='flight', group='b', scenario='out_and_back', server_cpus=4, donors=0, features='v0', repeat=1, latency_ms=0,
+                 stall_fraction=.5)]
+    names = [n for n, _ in demo_figures.configs(rows)]
+    assert len(names) == 4, names
+    assert any('转弯' in n for n in names) and any('来回' in n for n in names)
+    sets = {s['setting']: s for s in demo_figures.settings(rows)}
+    assert len(sets) == 2 and sorted(round(s['paired_reduction'][0], 3) for s in sets.values()) == [.2, .2]

@@ -1,0 +1,201 @@
+{
+ "name": "real-b",
+ "seed": 424242,
+ "repeats": 1,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  },
+  "3x4": {
+   "donors": 3,
+   "env": {
+    "WORKER3_CPUS": "4"
+   }
+  }
+ },
+ "note": "调度 11-09：接近真实玩法的场景，4 核服务器（用户的 N100）× 4 个场景 × {原版、1 个 8 核强 donor、3 个 4 核 donor}，没网络；再给 4 核转弯鞘翅加网络（35ms / 20mbit / 1%），2 核只跑转弯鞘翅。开关和提前量照 fish 9008deb 的部署默认（deadline + throughput、提前量 16）。每组自己一份原版对照、紧挨着跑。粗测，每轮 1 次，三个槽位并行（k2 / k3 / k4）。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "4c-mixed",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "mixed"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     4
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120
+   },
+   {
+    "group": "4c-mixed",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "mixed"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     4
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ]
+   },
+   {
+    "group": "4c-mixed",
+    "donors": [
+     3
+    ],
+    "scenario": [
+     "mixed"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     4
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "donor_profile": [
+     "3x4"
+    ],
+    "lookahead": [
+     16
+    ]
+   },
+   {
+    "group": "4c-two",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "two_players"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     4
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120
+   },
+   {
+    "group": "4c-two",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "two_players"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     4
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ]
+   },
+   {
+    "group": "4c-two",
+    "donors": [
+     3
+    ],
+    "scenario": [
+     "two_players"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     4
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "donor_profile": [
+     "3x4"
+    ],
+    "lookahead": [
+     16
+    ]
+   }
+  ]
+ }
+}
