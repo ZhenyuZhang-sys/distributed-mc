@@ -249,12 +249,12 @@ Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，
 
 验收：
 
-- [ ] 没装 mod 的原版客户端照常进服
-- [ ] 装了 mod 但没同意：不启动任何进程，不下载任何东西
-- [ ] 同意后：worker 启动并出现在 coordinator 的注册表里；退出世界后 worker 停止
-- [ ] `kill -9` 游戏进程：worker 几秒内自己退出，不留进程
-- [ ] token 只能用一次；过期或被别人拿去用会被拒绝
-- [ ] 同一段固定场景，开 worker 前后 p99 帧时间的增加量定出 Z；再关掉限速对比一次，证明限速有用
+- [x] 没装 mod 的原版客户端照常进服（`tests/step9/test_01_vanilla_join.py::test_vanilla_client_joins`，无头真客户端）
+- [x] 装了 mod 但没同意：不启动任何进程，不下载任何东西（`tests/step9/test_02_client_noconsent.py`：test_no_worker_process、test_nothing_downloaded_or_created、test_no_download_attempt_without_consent，客户端放在没有外网的网络里，加 test_offline_network_really_blocks_downloads 正对照）
+- [x] 同意后：worker 启动并出现在 coordinator 的注册表里；退出世界后 worker 停止（`tests/step9/test_03_client_consent.py`：test_worker_started_and_registered（含客户端收到 CONNECTED）、test_worker_stops_after_leaving_world）
+- [x] `kill -9` 游戏进程：worker 几秒内自己退出，不留进程（`tests/step9/test_04_client_kill9.py`，5 秒内）
+- [x] token 只能用一次；过期或被别人拿去用会被拒绝（JUnit `TokenRegistryTest`：onlyOnce、expiresAfterSixtySeconds、reissueRevokesOld、revokeOnLeave；`HandshakeTest` 的 BAD_TOKEN；端到端 `tests/step9/test_05_client_reconnect.py`：用过的 token 不能再用，踢掉后经游戏要新 token 连回来，日志里没有 token 原文）
+- [ ] 同一段固定场景，开 worker 前后 p99 帧时间的增加量定出 Z；再关掉限速对比一次，证明限速有用（要真显卡，用户部署时测，见 docs/step9-plan.md 9.7；无头环境只做了定性：test_06_client_throttle）
 
 帧时间测试需要真实客户端和显卡，没法完全放进 Docker。做法是固定视角挂机，由 mod 把帧时间写进文件，脚本读文件判断。
 
