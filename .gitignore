@@ -34,3 +34,8 @@ artifacts/
 
 # 第 1 步原始实验与勘探归档
 analysis/results/runs/
+
+# 部署包（deploy/）：密码、存档、构建好的 jar 不进 git
+deploy/.env
+deploy/data/
+deploy/mods/*.jar
