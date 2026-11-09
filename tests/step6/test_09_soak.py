@@ -112,7 +112,9 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     missing = [p for p in sample if read_chunk(control, *p) is None]
     assert not missing, f"对照世界里缺 {len(missing)} 个抽样的 chunk（没存盘？），比不了：{missing[:10]}"
     for p in sample:
-        acc["imported" if p in imported else "server"].add(compare_chunks(read_chunk(snap, *p), read_chunk(control, *p)))
+        # 导入的抽的是没做成成品的（initialize_light），读取器默认只解成品的方块，要 incomplete=True（11-09 f3：不加时读成全是空气）
+        acc["imported" if p in imported else "server"].add(
+            compare_chunks(read_chunk(snap, *p, incomplete=p in imported), read_chunk(control, *p)))
     rate = {k: ({"decor": v.decor_rate, "terrain": v.terrain_rate} if v.blocks else None) for k, v in acc.items()}
     strict = {k: v.strict for k, v in acc.items()}
 
