@@ -21,5 +21,6 @@
   {"a": "minecraft:air", "b": "minecraft:podzol", "count": 31, "note": "7.0b"},
   {"a": "minecraft:cave_air", "b": "minecraft:dirt", "count": 15, "note": "7.0b"},
   {"a": "minecraft:air", "b": "minecraft:chain", "count": 10, "note": "7.0b"},
-  {"a": "minecraft:grass_block", "b": "minecraft:stone", "count": 1, "note": "7.0b"}
+  {"a": "minecraft:grass_block", "b": "minecraft:stone", "count": 1, "note": "7.0b"},
+  {"a": "minecraft:cave_air", "b": "minecraft:gravel", "count": 6, "note": "kexu 11-09 第 3 步外圈原版互比，Y −5"}
  ]}

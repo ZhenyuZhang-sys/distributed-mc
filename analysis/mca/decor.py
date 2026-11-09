@@ -87,6 +87,7 @@ EXCUSED_PAIRS = frozenset(frozenset(("minecraft:" + a, "minecraft:" + b)) for a,
     ("cave_air", "deepslate"),
     ("cave_air", "tuff"),
     ("cave_air", "dirt"),       # 结构挖开泥土（7.0b 本地对照，Y 29～80）
+    ("cave_air", "gravel"),     # 结构挖开沙砾矿团，矿团和雕刻的先后不同（kexu 11-09 第 3 步外圈原版互比，Y −5，6 处）
     # 放树时把树干正下方那一格换成泥土（jungle 19180 处，mountain Y 99～124；雪坡上是雪块，Y 110～133）。
     # 属于装饰阶段，和树一起算装饰类；原来放在地形互换里，每棵不同的树都多算一"处"（调度 11-08 定）。
     ("dirt", "grass_block"),

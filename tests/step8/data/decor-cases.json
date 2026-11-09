@@ -1825,6 +1825,51 @@
 "a": "minecraft:vine",
 "b": "minecraft:vine",
 "expected": "decor"
+},
+{
+"a": "minecraft:coarse_dirt",
+"b": "minecraft:podzol",
+"expected": "decor"
+},
+{
+"a": "minecraft:grass_block",
+"b": "minecraft:podzol",
+"expected": "decor"
+},
+{
+"a": "minecraft:deepslate",
+"b": "minecraft:dirt",
+"expected": "terrain"
+},
+{
+"a": "minecraft:dirt",
+"b": "minecraft:podzol",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:podzol",
+"expected": "decor"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:dirt",
+"expected": "decor"
+},
+{
+"a": "minecraft:air",
+"b": "minecraft:chain",
+"expected": "decor"
+},
+{
+"a": "minecraft:grass_block",
+"b": "minecraft:stone",
+"expected": "terrain"
+},
+{
+"a": "minecraft:cave_air",
+"b": "minecraft:gravel",
+"expected": "decor"
 }
 ]
 }

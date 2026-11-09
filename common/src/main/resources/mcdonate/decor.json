@@ -186,6 +186,10 @@
   ],
   [
    "minecraft:cave_air",
+   "minecraft:gravel"
+  ],
+  [
+   "minecraft:cave_air",
    "minecraft:stone"
   ],
   [
