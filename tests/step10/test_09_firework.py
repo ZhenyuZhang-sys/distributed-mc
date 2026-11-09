@@ -333,3 +333,25 @@ def test_report_lists_each_round_with_its_slot():
     assert '## 每轮明细' in md
     sec = md.split('## 每轮明细')[1]
     assert '| 转弯 | 1 个 donor，8 核 · 10cadc8 | 1 | k2 | 49% |' in sec and '| k3 | 33% | 1.4 | 0.40 |' in sec, sec
+
+
+def test_spike_section_and_cross_slot_note(tmp_path):
+    # 调度 11-09：MSPT ≥ 200 ms 的尖峰单列一类；GC 日志里最长停顿不够长的归"原版生怪同步取 chunk"；跨槽位的 donor 用核不直接比
+    rows = [dict(experiment='flight', scenario='firework_turning', speed_bps=33.5, donors=0, code='10cadc8', slot='k2', repeat=2,
+                 stall_after_exit=.5, mspt_max=2248.0, gc_max_ms=93.0),
+            dict(experiment='flight', scenario='firework', speed_bps=33.5, donors=1, donor_profile='1x8', code='30a7c22', slot='k3', repeat=1,
+                 stall_after_exit=.23, mspt_max=305.0),
+            dict(experiment='flight', scenario='firework', speed_bps=33.5, donors=1, donor_profile='1x8', code='2359f7d', slot='k3', repeat=1,
+                 stall_after_exit=.24, mspt_max=56.0, gc_max_ms=76.0)]
+    md = firework.report(rows)
+    sec = md.split('## 尖峰')[1]
+    assert '| 转弯 | 原版（0 个 donor） · 10cadc8 | 2 | k2 | 2248 | 93 | 原版生怪同步取 chunk（GC 停顿不够长） |' in sec, sec
+    assert '| 305 | — | 原版生怪同步取 chunk（推定，没有 GC 日志） |' in sec
+    assert '56 |' not in sec
+    assert '不同槽位' in md.split('## 每轮明细')[1]
+    # 归档里的 GC 日志：最长停顿
+    log = tmp_path / 'server-log.txt'
+    log.write_text('2026-11-09T14:18:22Z [2026-11-09T09:18:22.115-0500][483.022s] GC(224) Pause Young (Mixed) 835M->381M(882M) 27.388ms\n'
+                   '2026-11-09T14:18:29Z [2026-11-09T09:18:29.423-0500][490.330s] GC(227) Pause Remark 389M->389M(883M) 93.5ms\n')
+    assert firework.gc_max_ms(log) == pytest.approx(93.5)
+    assert firework.gc_max_ms(tmp_path / 'nope.txt') is None

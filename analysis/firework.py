@@ -239,6 +239,20 @@ def max_sustainable(runs, limit=0.05, key='config'):
     return out
 
 
+def gc_max_ms(path):
+    """归档的服务器日志里 GC 最长停顿（毫秒）；没有这个文件或没开 GC 日志（-Xlog:gc）：None。"""
+    import re
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return None
+    vals = [float(m.group(1)) for m in re.finditer(r'Pause .*? ([\d.]+)ms', p.read_text(errors='replace'))]
+    return max(vals) if vals else None
+
+
+SPIKE_MS = 200
+
+
 def recompute(attempt_dir, params) -> dict:
     """按归档的逐秒行重算出缓存区以后的指标（报告用；11-09 第一轮的速度比按错的速度算过）。"""
     import json
@@ -250,6 +264,7 @@ def recompute(attempt_dir, params) -> dict:
     radius = (params.get('cache_radius') or 0) * 16
     out = after_exit(rows, DEFAULT_START, radius, scenario_speed(params))
     out.update(view_ready(rows, DEFAULT_START, radius))
+    out['gc_max_ms'] = gc_max_ms(Path(attempt_dir) / 'server-log.txt')
     if (raw / 'chunks.jsonl').exists():
         ev = [json.loads(l) for l in (raw / 'chunks.jsonl').read_text().splitlines() if l.strip()]
         view = params.get('view_distance') or 10
@@ -410,12 +425,25 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
                        f"| {_f(_mean(rs, 'discard_late'), digits=0)} / {_f(_mean(rs, 'discard_server'), digits=0)} / {_f(_mean(rs, 'stale_dropped'), digits=0)} "
                        f"| {_f(_mean(rs, 'import_ms'), digits=0)} | {_f(_mean(rs, 'worker_cores'))} | {_f(_mean(rs, 'tile_s'), digits=2)} |")
     if any(r.get('slot') for r in real):   # 调度 11-09：同配置在不同槽位差得多（核分配、超线程、同机负载），每轮记槽位
-        out += ['', '## 每轮明细', '', '| 场景 | 配置 | 轮 | 槽位 | 卡住占比 | worker 核数 | tile/s | MSPT max |', '| --- | --- | --- | --- | --- | --- | --- | --- |']
+        out += ['', '## 每轮明细', '', '> 不同槽位的核分配、超线程兄弟、同机负载不一样（调度 11-09）：只认同一槽位里交替跑的对比；'
+                '不同槽位之间的 worker 核数、tile/s 不可直接比，卡住占比也只能参考。', '', '| 场景 | 配置 | 轮 | 槽位 | 卡住占比 | worker 核数 | tile/s | MSPT max |', '| --- | --- | --- | --- | --- | --- | --- | --- |']
         for scen in ('firework', 'firework_turning'):
             for n in order:
                 for r in sorted((r for r in real if r.get('scenario') == scen and _cfg(r) == n), key=lambda r: (r.get('slot') or '', r.get('repeat') or 0)):
                     out.append(f"| {SCEN_NAME[scen]} | {n} | {r.get('repeat', '—')} | {r.get('slot') or '—'} | {_f(r.get('stall_after_exit'), True)} "
                                f"| {_f(r.get('worker_cores'))} | {_f(r.get('tile_s'), digits=2)} | {_f(r.get('mspt_max'), digits=0)} |")
+    spikes = [r for r in real if isinstance(r.get('mspt_max'), (int, float)) and r['mspt_max'] >= SPIKE_MS]
+    if spikes:   # 调度 11-09：尖峰单列一类。codex-server 定位 300～900 ms 的是原版生怪位置检查里同步取 chunk
+        out += ['', f'## 尖峰（MSPT ≥ {SPIKE_MS} ms）', '',
+                '> 归类：有 GC 日志、最长停顿不到尖峰一半的，记"原版生怪同步取 chunk"（codex-server 用 profiler 定位，导入同期最大 62～69 ms）；'
+                '没有 GC 日志的是推定。', '',
+                '| 场景 | 配置 | 轮 | 槽位 | MSPT max（ms） | GC 最长停顿（ms） | 归类 |', '| --- | --- | --- | --- | --- | --- | --- |']
+        for r in sorted(spikes, key=lambda r: -r['mspt_max']):
+            gc = r.get('gc_max_ms')
+            kind = ('原版生怪同步取 chunk（推定，没有 GC 日志）' if gc is None
+                    else '可能是 GC' if gc >= r['mspt_max'] / 2 else '原版生怪同步取 chunk（GC 停顿不够长）')
+            out.append(f"| {SCEN_NAME.get(r.get('scenario'), r.get('scenario'))} | {_cfg(r)} | {r.get('repeat', '—')} | {r.get('slot') or '—'} "
+                       f"| {_f(r['mspt_max'], digits=0)} | {_f(gc, digits=0)} | {kind} |")
     return '\n'.join(out) + '\n'
 
 
