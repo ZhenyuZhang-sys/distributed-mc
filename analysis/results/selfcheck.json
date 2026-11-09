@@ -1,0 +1,32 @@
+{
+ "pregen": {
+  "status": "passed",
+  "criteria_met": true,
+  "void_mean": 0.0061909994817802416,
+  "latency_p95_ms": 298.0,
+  "concurrent": [
+   "mc-test-f3-minecraft-1 stop",
+   "mc-test-f3-minecraft-1 die",
+   "mc-test-f3-worker2-1 stop",
+   "mc-test-f3-worker2-1 die",
+   "mc-test-f3-worker-1 stop",
+   "mc-test-f3-worker-1 die",
+   "mc-test-f3-minecraft-1 destroy",
+   "mc-test-f3-worker-1 destroy",
+   "mc-test-f3-worker2-1 destroy",
+   "funny_shtern create",
+   "funny_shtern start",
+   "funny_shtern die",
+   "funny_shtern destroy",
+   "mc-test-f3-minecraft-run-cc4480207efe create",
+   "mc-test-f3-minecraft-run-cc4480207efe start"
+  ]
+ },
+ "one_core": {
+  "status": "passed",
+  "criteria_met": true,
+  "void_mean": 0.8204185592753037,
+  "latency_p95_ms": "inf",
+  "concurrent": []
+ }
+}
