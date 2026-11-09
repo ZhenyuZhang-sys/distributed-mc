@@ -90,4 +90,17 @@ class FrameThrottleTest {
         }
         assertEquals(99.0, t.p99(1000), 1e-9);
     }
+
+    @Test
+    void raisingTargetLetsAStuckWorkerResume() {
+        // 集显、开着光影：平时就 60 ms，目标 50 一直暂停。玩家在设置里把目标调到 100（恢复线 80）：不重启 worker，5 秒后恢复
+        run(60, 10);
+        assertTrue(t.paused());
+        actions.clear();
+        t.setTargetMs(100);
+        run(60, 10);
+        assertEquals(1, actions.size(), actions.toString());
+        assertTrue(actions.get(0).startsWith("RESUME"));
+        assertEquals(100, t.targetMs());
+    }
 }

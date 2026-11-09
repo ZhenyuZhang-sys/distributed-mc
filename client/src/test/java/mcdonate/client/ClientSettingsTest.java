@@ -39,4 +39,12 @@ class ClientSettingsTest {
         assertEquals(new ClientSettings(true, 1, 1024, 50), s);
         assertFalse(ClientSettings.DEFAULTS.enabled());
     }
+
+    @Test
+    void frameTargetChoices() {
+        // 设置界面的选项（11-09）：33/50/100/200 ms
+        assertEquals(java.util.List.of(33, 50, 100, 200), ClientSettings.FRAME_TARGETS);
+        assertEquals(100, ClientSettings.DEFAULTS.withFrameTargetMs(100).frameTargetMs());
+        assertEquals(200, ClientSettings.DEFAULTS.withFrameTargetMs(500).frameTargetMs(), "最多 200");
+    }
 }
