@@ -142,5 +142,6 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     assert imported_sample, f"没抽到可比的导入 chunk（被接受的 tile {len(imported_tiles)} 个），这次测量无效：{report}"
     # 导入的：严格层 0。服务器生成的：严格层只记录（被 tick 过的世界，见开头）
     assert strict["imported"] == 0, report
-    bad = relative_check(acc["imported"], acc["server"])
+    # 超过上限的大团只看导入那一侧（服务器那一侧被 tick 过 30 分钟，流水、岩浆冲出的大团和 donor 无关；11-09 f3 实测 4 处全在服务器一侧）
+    bad = relative_check(acc["imported"], acc["server"], big_only_inside=True)
     assert not bad, (bad, rate)

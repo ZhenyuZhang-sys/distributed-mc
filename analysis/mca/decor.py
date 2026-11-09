@@ -234,13 +234,15 @@ def terrain_clusters(positions) -> list[list[tuple[int, int, int]]]:
     return out
 
 
-def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str]:
+def relative_check(inside: Diff, outside: Diff, factor: float = 1.5, big_only_inside: bool = False) -> list[str]:
     """统计层。返回不满足的说明，空列表表示通过。
 
     - 装饰类：导入部分的方块差异率不高于同一轮没导入部分（本地原版互比）的 factor 倍（下限 VANILLA_DECOR_FLOOR）。
     - 地形互换：很少、成团出现（一个矿团几十个方块），按方块比例比全看一个矿团落在哪，所以按"处"数，
       用单侧二项检验看导入部分是否偏多（见 TERRAIN_ALPHA）。横跨两边的一处算导入部分的。
       每一处不能超过 TERRAIN_CLUSTER_MAX 个方块，超过算严格差异。
+    - big_only_inside：超过上限的"处"只看碰到导入部分的（11-09 浸泡：服务器一侧是玩了 30 分钟的世界，
+      流水、岩浆冲出的大团是运行时变的，和导入无关）。
     """
     bad = []
     limit = max(outside.decor_rate * factor, VANILLA_DECOR_FLOOR)
@@ -248,7 +250,8 @@ def relative_check(inside: Diff, outside: Diff, factor: float = 1.5) -> list[str
         bad.append(f"装饰类：导入部分 {inside.decor_rate:.5%} > 上限 {limit:.5%}（没导入部分 {outside.decor_rate:.5%}）")
     inside_pos = set(inside.terrain_positions or [])
     clusters = terrain_clusters(inside_pos | set(outside.terrain_positions or []))
-    big = [len(c) for c in clusters if len(c) > TERRAIN_CLUSTER_MAX]
+    big = [len(c) for c in clusters if len(c) > TERRAIN_CLUSTER_MAX
+           and (not big_only_inside or any(p in inside_pos for p in c))]
     if big:
         bad.append(f"严格：地形互换有 {len(big)} 处超过 {TERRAIN_CLUSTER_MAX} 个方块（{big}），比原版单个矿团的 2 倍还大")
     n_in = sum(1 for c in clusters if any(p in inside_pos for p in c))
