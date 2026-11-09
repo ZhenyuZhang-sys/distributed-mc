@@ -468,3 +468,52 @@ def publish(root, p, result, out) -> dict:
                  published_utc=_now(), artifacts={name: digest(out / name) for name in ARTIFACTS})
     _write(out / 'layer2-smoke.json', state)
     return state
+
+
+# ---- README 第 2 层（4.9） ----
+
+README_BEGIN = '<!-- layer2-smoke:begin 由 bench/layer2_campaign.py 从 analysis/results 生成，不要手改 -->'
+README_END = '<!-- layer2-smoke:end -->'
+SPEED_NAMES = {'walk': '走路', 'horse': '骑马', 'elytra': '鞘翅'}
+
+
+def readme_block(out) -> str:
+    """README 里第 2 层冒烟初值那一段，只读已发布的结果。"""
+    import csv
+    out = Path(out)
+    with (out / 'layer2-summary.csv').open() as f:
+        summary = list(csv.DictReader(f))
+    check = json.loads((out / 'selfcheck.json').read_text())
+    state = json.loads((out / 'layer2-smoke.json').read_text())
+
+    def num(v, digits=3):
+        if v in ('', None):
+            return '—'
+        if v == 'inf':
+            return '∞（有删失）'
+        return f'{float(v):.{digits}g}'
+    lines = [README_BEGIN, '### 第 4 步冒烟给的第 2 层初值', '',
+             f"> **冒烟**，在这台 EPYC 7542 上限核测得，部署机器 N100 上要重测。每种速度 1～2 次，只能看量级。"
+             f"campaign `{state['campaign']}`，详见 [baseline-layer2.md](analysis/results/baseline-layer2.md)。", '',
+             '| 速度 | 核数 | 次数 | 虚空率均值 | 就绪 p95（毫秒） | MSPT 均值（毫秒） | 服务器 CPU（核） |',
+             '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
+    for s in summary:
+        lines.append(f"| {SPEED_NAMES.get(s['speed_name'], s['speed_name'])} | {s['cpus']} | {s['n']} | {num(s['void_mean_mean'])} "
+                     f"| {num(s['latency_p95_ms_mean'])} | {num(s['mspt_mean_mean'])} | {num(s['cpu_cores_mean_mean'])} |")
+    status = {'passed': '通过', 'failed': '没过', 'reference': '只算参考（那轮有并发）'}
+    lines += ['', f"- 指标自检：预生成后再飞{status[check['pregen']['status']]}（虚空率均值 {num(check['pregen']['void_mean'])}）；"
+                  f"1 核鞘翅{status[check['one_core']['status']]}（虚空率均值 {num(check['one_core']['void_mean'])}）。",
+              '- 2 核时原版只有 1 个生成线程（和第 1 步一样），第 6 步 donor 的提升里有一部分来自原版本来就没用上的那个核。',
+              README_END]
+    return '\n'.join(lines) + '\n'
+
+
+def update_readme(readme, out) -> None:
+    """把 README 里两个标记之间（含标记）换成 readme_block(out)。"""
+    readme = Path(readme)
+    text = readme.read_text()
+    a, b = text.find(README_BEGIN), text.find(README_END)
+    if a < 0 or b < a:
+        raise ValueError('README 里没有第 2 层的标记')
+    b = text.index('\n', b) + 1 if '\n' in text[b:] else len(text)
+    readme.write_text(text[:a] + readme_block(out) + text[b:])

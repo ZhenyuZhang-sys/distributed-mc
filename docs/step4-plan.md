@@ -148,9 +148,9 @@ bench 注册监听写文件；coordinator 写入成功时报 `DONOR`，验证打
 | 4.4 | Python 离线合成和统计 | pytest：已知事件算出的虚空率、分位数（含删失）、CSV 列；时间对齐 | 通过 |
 | 4.5 | 单轮端到端 | pytest 冒烟（非 slow）：新世界里走路速度飞 15 秒，CSV 有 15 行左右，每行视野数等于 453，日志无 ERROR | 通过 |
 | 4.6 | 地图 | pytest（合成数据）：`since` 增量正确；三类上色映射正确。pytest（真实 run，**这条是 DEV_PLAN"能回放生成顺序"的验收**）：4.5 冒烟飞行归档后，用地图服务器的回放接口回放这次 run，返回的事件顺序和 `provenance.jsonl` 的时间顺序一致，其中原版事件数等于这轮 `bench stats` 的 `full_generated`。网页截图只作附加证据，不算验收 | 通过。**已做**（11-09）：真实回放放在 `tests/step4/test_10_smoke.py` 里，和 4.5 共用同一次飞行（模块级 fixture），不另开 test_11。原版事件数对照 `done.json` 里飞行期间的计数增量，不用全局 `bench stats`：后者还含起飞前生成初始视野的那些。实测一轮：100 条 vanilla，计数增量 100 |
-| 4.7 | 指标自检（slow） | 见 5.3 | 两条都满足 |
-| 4.8 | 冒烟测量（slow，降级） | 按 `layer2-protocol.json` 跑完（默认每种速度 1～2 次 + 4 核鞘翅 1 次）；每轮输出 p50/p95/p99；有 2 次的配置给出波动 | `scripts/test.sh step4 --slow` 退出码 0；非 slow 的 test_90 复核已发布的冒烟结果 |
-| 4.9 | 收尾 | 报告、README 第 2 层数字、DEV_PLAN 勾选 | 文档对上数据 |
+| 4.7 | 指标自检（slow） | 见 5.3 | 两条都满足。**代码已做**（11-09）：`bench/layer2_campaign.py` 的自检槽位和判定，`tests/step4/test_04_campaign.py`；自检 1 预生成航线后重启再飞（共享锁下 5 秒小槽位验证过流程：0 条原版、50 条读盘）。测量等独占时间 |
+| 4.8 | 冒烟测量（slow，降级） | 按 `layer2-protocol.json` 跑完（默认每种速度 1～2 次 + 4 核鞘翅 1 次）；每轮输出 p50/p95/p99；有 2 次的配置给出波动 | `scripts/test.sh step4 --slow` 退出码 0；非 slow 的 test_90 复核已发布的冒烟结果 | **代码已做**（11-09）：协议 `bench/layer2-protocol.json`，编排和发布 `bench/layer2_campaign.py`，`tests/step4/test_05_publish.py`、`test_20_real_slot.py`、`test_90_baseline.py`。原版基线槽位期间停掉本项目的 donor worker。测量约 85 分钟独占，等调度通知。**发布前 test_90 的非 slow 部分会失败，kexu 测量完成前不进 main** |
+| 4.9 | 收尾 | 报告、README 第 2 层数字、DEV_PLAN 勾选 | 文档对上数据。**框架已做**（11-09）：报告 `baseline-layer2.md` 由 publish 生成；README 第 2 层一段在标记之间，由 `update_readme` 从发布结果生成，test_90 复核一致；DEV_PLAN 按实际降级如实勾（同第 1 步），测量后做 |
 
 **4.2a 实现记录（11-08）**
 

@@ -33,6 +33,7 @@ def test_smoke_measurement(server_manager):
     result = lc.run_campaign(p, campaign, lc.real_fly_slot(p))
     assert result['failed'] == 0, result
     lc.publish(campaign, p, result, OUT)
+    lc.update_readme(ROOT / 'README.md', OUT)  # 4.9：README 第 2 层的数字从发布结果生成
 
 
 def published():
