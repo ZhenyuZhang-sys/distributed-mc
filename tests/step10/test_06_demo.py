@@ -356,6 +356,9 @@ def test_ab_runs_a_without_donors_then_b_with_deadline_on_fresh_worlds(tmp_path)
     kinds = [c[1] if c[0] != 'compose' else 'up' for c in seq]
     assert kinds == ['new_world.sh', 'new_world.sh', 'donor reset', 'up']   # 两轮各一个全新世界，B 开 donor 前 reset
     assert seq[0][3] == seq[1][3] == '424242'                              # 同一个 seed
+    import re
+    # lib.sh 的 validate_world_name：只认小写字母、数字、_ -，最长 32（11-09 k2 冒烟时大写 T 被拒）
+    assert all(re.fullmatch(r'[a-z0-9_-]{1,32}', c[2]) for c in seq[:2]), seq[:2]
     root = tmp_path / 'artifacts' / res['name']
     saved = json.loads((root / 'ab.json').read_text())
     assert saved['A']['valid'] and saved['B']['valid'] and saved['B']['donor_events'] == 50
