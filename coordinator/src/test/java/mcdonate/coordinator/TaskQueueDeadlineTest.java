@@ -415,4 +415,26 @@ class TaskQueueDeadlineTest {
         assertEquals(1, q.expireLeases().size());
         assertEquals(State.QUEUED, q.state(id));
     }
+
+    // ---- 11-09（kexu 三臂：30a7c22 的 8 核 donor 只用 1.2 核；codex-audit：侧面的任务占满队列上限后不再扫描）----
+
+    @Test
+    void onlyTasksWithDeadlineCountTowardTheCap() {
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 5; i++) {
+            q.enqueue(i, 9);
+            q.setDue(i, 9, Long.MAX_VALUE, Long.MAX_VALUE, Integer.MAX_VALUE);   // 侧面：不派，也不该占队列名额
+        }
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 9_000, now.get() + 7_000, 1);
+        q.enqueue(1, 0);                                                         // 刚入队，还没算过：算一个
+        assertEquals(2, q.queuedCountingTowardCap());
+    }
+
+    @Test
+    void pruneTileTimeIsTheFastestDonors() {
+        // 一个慢 donor（20 秒）不能让快 donor（2 秒）做得完的任务被剪掉：剪枝按最快的那个估一个 tile 的时间
+        assertEquals(2_000, CoordinatorServer.pruneTileMs(new long[] {20_000, 2_000}));
+        assertEquals(0, CoordinatorServer.pruneTileMs(new long[0]));
+    }
 }
