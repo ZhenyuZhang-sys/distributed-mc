@@ -101,6 +101,10 @@ final class CoordinatorServer {
     }
 
     void start() throws IOException {
+        if (ALLOW_TOKENLESS) {
+            // 安全：没带 token 的 worker 也放进来。只该出现在测试的 compose.test.yaml 里
+            LOG.warn("mcdonate.allowTokenless 开着：没带 token 的 worker 也能连进来、领任务、导入。只用于测试，正式部署要关掉");
+        }
         listener = new ServerSocket();
         listener.setReuseAddress(true);
         listener.bind(new InetSocketAddress(port));

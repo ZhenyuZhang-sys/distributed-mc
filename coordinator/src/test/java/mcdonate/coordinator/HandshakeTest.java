@@ -42,6 +42,14 @@ class HandshakeTest {
     }
 
     @Test
+    void tokenlessIsOffByDefault() {
+        // 正式默认：没设 mcdonate.allowTokenless 时是关的（只有测试的 compose 设 true）
+        assertNull(System.getProperty("mcdonate.allowTokenless"), "单元测试的 JVM 不该设它");
+        assertFalse(CoordinatorServer.ALLOW_TOKENLESS);
+        assertFalse(CoordinatorServer.admit(new Hello(Protocol.VERSION, "w"), tokens, CoordinatorServer.ALLOW_TOKENLESS).ok());
+    }
+
+    @Test
     void noTokenOnlyWhenTokenlessAllowed() {
         assertFalse(CoordinatorServer.admit(new Hello(Protocol.VERSION, "w"), tokens, false).ok(), "正式默认：没有 token 拒绝");
         CoordinatorServer.Admission a = CoordinatorServer.admit(new Hello(Protocol.VERSION, "w"), tokens, true);
