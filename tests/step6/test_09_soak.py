@@ -13,11 +13,14 @@
 
 import json
 import random
+import shutil
 import time
+from pathlib import Path
 
 import pytest
 
 from analysis.mca import iter_chunk_positions, read_chunk
+from analysis.mca.errors import CorruptRegionError
 from analysis.mca.decor import Diff, compare_chunks, relative_check
 from bench import layer2
 from mcd import SCRIPTS, compose, donor_imports, run, wait_until, worker_id
@@ -54,8 +57,20 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     wait_until(lambda: not json.loads(server.rcon("donor status"))["workers"], timeout=60, interval=1, what="donor 断开")
     snap = server.snapshot(base / "soak")
     # 1. 每个 chunk 都读得出来（读不出会抛异常）
-    positions = list(iter_chunk_positions(snap))
-    full = [p for p in positions if read_chunk(snap, *p).status == "minecraft:full"]
+    # 11-09 f2 停了 donor 再拍快照，航线末端的 region 头部照样截断过两次：读不出来时把快照里的和服务器存档里的同一个 region
+    # 都存进证据目录（pytest 的临时目录会被清掉），分清是拷到一半还是存档真坏了
+    try:
+        positions = list(iter_chunk_positions(snap))
+        full = [p for p in positions if read_chunk(snap, *p).status == "minecraft:full"]
+    except CorruptRegionError as e:
+        bad = Path(str(e).split(":")[0])
+        keep = (server.artifact_dir or base) / "corrupt-region"
+        keep.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bad, keep / f"snapshot-{bad.name}")
+        live = server.world_dir / "region" / bad.name
+        if live.exists():
+            shutil.copy2(live, keep / f"live-{bad.name}")
+        raise
 
     # 2. 抽 1%，在全新世界里单独生成作对照
     imported_tiles = {tuple(r["tile"]) for r in donor_imports(server)[before:] if r["accepted"]}
