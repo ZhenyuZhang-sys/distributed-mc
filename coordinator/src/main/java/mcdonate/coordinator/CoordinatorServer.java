@@ -415,6 +415,7 @@ final class CoordinatorServer {
                 + ",\"motionWindowMs\":" + Motion.WINDOW_MS
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
+                + ",\"measureWireBytes\":" + MEASURE_WIRE_BYTES
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
