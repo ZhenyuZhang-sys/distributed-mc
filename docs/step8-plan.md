@@ -159,6 +159,11 @@ fish 的导入已经做了：DataVersion、坐标、状态是 full、tile 大小
 
 1. **验证的入口**：`TileImporter.importStrict` 接受一个 tile 之后，把 (tile、donor token、写入的 chunk 列表) 交给验证器。验证不挡导入：先写进存档，抽查在后台做，作弊就回滚。理由是挡导入会拖慢 donor 的就绪延迟，而回滚能补救没被加载过的 chunk。
 2. **导入账本落盘，和 fish 第 7 步的 7.7"归属持久化"合成一套**（调度 11-08 定）：同一份落盘记录，每个导入的 chunk 一条：chunk 坐标 → worldId、token、tile、写入时间、是否被服务器加载过。由 fish 在 7.7 里做，同时满足第 7 步的归属和第 8 步的回滚。第 8 步只读它，外加回滚后删掉对应记录。"第一次被服务器加载"的钩子也在 7.7 里。
+   - **11-09 核对 fish 分支后对齐**（kexu 只读核对，fish 已按此改，等编译）：
+     - 账本改存 workerId + donor 世界 + 玩家 UUID（格式 2，能读格式 1），不再存一次性 token（有测试确认磁盘里没有 token）。`importStrict` 和 `onImport` 带上 workerId 和玩家。加了 `remove(chunk)`（回滚后删记录）和 `chunksOf(world, workerId)`（拉黑后找这个 donor 的全部 chunk）。
+     - "首次加载"钩子挂在 `ChunkStatusTasks.full()` 的开头。导入的 chunk 存盘时停在 initialize_light，服务器接着做完走的是 `full()` 里 `new LevelChunk` 那条分支；从存档读到成品走 `ImposterProtoChunk` 分支。挂在开头两条都覆盖（kexu 原先说挂在 Imposter 分支，不对，以 fish 的为准）。存盘钩子保留，做补充。
+     - coordinator 导入成功时报 `Provenance` DONOR（带 workerId），整个 tile 丢弃时报 REJECTED。
+     - common 里的 `Welcome.BLACKLISTED = -3` 和 `Task.kind`（GENERATE / RECOMPUTE，旧消息没有 kind 当生成任务）由 kexu 加，coordinator 那边的黑名单、重算派发和结果分流由 fish 做。
 3. **拉黑**：`TokenRegistry` 加黑名单；握手时查，拒绝码 -3；结果到达时再查一次（防止拉黑前已经在路上的结果）。
 4. **删 chunk**：一个"确认不在内存里就从存档删掉这个 chunk"的主线程方法，规则和导入的冲突规则一致。
 5. **派重算任务**：任务队列能给受信任的本地 worker 派"重算 tile"任务，结果走验证器、不走导入。
