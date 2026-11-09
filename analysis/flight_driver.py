@@ -172,7 +172,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         cache_chunks = None
         if cache:   # 缓存区：以起点为中心、半径 cache 个 chunk 的方形先用 Chunky 生成好（用户 11-09：从缓存区飞出去）
             from bench.server import chunky
-            cache_chunks = chunky(_LogShim(runner), int(start[0]), int(start[1]), cache * 16, timeout=900)
+            cache_chunks = chunky(_LogShim(runner), int(start[0]), int(start[1]), cache * 16, timeout=900, replace_stale=True)
         ids_before = []
         if donors == 0:
             controller.donor_off()

@@ -298,3 +298,27 @@ def test_forward_ready_does_not_skip_chunks_on_diagonal():
         assert got == pytest.approx(want, abs=0.02), (a, x0, z0, holes)
     # 正好穿过 chunk 角：两边相邻的都算擦过（supercover）
     assert firework.first_unready(lambda c: c != (1, 0), 8.0, 8.0, (math.sqrt(.5), math.sqrt(.5)), 160) == pytest.approx(math.hypot(8, 8))
+
+
+def test_pregen_replaces_a_stale_chunky_task():
+    # 11-09：中途打断的一轮把 Chunky 任务留在 config/chunky/tasks 里（跨世界不清），下一轮全新世界 chunky start 就拒绝。
+    # 驱动给全新世界预生成时，用 chunky confirm 换成这次的任务
+    from bench.server import chunky
+    class Srv:
+        def __init__(self):
+            self.sent, self.log = [], []
+        def rcon(self, cmd):
+            self.sent.append(cmd)
+            if cmd == 'chunky start':
+                return "[Chunky] A task was already started for this world. To continue running it, type '/chunky continue'."
+            if cmd == 'chunky confirm':
+                self.log.append('[Chunky] Task finished for minecraft:overworld. Processed: 1089 chunks (100.00%)')
+            return 'ok'
+        def logs(self):
+            return '\n'.join(self.log)
+    s = Srv()
+    with pytest.raises(RuntimeError, match='残留'):
+        chunky(s, 0, 0, 256, timeout=1)
+    s = Srv()
+    assert chunky(s, 0, 0, 256, timeout=1, replace_stale=True) == 1089
+    assert s.sent[-1] == 'chunky confirm'
