@@ -51,7 +51,8 @@ def test_elytra_smoke_0_vs_2_donors(server, worker, worker2, tmp_path_factory):
     try:
         for i, (kind, start) in enumerate(ROUNDS):
             before = len(donor_imports(server))
-            imp0 = json.loads(server.rcon("donor status")).get("import", {})
+            s0 = json.loads(server.rcon("donor status"))
+            imp0 = s0.get("import", {})
             if kind == "donors0":
                 server.rcon("donor demand off")
                 donors_down()
@@ -67,7 +68,9 @@ def test_elytra_smoke_0_vs_2_donors(server, worker, worker2, tmp_path_factory):
             server.rcon("donor demand off")
             row = {"round": i, "kind": kind, "services": services,
                    "imports_accepted": sum(1 for r in donor_imports(server)[before:] if r["accepted"]),
-                   "discard_ratio": status["discard_ratio"], "discarded": status["discarded"], "sync_loads": sync_loads,
+                   "discard_ratio": status["discard_ratio"], "sync_loads": sync_loads,
+                   # 这一轮的增量（status 里是累计的）
+                   "discarded": {k: status["discarded"][k] - s0["discarded"][k] for k in status["discarded"]},
                    # 主线程上导入的耗时（这一轮的增量；旧 coordinator 没有就是 0）
                    "import_ms": status.get("import", {}).get("totalMs", 0) - imp0.get("totalMs", 0),
                    "import_max_ms": status.get("import", {}).get("maxMs", 0),
@@ -85,8 +88,10 @@ def test_elytra_smoke_0_vs_2_donors(server, worker, worker2, tmp_path_factory):
     report = {"speed": SPEED, "seconds": SECONDS, "rounds": results, "config": json.loads(server.rcon("donor status"))["config"]}
     for kind in ("donors0", "donors2"):
         rows = [r for r in results if r["kind"] == kind]
-        report[kind] = {k: statistics.fmean(r[k] for r in rows if r[k] is not None)
-                        for k in ("cpu_cores_mean", "void_mean", "latency_p95_ms", "mspt_mean")}
+        # JSON 里的 inf 读回来是字符串 "inf"，先转成数
+        report[kind] = {k: statistics.fmean(float(r[k]) for r in rows if r[k] is not None)
+                        for k in ("cpu_cores_mean", "void_mean", "latency_p95_ms", "mspt_mean", "stall_fraction",
+                                  "distance_ratio", "import_ms") if all(k in r for r in rows)}
     print(json.dumps(report, ensure_ascii=False))
     (base / "smoke.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     assert all(r["imports_accepted"] > 0 for r in results if r["kind"] == "donors2"), "2 个 donor 时没有导入 tile"

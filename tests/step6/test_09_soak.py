@@ -20,7 +20,7 @@ import pytest
 from analysis.mca import iter_chunk_positions, read_chunk
 from analysis.mca.decor import Diff, compare_chunks, relative_check
 from bench import layer2
-from mcd import SCRIPTS, donor_imports, run, worker_id
+from mcd import SCRIPTS, compose, donor_imports, run, wait_until, worker_id
 
 START = (0, 30000)
 SPEED = 14          # 格/秒
@@ -48,6 +48,10 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     sync_loads = json.loads((out / "raw" / "done.json").read_text()).get("sync_loads") or {}
     assert "count" in sync_loads, "layer2 还是旧的（没有 sync_loads 守护计数）"
     assert sync_loads["count"] == 0, f"假玩家 tick 里同步加载过 chunk，测量无效：{sync_loads}"
+    # 拍快照前先停掉 donor：找需求关了，但队列里排着的、donor 手上的任务还会陆续导入，
+    # 拍快照时正好写 region 文件就会拷到一半（11-09 f2 两次：航线末端的 region 头部截断）。停掉后它们手上的任务回队列，不再导入
+    compose("stop", "worker", "worker2", timeout=300)
+    wait_until(lambda: not json.loads(server.rcon("donor status"))["workers"], timeout=60, interval=1, what="donor 断开")
     snap = server.snapshot(base / "soak")
     # 1. 每个 chunk 都读得出来（读不出会抛异常）
     positions = list(iter_chunk_positions(snap))
