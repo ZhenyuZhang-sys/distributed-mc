@@ -1,0 +1,100 @@
+{
+ "name": "ufw-sweep-mc",
+ "seed": 424242,
+ "repeats": 2,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09 用户定的目标：直线往前飞时前方空白 chunk 的加载速度（主指标：前方空白时长、前方已就绪距离；卡住只作参考）。main e7fed5f（+kexu 实验工具），扫描预算 2000，用户同款 2 核、3G、-Xmx2G，1×8 donor，烟花直线 33.5 格/秒，缓存区 16。同槽位交替，每格 2 轮，原版 1 轮。 k2：maxConcurrency 4 对 6（lookahead 16、corridor 6）。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "sweep-mc",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "repeats": 1
+   },
+   {
+    "group": "sweep-mc",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "max_concurrency": [
+     4,
+     6
+    ]
+   }
+  ]
+ }
+}
