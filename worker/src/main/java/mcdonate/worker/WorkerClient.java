@@ -280,8 +280,15 @@ final class WorkerClient {
                 return;
             }
         }
-        send(r);
+        // 11-09：编码和压缩（Frame.encode：NBT 写出、gzip）放到发送线程上，不占主线程（主线程只有一条，序列化、调度都在上面）
+        SENDER.execute(() -> send(r));
     }
+
+    private static final java.util.concurrent.ExecutorService SENDER = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "mcdonate-worker-send");
+        t.setDaemon(true);
+        return t;
+    });
 
     /** 打开或放开扣结果；放开时把扣着的发出去，返回发了几个。 */
     int setHold(boolean on) {

@@ -41,7 +41,8 @@ final class TileExporter {
             StringBuilder sb = new StringBuilder("{\"tile\":[").append(tile.x()).append(',').append(tile.z())
                     .append("],\"file\":\"").append(file.getFileName()).append("\",\"chunks\":").append(chunks)
                     .append(",\"ms\":").append(millis).append(",\"genMs\":").append(LAST_SPLIT[0])
-                    .append(",\"serializeMs\":").append(LAST_SPLIT[1]).append(",\"rings\":[");
+                    .append(",\"serializeMs\":").append(LAST_SPLIT[1]).append(",\"quietMs\":").append(LAST_SPLIT[2])
+                    .append(",\"rings\":[");
             for (int i = 0; i < rings.size(); i++) {
                 if (i > 0) {
                     sb.append(',');
@@ -163,7 +164,7 @@ final class TileExporter {
     }
 
     /** 上一次 generate 的两段（毫秒）：等生成、序列化（/donor export 的 JSON 里报，排查用）。只在主线程上读写。 */
-    static final long[] LAST_SPLIT = new long[2];
+    static final long[] LAST_SPLIT = new long[3];
 
     static Generated generate(ServerLevel level, TilePos tile, boolean serial) {
         long started = System.nanoTime();
@@ -210,6 +211,7 @@ final class TileExporter {
         // 11-09（用户真机，9008deb："Accessing PalettedContainer from multiple threads"）：几个 tile 同时生成时，
         // 相邻 tile 的生成任务可能还在写这个 tile 外圈的 chunk（地物写进邻居），主线程这时序列化就撞上。
         // 序列化之前等整个区域（tile ± 外圈）里每个 chunk 都没有进行中的生成任务；等的时候照常处理 chunk 的主线程任务，不会卡死。
+        long quietFrom = System.nanoTime();
         waitNoGeneration(level, tile, cache, timeout);
         long waited = System.nanoTime();
         int r = TileFile.MAX_RING;
@@ -235,7 +237,8 @@ final class TileExporter {
             }
         }
 
-        LAST_SPLIT[0] = (waited - started) / 1_000_000;
+        LAST_SPLIT[0] = (quietFrom - started) / 1_000_000;
+        LAST_SPLIT[2] = (waited - quietFrom) / 1_000_000;
         recordMs((System.nanoTime() - started) / 1_000_000);
         LAST_SPLIT[1] = (System.nanoTime() - waited) / 1_000_000;
         TileFile file = new TileFile(SharedConstants.getCurrentVersion().getDataVersion().getVersion(),

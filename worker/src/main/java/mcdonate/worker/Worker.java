@@ -149,6 +149,7 @@ public final class Worker implements ModInitializer {
     private static int exportBatch(CommandSourceStack source, TilePos first, int n, int step) {
         net.minecraft.server.level.ServerLevel level = source.getServer().overworld();
         long t0 = System.nanoTime();
+        long[] split = new long[3];
         try {
             java.util.List<TilePos> tiles = new java.util.ArrayList<>();
             for (int i = 0; i < n; i++) {
@@ -157,13 +158,18 @@ public final class Worker implements ModInitializer {
             tiles.forEach(t -> TileExporter.prefetch(level, t));
             for (TilePos t : tiles) {
                 TileExporter.export(level, t);
+                for (int i = 0; i < 3; i++) {
+                    split[i] += TileExporter.LAST_SPLIT[i];
+                }
             }
         } catch (Exception e) {
             source.sendFailure(Component.literal("batch failed: " + e));
             return 0;
         }
         long ms = (System.nanoTime() - t0) / 1_000_000;
-        source.sendSuccess(() -> Component.literal("{\"tiles\":" + n + ",\"ms\":" + ms + "}"), false);
+        // genMs：等 16 个 chunk；quietMs：等区域里的生成任务结束；serializeMs：主线程序列化（各 tile 加起来）
+        source.sendSuccess(() -> Component.literal("{\"tiles\":" + n + ",\"ms\":" + ms + ",\"genMs\":" + split[0]
+                + ",\"serializeMs\":" + split[1] + ",\"quietMs\":" + split[2] + "}"), false);
         return 1;
     }
 
