@@ -237,6 +237,9 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "network": {"donor": NET_DONOR, "server": NET_SERVER} if net else None,
                 # 每个结果的大小（NBT 字节）和派出到收到的毫秒数的分布（coordinator 11-09 起记在 /donor imports）
                 "result_bytes": spread([r.get("bytes") for r in imports]), "result_ms": spread([r.get("ms") for r in imports]),
+                # 线上字节（gzip 后的帧，限速卡的是它）和按 20 Mbps 估的传输毫秒数，和实测的派出到收到对照
+                "wire_bytes": spread([r.get("wire_bytes") for r in imports]),
+                "wire_ms_at_20mbps": spread([r["wire_bytes"] * 8 / 20_000 for r in imports if r.get("wire_bytes", -1) >= 0]),
                 "donors": [{"name": s, "cpuset": lim.get(f"{s.upper()}_CPUSET"),
                             "cpus": float(lim.get("WORKER3_CPUS", 0.5)) if s == "worker3" else None}
                            for s in ([] if vanilla else ["worker", "worker2", *(["worker3"] if slow else [])])],

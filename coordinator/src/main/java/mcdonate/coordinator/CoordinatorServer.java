@@ -283,14 +283,18 @@ final class CoordinatorServer {
         workers.values().forEach(c -> c.send(new Heartbeat(now, Heartbeat.NO_TASK)));
     }
 
-    /** 每个结果的大小（NBT 字节）和派出到收到的毫秒数，导入时写进 /donor imports（第 7 步"有网络"那组要看分布）。 */
+    /**
+     * 每个结果的大小（NBT 字节；线上的帧字节数）和派出到收到的毫秒数，导入时写进 /donor imports（第 7 步"有网络"那组要看分布）。
+     * 线上字节数（限速卡的是它）：common 的 FrameDecoder 不报每帧长度，这里用同一个 Frame.encode 把收到的结果重新编码一次取长度。
+     * gzip 的字节和 worker 发的可能差几个（NBT 键的顺序），当估计值用。网络线程上多压缩一次，每个结果约十几毫秒。
+     */
     private final Map<Long, long[]> resultMeta = new ConcurrentHashMap<>();
 
     private void onResult(Connection c, Result r) {
         long leasedAt = tasks.leasedAt(r.taskId());
         if (r.ok()) {
-            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(),
-                    leasedAt > 0 ? System.currentTimeMillis() - leasedAt : -1});
+            long ms = leasedAt > 0 ? System.currentTimeMillis() - leasedAt : -1;
+            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, Frame.encode(r).length});
         }
         if (r.ok() && leasedAt > 0) {
             // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
@@ -371,7 +375,8 @@ final class CoordinatorServer {
                 long[] meta = resultMeta.remove(r.taskId());
                 imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":" + res.accepted()
                         + ",\"written\":" + (res.written() + res.overwritten())
-                        + ",\"bytes\":" + (meta == null ? -1 : meta[0]) + ",\"ms\":" + (meta == null ? -1 : meta[1]) + "}");
+                        + ",\"bytes\":" + (meta == null ? -1 : meta[0]) + ",\"wire_bytes\":" + (meta == null ? -1 : meta[2])
+                        + ",\"ms\":" + (meta == null ? -1 : meta[1]) + "}");
                 return res.accepted();
             } else {
                 TileImporter.Result res = TileImporter.importTile(server.overworld(), file, "task " + r.taskId());
