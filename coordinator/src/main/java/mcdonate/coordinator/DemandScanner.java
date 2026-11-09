@@ -252,12 +252,13 @@ public final class DemandScanner {
                     double best = Double.POSITIVE_INFINITY, by = Double.POSITIVE_INFINITY, lat = Double.POSITIVE_INFINITY;
                     TilePos tp = new TilePos(x, z);
                     for (Motion mo : motions.values()) {
-                        best = Math.min(best, mo.deadlineSecondsFast(tp, view));
-                        lat = Math.min(lat, mo.lateralChunks(tp));
+                        // 11-09：短窗口、长窗口两个方向的并集（转弯时新旧路线都算）
+                        best = Math.min(best, mo.deadlineSecondsUnion(tp, view));
+                        lat = Math.min(lat, mo.lateralChunksUnion(tp));
                         Integer f = fronts.get(mo);
                         if (f != null) {
                             // 区域比 tile 多一圈：tile 进 f+1 圈时区域碰到前沿
-                            by = Math.min(by, mo.deadlineSecondsFast(tp, f + 1));
+                            by = Math.min(by, mo.deadlineSecondsUnion(tp, f + 1));
                         }
                     }
                     tasks.setDue(x, z, Double.isInfinite(best) ? Long.MAX_VALUE : now + (long) (best * 1000),

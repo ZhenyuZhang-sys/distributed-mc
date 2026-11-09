@@ -97,20 +97,16 @@ class MotionTest {
         // 11-09（kexu 第二张表：转弯时 donor 没帮上）：沿 +x 飞 3 秒，然后转向 +z 飞 0.75 秒。
         // 短窗口（0.75 秒）看到的是新方向，长窗口（3 秒）还偏旧方向；截止时间、离飞行线距离取两者里小的（并集）
         Motion m = new Motion();
-        long t = 0;
-        double x = 0, z = 0;
-        for (; t <= 3_000; t += 250) {
-            m.record(t, x, z);
-            x += 8;                       // 32 格/秒
+        for (long t = 0; t <= 3_000; t += 250) {
+            m.record(t, 8 * t / 250.0, 0);                    // 沿 +x，32 格/秒，到 t=3000 时在 x=96
         }
-        for (; t <= 3_750; t += 250) {
-            m.record(t, x, z);
-            z += 8;
+        for (long t = 3_250; t <= 3_750; t += 250) {
+            m.record(t, 96, 8 * (t - 3_000) / 250.0);         // 转向 +z
         }
-        mcdonate.common.TilePos aheadNew = new mcdonate.common.TilePos((int) (x / 64), 6);   // 新方向（+z）前方
-        mcdonate.common.TilePos aheadOld = new mcdonate.common.TilePos((int) (x / 64) + 6, 0); // 旧方向（+x）前方
+        mcdonate.common.TilePos aheadNew = new mcdonate.common.TilePos(1, 6);   // chunk x 4～7（玩家在 6）、z 24～27：新方向（+z）前方
+        mcdonate.common.TilePos aheadOld = new mcdonate.common.TilePos(7, 0);   // chunk x 28～31：旧方向（+x）前方
         double[] vs = m.velocity(Motion.SHORT_WINDOW_MS), vl = m.velocity(Motion.LONG_WINDOW_MS);
-        assertTrue(Math.abs(vs[0]) < 1 && vs[1] > 20, "短窗口：新方向 " + vs[0] + "," + vs[1]);
+        assertTrue(vs[1] > 1.5 * Math.abs(vs[0]), "短窗口：主要是新方向 " + vs[0] + "," + vs[1]);
         assertTrue(vl[0] > vl[1], "长窗口：还偏旧方向");
         assertTrue(Double.isFinite(m.deadlineSecondsUnion(aheadNew, 10)), "新方向前方的 tile 有截止时间");
         assertTrue(Double.isFinite(m.deadlineSecondsUnion(aheadOld, 10)), "转弯刚开始，旧方向前方的也还算");

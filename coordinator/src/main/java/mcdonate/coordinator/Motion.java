@@ -23,19 +23,41 @@ final class Motion {
 
     private final Deque<Sample> samples = new ArrayDeque<>();
 
+    /**
+     * 转弯（11-09，kexu 第二张表：转弯时 donor 没帮上）：短窗口看新方向、长窗口看旧方向，截止时间和离飞行线的距离取两者里小的。
+     * 直线时两个一样；刚转弯时新旧两条路线都算（并集），走廊也就跟着变宽。
+     */
+    static final long SHORT_WINDOW_MS = Config.getLong("motionShortWindowMs", 750);
+    static final long LONG_WINDOW_MS = Config.getLong("motionLongWindowMs", 3_000);
+
     void record(long nowMs, double x, double z) {
         samples.addLast(new Sample(nowMs, x, z));
-        while (samples.size() > 2 && nowMs - samples.peekFirst().t() > WINDOW_MS) {
+        long keep = Math.max(WINDOW_MS, LONG_WINDOW_MS);
+        while (samples.size() > 2 && nowMs - samples.peekFirst().t() > keep) {
             samples.pollFirst();
         }
     }
 
-    /** 速度（格/秒），{vx, vz}；样本不够时是 0。 */
+    /** 速度（格/秒），{vx, vz}，用最近 WINDOW_MS 的样本；样本不够时是 0。 */
     double[] velocity() {
+        return velocity(WINDOW_MS);
+    }
+
+    /** 用最近 windowMs 内最早的样本和最新的样本算速度。 */
+    double[] velocity(long windowMs) {
         if (samples.size() < 2) {
             return new double[] {0, 0};
         }
-        Sample a = samples.peekFirst(), b = samples.peekLast();
+        Sample b = samples.peekLast(), a = null;
+        for (Sample s : samples) {
+            if (b.t() - s.t() <= windowMs) {
+                a = s;
+                break;
+            }
+        }
+        if (a == null || a == b) {
+            return new double[] {0, 0};
+        }
         double dt = (b.t() - a.t()) / 1000.0;
         if (dt <= 0) {
             return new double[] {0, 0};
@@ -99,7 +121,23 @@ final class Motion {
      * [16(min−view), 16(max+view+1)) 这个区间（两个方向都要），求直线运动第一次同时落进两个区间的时间。
      */
     double deadlineSecondsFast(TilePos tile, int view) {
-        double[] p = position(), v = velocity();
+        return deadlineSecondsFast(tile, view, velocity());
+    }
+
+    /** 短窗口和长窗口两个方向里先到的那个（转弯时新旧路线的并集）。 */
+    double deadlineSecondsUnion(TilePos tile, int view) {
+        return Math.min(deadlineSecondsFast(tile, view, velocity(SHORT_WINDOW_MS)),
+                deadlineSecondsFast(tile, view, velocity(LONG_WINDOW_MS)));
+    }
+
+    /** 离短窗口、长窗口两条飞行线里近的那条多少个 chunk。 */
+    double lateralChunksUnion(TilePos tile) {
+        double[] p = position(), vs = velocity(SHORT_WINDOW_MS), vl = velocity(LONG_WINDOW_MS);
+        return Math.min(lateralChunks(tile, p[0], p[1], vs[0], vs[1]), lateralChunks(tile, p[0], p[1], vl[0], vl[1]));
+    }
+
+    double deadlineSecondsFast(TilePos tile, int view, double[] v) {
+        double[] p = position();
         if (chunkDistanceBeyondView(tile, p[0], p[1], view) <= 0) {
             return 0;
         }

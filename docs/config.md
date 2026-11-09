@@ -38,6 +38,8 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `tileDefaultMs` | 3000 | 没测过的 donor 预计做一个 tile 要多久 | 用部署机器上 donor 的实测平均值 |
 | `throughputWindow` | 10 | donor 耗时按最近几个任务平均 | |
 | `motionWindowMs` | 1500 | 估玩家速度用最近多久的位置 | |
+| `motionShortWindowMs` | 750 | 转弯：短窗口估的方向（新方向） | 截止时间、离飞行线距离取短、长两个方向里小的（转弯时新旧路线的并集；11-09 kexu：转弯时 donor 没帮上） |
+| `motionLongWindowMs` | 3000 | 转弯：长窗口估的方向（旧方向） | 同上 |
 | `motionHorizonS` | 120 | 按玩家速度往前预测多少秒 | |
 | `importFrontier` | true | 开 deadline 时实测服务器前沿（玩家前进方向上最远有 holder 的圈数，/donor status 的 scan.frontier），按它算每个 tile 的 importBy；派之前问 donor 能不能在 importBy 之前做完，做不完的不派，importBy 过了的丢掉 | 11-09 kexu 演示里前沿约 14 圈，比 inner（22）近 8 圈。false 退回只按 due（玩家看到的时间）|
 | `importMarginMs` | 1000 | importBy 前面再留多少毫秒（结果在主线程排队、前沿每秒才测一次） | 看 /donor imports 的 seg.main_wait |
