@@ -18,6 +18,11 @@ final class ConnectionGenerations {
         generation++;
     }
 
+    /** 现在是第几代。 */
+    synchronized long current() {
+        return generation;
+    }
+
     synchronized void received(long taskId) {
         taskGeneration.put(taskId, generation);
     }

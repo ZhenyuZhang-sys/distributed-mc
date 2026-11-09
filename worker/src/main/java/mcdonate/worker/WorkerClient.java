@@ -299,7 +299,13 @@ final class WorkerClient {
             }
         }
         // 11-09：编码和压缩（Frame.encode：NBT 写出、gzip）放到发送线程上，不占主线程（主线程只有一条，序列化、调度都在上面）
-        SENDER.execute(() -> send(r));
+        // 排在发送线程里时断线重连了：不经新连接发（codex-audit 审 30a7c22）
+        long gen = generations.current();
+        SENDER.execute(() -> {
+            if (generations.current() == gen) {
+                send(r);
+            }
+        });
     }
 
     private static final java.util.concurrent.ExecutorService SENDER = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
