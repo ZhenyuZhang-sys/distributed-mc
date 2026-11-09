@@ -123,6 +123,15 @@ def test_detection_and_y_verdicts():
     assert verdict([], 'Z') == '数据不足'
 
 
+def test_step8_paused_gives_insufficient_data():
+    # 用户 11-09：第 8 步暂停。没有 verify 结果时，检出率和 Y 两条照样列出，判"数据不足（第 8 步暂停）"
+    rows = flight_rows([10.0], [4.0])
+    h = {x['item']: x for x in hypotheses(rows)}
+    assert h['detect']['verdict'] == '数据不足（第 8 步暂停）' and h['detect']['value'] is None
+    assert h['Y']['verdict'] == '数据不足（第 8 步暂停）'
+    assert h['X']['verdict'] == '成立'  # 别的不受影响
+
+
 def test_metric_name_colliding_with_parameter_rejected(tmp_path):
     # 指标和参数同名（比如 capacity 的搜索上限 max_bots）会被汇总当成参数，所以直接报错。
     cfg = validate({'name': 'clash', 'seed': 1, 'repeats': 1, 'experiments': {

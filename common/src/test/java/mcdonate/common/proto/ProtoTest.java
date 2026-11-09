@@ -1,6 +1,7 @@
 package mcdonate.common.proto;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -79,7 +80,8 @@ class ProtoTest {
                 Result.failure(10, "生成失败：boom"),
                 new Cancel(9),
                 new Heartbeat(1_731_000_000_000L, Heartbeat.NO_TASK),
-                new Heartbeat(123L, 9));
+                new Heartbeat(123L, 9),
+                new Heartbeat(124L, 9, true));
     }
 
     static byte[] concat(List<byte[]> parts) {
@@ -278,7 +280,7 @@ class ProtoTest {
     }
 
     /** 可以缺的字段（缺了有默认值）。 */
-    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token", "kind");
+    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token", "kind", "paused");
 
     // ---- 第 9 步：hello.token、welcome.workerId = -2 ----
 
@@ -360,6 +362,38 @@ class ProtoTest {
         Welcome got = (Welcome) new FrameDecoder().feed(f, 0, f.length).get(0);
         assertEquals(-3, got.workerId());
         assertTrue(!got.accepted());
+    }
+
+    // ---- 第 9 步：heartbeat.paused（限速暂停，调度 11-09 定：单独的字段，不占 taskId） ----
+
+    @Test
+    void heartbeatPausedDefaultsFalseAndKeepsTask() {
+        assertFalse(new Heartbeat(1, 5).paused());
+        Heartbeat h = new Heartbeat(2, 7, true);   // 暂停中手上还有任务：两样都要报出来
+        byte[] f = Frame.encode(h);
+        Heartbeat got = (Heartbeat) new FrameDecoder().feed(f, 0, f.length).get(0);
+        assertTrue(got.paused());
+        assertEquals(7, got.taskId());
+        assertTrue(new Heartbeat(3, Heartbeat.NO_TASK, true).paused());
+    }
+
+    @Test
+    void heartbeatWithoutPausedFieldIsNotPaused() {
+        CompoundTag old = new CompoundTag();   // 旧版本 worker 发的心跳，没有 paused
+        old.putString("type", "heartbeat");
+        old.putLong("sentAtMs", 10);
+        old.putLong("taskId", 3);
+        assertEquals(new Heartbeat(10, 3), MessageCodec.fromTag(old));
+        assertFalse(((Heartbeat) MessageCodec.fromTag(old)).paused());
+    }
+
+    @Test
+    void heartbeatPausedWrongTypeRejected() {
+        CompoundTag t = MessageCodec.toTag(new Heartbeat(1, 2, true));
+        t.putString("paused", "yes");
+        assertThrows(ProtocolException.class, () -> MessageCodec.fromTag(t));
+        t.putByte("paused", (byte) 2);
+        assertThrows(ProtocolException.class, () -> MessageCodec.fromTag(t));
     }
 
     @Test

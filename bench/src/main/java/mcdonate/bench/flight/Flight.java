@@ -52,31 +52,39 @@ public record Flight(double startX, double startZ, double y, double dirX, double
     /** 一步的结果：新位置；stalled = 被没就绪的 chunk 挡住了；moved = 实际走了几格。 */
     public record Step(double x, double z, boolean stalled, double moved) {}
 
+    /**
+     * 碰撞箱前沿离中心多远：玩家碰撞箱半宽 0.3，再多 0.01。实体 tick 查流体是按碰撞箱查的
+     * （Entity.updateFluidHeightAndDoFluidPushing），碰撞箱伸进没就绪的 chunk 也会让主线程同步加载（11-09 测量里抓到）。
+     */
+    public static final double REACH = 0.31;
     private static final double EDGE = 1e-6;   // 停在边界前面这么远
     private static final double PAST = 1e-7;   // 过边界时多走这么一点，确定进了哪个 chunk
 
     /**
-     * 从 (x, z) 沿航线走 速度 × dt 格，但不走进没就绪的 chunk：挡住就停在边界前面。
+     * 从 (cx, cz)（玩家中心）沿航线走 速度 × dt 格，但碰撞箱前沿不进没就绪的 chunk：挡住就停在边界前面。
      * dt 很大（服务器卡了）也一样：客户端按自己的帧率走，只能穿过已就绪的 chunk。
      */
-    public Step advance(double x, double z, double dt, Ready ready) {
+    public Step advance(double cx, double cz, double dt, Ready ready) {
+        // 用碰撞箱的前沿（沿飞行方向的那两条边）算边界和就绪，最后再换回中心
+        double ox = Math.signum(dirX) * REACH, oz = Math.signum(dirZ) * REACH;
+        double x = cx + ox, z = cz + oz;
         double remaining = blocksPerSecond * Math.max(0, dt), moved = 0;
         while (remaining > 0) {
             double t = Math.min(toBoundary(x, dirX), toBoundary(z, dirZ));
             if (t >= remaining) {
-                return new Step(x + dirX * remaining, z + dirZ * remaining, false, moved + remaining);
+                return new Step(x + dirX * remaining - ox, z + dirZ * remaining - oz, false, moved + remaining);
             }
             double px = x + dirX * (t + PAST), pz = z + dirZ * (t + PAST);
             if (!ready.ready(chunk(px), chunk(pz))) {
                 double stop = Math.max(0, t - EDGE);
-                return new Step(x + dirX * stop, z + dirZ * stop, true, moved + stop);
+                return new Step(x + dirX * stop - ox, z + dirZ * stop - oz, true, moved + stop);
             }
             x = px;
             z = pz;
             moved += t + PAST;
             remaining -= t + PAST;
         }
-        return new Step(x, z, false, moved);
+        return new Step(x - ox, z - oz, false, moved);
     }
 
     private static int chunk(double v) {

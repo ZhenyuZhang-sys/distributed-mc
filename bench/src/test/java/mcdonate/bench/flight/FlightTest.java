@@ -68,10 +68,11 @@ class FlightTest {
     void stopsBeforeFirstUnreadyChunk() {
         // 在 chunk 0（x 0～15）里，chunk 1 没就绪：停在 chunk 0 的边上，不进 chunk 1
         Flight f = Flight.eastward(0, 8, 200, 30, 120, Flight.Mode.WALL);
-        // 离边界 1 格，这一 tick 要走 1.5 格：会跨进 chunk 1
+        // 离边界 1 格，这一 tick 要走 1.5 格：会跨进 chunk 1。
+        // 停的位置让碰撞箱前沿（中心 + 0.31，玩家半宽 0.3）也不进 chunk 1：实体 tick 查流体是按碰撞箱查的（11-09 测量里抓到）
         Flight.Step s = f.advance(15.0, 8, 0.05, readyBelow(0));
         assertTrue(s.stalled());
-        assertTrue(s.x() < 16 && s.x() > 15.99, "x=" + s.x());
+        assertTrue(s.x() + Flight.REACH < 16 && s.x() > 15.6, "x=" + s.x());
         assertEquals(0, Math.floorDiv((int) Math.floor(s.x()), 16));
         // 已经贴着边：一步都走不了，仍然卡住
         Flight.Step again = f.advance(s.x(), 8, 0.05, readyBelow(0));
@@ -85,7 +86,7 @@ class FlightTest {
         Flight f = Flight.eastward(0, 8, 200, 30, 120, Flight.Mode.WALL);
         Flight.Step s = f.advance(1.0, 8, 3.0, readyBelow(2));
         assertTrue(s.stalled());
-        assertTrue(s.x() < 48 && s.x() > 47, "x=" + s.x());
+        assertTrue(s.x() + Flight.REACH < 48 && s.x() > 47.6, "x=" + s.x());
     }
 
     @Test
@@ -95,9 +96,9 @@ class FlightTest {
             double speed = 0.5 + r.nextDouble() * 100, dt = r.nextDouble() * 2;
             int edge = r.nextInt(6);
             Flight f = Flight.eastward(0, 8, 200, speed, 120, Flight.Mode.WALL);
-            double x = r.nextDouble() * 16 * (edge + 1);
+            double x = r.nextDouble() * (16 * (edge + 1) - Flight.REACH - 0.01);
             Flight.Step s = f.advance(x, 8, dt, readyBelow(edge));
-            assertTrue(Math.floorDiv((long) Math.floor(s.x()), 16) <= edge, "进了没就绪的 chunk：" + s.x());
+            assertTrue(Math.floorDiv((long) Math.floor(s.x() + Flight.REACH), 16) <= edge, "碰撞箱进了没就绪的 chunk：" + s.x());
             assertTrue(s.x() >= x - 1e-9 && s.x() <= x + speed * dt + 1e-9);
         }
     }

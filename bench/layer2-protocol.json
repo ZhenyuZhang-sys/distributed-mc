@@ -1,6 +1,8 @@
 {
  "schema": 1,
  "note": "第 4 步冒烟测量（降级，调度 11-08）。部署机器上跑满：repeats 全改 5、extra 的 repeats 改 5、rerun_on_interference 改 true。定义见 docs/step4-plan.md 第 2、5 节",
+ "user_decision": "用户 11-09：\"没必要这么精准，跑个大概测试，直接跑\"：粗测，允许并行。有并发的轮次照常算、标\"有并发\"，不判无效、不重跑；两条自检有并发也照常判",
+ "selfcheck_concurrency_counts": true,
  "seed": 424242,
  "view_distance": 10,
  "simulation_distance": 6,
@@ -61,7 +63,7 @@
  "tail_exclude_ms": 10000,
  "matrix_seed": 424242,
  "rerun_on_interference": false,
- "max_attempts": 3,
+ "max_attempts": 4,
  "interference_actions": [
   "create",
   "start",

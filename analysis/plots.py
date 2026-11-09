@@ -11,6 +11,7 @@ analysis/results/layer1-summary.csv、determinism.csv（图 10）。缺某种实
 from __future__ import annotations
 
 import argparse
+import json
 import csv
 import math
 from pathlib import Path
@@ -82,7 +83,13 @@ def _save(fig, out, name):
     return 'ok'
 
 
+# 这一次 plot_all 里每张"无数据"图的原因，最后写进 figures/no-data.json（报告引用）
+_REASONS = {}
+STEP8_PAUSED = '第 8 步暂停（用户 11-09 决定），没有 verify 实验'
+
+
 def _no_data(out, name, reason):
+    _REASONS[name] = reason
     fig, ax = plt.subplots(figsize=(6, 2.4))
     ax.axis('off')
     ax.text(0.5, 0.5, f'无数据\n{reason}', ha='center', va='center', color=MUTED, fontsize=11, transform=ax.transAxes)
@@ -243,7 +250,7 @@ def fig07(d, out, name):
     cheat = [r for r in rows if r.get('cheat') not in (None, 'none') and r.get('detected.rate') is not None]
     honest = [r for r in rows if r.get('cheat') == 'none' and _ok(r.get('y.mean'))]
     if not cheat and not honest:
-        return _no_data(out, name, '没有 verify 结果')
+        return _no_data(out, name, STEP8_PAUSED if not rows else '没有 verify 结果')
     fig, (a, b) = plt.subplots(1, 2, figsize=(10, 4))
     for i, c in enumerate(sorted({r['cheat'] for r in cheat})):
         rs = sorted((r for r in cheat if r['cheat'] == c), key=lambda r: r.get('check_rate') or 0)
@@ -266,9 +273,10 @@ def fig07(d, out, name):
 
 
 def fig08(d, out, name):
-    rows = [r for r in _verify(d['summary']) if r.get('cheat') not in (None, 'none') and _ok(r.get('chunks_before_blacklist.mean'))]
+    verify = _verify(d['summary'])
+    rows = [r for r in verify if r.get('cheat') not in (None, 'none') and _ok(r.get('chunks_before_blacklist.mean'))]
     if not rows:
-        return _no_data(out, name, '没有作弊 donor 的 verify 结果')
+        return _no_data(out, name, STEP8_PAUSED if not verify else '没有作弊 donor 的 verify 结果')
     names = sorted({r['cheat'] for r in rows})
     worst = [max(r['chunks_before_blacklist.mean'] for r in rows if r['cheat'] == c) for c in names]
     fig, ax = plt.subplots(figsize=(6, 0.6 * len(names) + 1.5))
@@ -352,7 +360,10 @@ def plot_all(campaign, out_dir, baseline_dir=ROOT / 'analysis/results') -> dict:
     data = dict(summary=read(campaign / 'matrix-summary.csv'), runs=read(campaign / 'matrix-runs.csv'),
                 x_by_n=read(campaign / 'x-by-n.csv'), layer1=read(Path(baseline_dir) / 'layer1-summary.csv'),
                 determinism=read(Path(baseline_dir) / 'determinism.csv'))
-    return {name: DRAW[name](data, out, name) for name in FIGURES}
+    _REASONS.clear()
+    status = {name: DRAW[name](data, out, name) for name in FIGURES}
+    (out / 'no-data.json').write_text(json.dumps(dict(_REASONS), ensure_ascii=False, indent=1) + '\n')
+    return status
 
 
 if __name__ == '__main__':

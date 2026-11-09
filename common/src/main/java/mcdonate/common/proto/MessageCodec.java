@@ -46,6 +46,7 @@ public final class MessageCodec {
                 t.putString("type", "heartbeat");
                 t.putLong("sentAtMs", b.sentAtMs());
                 t.putLong("taskId", b.taskId());
+                t.putBoolean("paused", b.paused());
             }
         }
         return t;
@@ -65,7 +66,7 @@ public final class MessageCodec {
                         t.contains("kind") ? Task.Kind.fromWire(str(t, "kind")) : Task.Kind.GENERATE);
                 case "result" -> new Result(l(t, "taskId"), bool(t, "ok"), str(t, "error"), compound(t, "tile"));
                 case "cancel" -> new Cancel(l(t, "taskId"));
-                case "heartbeat" -> new Heartbeat(l(t, "sentAtMs"), l(t, "taskId"));
+                case "heartbeat" -> new Heartbeat(l(t, "sentAtMs"), l(t, "taskId"), t.contains("paused") && bool(t, "paused"));
                 default -> throw new ProtocolException("未知消息类型：" + type);
             };
         } catch (IllegalArgumentException e) {
