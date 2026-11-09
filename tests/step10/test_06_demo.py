@@ -31,6 +31,9 @@ class FakeRunner:
     def services(self):
         return list(self.compose_services)
 
+    def slot_cpuset(self):
+        return '16-19'   # 这个槽位 .env.local 里服务器的核
+
     def rcon(self, cmd):
         self.calls.append(('rcon', cmd))
         if cmd == 'bench tick':
@@ -320,6 +323,7 @@ class FakeFly:
     def __init__(self, runner, donor_events=50, sync_a=0, restart_in_b=False, resumed_b=0):
         self.runner, self.donor_events, self.sync_a, self.restart_in_b = runner, donor_events, sync_a, restart_in_b
         self.resumed_b = resumed_b
+        self.cpus = 2
         self.calls = []
 
     def __call__(self, server, run, player, start, speed, seconds, out_dir, **kw):
@@ -338,7 +342,8 @@ class FakeFly:
                                                               distance_ratio=.83 if b else .67, void_mean=.5, latency_p95_ms='inf',
                                                               mspt_mean=4.0, mspt_max=90.0, cpu_cores_mean=1.2,
                                                               sync_loads=0 if b else self.sync_a,
-                                                              full_resumed=self.resumed_b if b else 0)))
+                                                              full_resumed=self.resumed_b if b else 0,
+                                                              available_processors=self.cpus)))
         return out_dir
 
 
@@ -362,6 +367,8 @@ def test_ab_runs_a_without_donors_then_b_with_deadline_on_fresh_worlds(tmp_path)
     kinds = [c[1] if c[0] != 'compose' else 'up' for c in seq]
     assert kinds == ['new_world.sh', 'new_world.sh', 'donor reset', 'up']   # 两轮各一个全新世界，B 开 donor 前 reset
     assert seq[0][3] == seq[1][3] == '424242'                              # 同一个 seed
+    # 默认 2 核（调度 11-09）：换世界时带上 MC_CPUS=2，核取这个槽位服务器核的前两个
+    assert all(('MC_CPUS', '2') in c and ('MC_CPUSET', '16-17') in c for c in seq[:2]), seq[:2]
     import re
     # lib.sh 的 validate_world_name：只认小写字母、数字、_ -，最长 32（11-09 k2 冒烟时大写 T 被拒）
     assert all(re.fullmatch(r'[a-z0-9_-]{1,32}', c[2]) for c in seq[:2]), seq[:2]
@@ -370,6 +377,7 @@ def test_ab_runs_a_without_donors_then_b_with_deadline_on_fresh_worlds(tmp_path)
     assert saved['A']['valid'] and saved['B']['valid'] and saved['B']['donor_events'] == 50
     assert saved['note'].startswith('演示，粗测') and '演示，粗测' in (root / 'README.md').read_text()
     assert saved['A']['summary']['stall_fraction'] == .33 and saved['B']['summary']['stall_fraction'] == .17
+    assert saved['server_cpus'] == 2 and saved['server_cpuset'] == '16-17' and saved['seconds'] == 120 and saved['speed'] == 'elytra'
 
 
 def test_ab_marks_b_invalid_without_donor_events(tmp_path):
@@ -415,6 +423,8 @@ def test_ab_endpoint_runs_in_background_and_reports(tmp_path):
         with urllib.request.urlopen(base + '/api/ab/seconds?which=A', timeout=5) as resp:
             assert json.loads(resp.read())['rows'] == [dict(t_s=1, x=0.0, z=0.0)]
         code, _ = post(base, '/api/ab', dict(speed='rocket', seconds=60))
+        assert code == 400
+        code, _ = post(base, '/api/ab', dict(speed='elytra', seconds=60, server_cpus=3))
         assert code == 400
     finally:
         server.shutdown()
@@ -472,3 +482,22 @@ def test_ab_says_when_coordinator_does_not_report_donor_events(tmp_path):
     res = demo_ab.run_ab(runner, ctl, flyer, tmp_path / 'artifacts', events=lambda a, b: [])
     assert not res['B']['valid']
     assert any('107' in r and 'coordinator' in r and '没报' in r for r in res['B']['invalid']), res['B']['invalid']
+
+
+def test_ab_defaults_and_core_count_check(tmp_path):
+    # 默认鞘翅、120 秒、2 核、deadline；容器里实际的核数和要的不一样（换世界没生效）就判无效
+    runner, ctl, flyer, fly = ab_rig(tmp_path)
+    res = demo_ab.run_ab(runner, ctl, flyer, tmp_path / 'artifacts', events=lambda a, b: [])
+    assert (res['speed'], res['seconds'], res['server_cpus'], res['features']) == ('elytra', 120, 2, ['deadline'])
+    runner, ctl, flyer, fly = ab_rig(tmp_path / 'one')
+    res = demo_ab.run_ab(runner, ctl, flyer, tmp_path / 'one' / 'artifacts', server_cpus=1, events=lambda a, b: [])
+    assert not res['A']['valid'] and any('核' in r for r in res['A']['invalid'])
+    with pytest.raises(ValueError):
+        demo_ab.run_ab(runner, ctl, flyer, tmp_path / 'x', server_cpus=8, events=lambda a, b: [])
+
+
+def test_page_defaults(web):
+    with urllib.request.urlopen(web['base'] + '/demo', timeout=5) as r:
+        page = r.read().decode()
+    assert '<option value="elytra" selected>' in page and 'id="seconds" type="number" min="10" max="600" value="120"' in page
+    assert 'id="server-cpus"' in page and '<option value="2" selected>' in page
