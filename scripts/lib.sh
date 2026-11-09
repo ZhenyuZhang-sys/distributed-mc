@@ -24,7 +24,13 @@ LOCAL_ENV="${MCD_LOCAL_ENV:-$DOCKER_DIR/.env.local}"
 PLAY_PROJECT="mc-donate"
 # 全局锁：benchmark 拿独占模式（take_heavy_lock），测试服务器和 Gradle 拿共享模式（take_shared_lock）。
 # benchmark 跑的时候别的重活都等它；benchmark 也要等手上的测试和构建结束。几个目录的测试之间不用互相等。
-HEAVY_LOCK="${MCD_HEAVY_LOCK:-/tmp/mc-donate-heavy.lock}"
+# 用户 11-09 决定：测量只求大概，两个目录可以各用各的锁文件（.env.local 或环境变量 MCD_HEAVY_LOCK）、
+# 各用各的 NUMA 节点并行跑。环境变量优先，其次 .env.local，都没有就用大家共用的那个。
+HEAVY_LOCK="${MCD_HEAVY_LOCK:-}"
+if [[ -z "$HEAVY_LOCK" && -f "$LOCAL_ENV" ]]; then
+  HEAVY_LOCK="$(sed -n 's/^MCD_HEAVY_LOCK=//p' "$LOCAL_ENV" | tail -1)"
+fi
+HEAVY_LOCK="${HEAVY_LOCK:-/tmp/mc-donate-heavy.lock}"
 # 本目录的锁：测试、构建拿。同一个目录里共用 compose 项目和存档目录，不能两个同时跑
 CHECKOUT_LOCK="/tmp/mc-donate-checkout-$(printf '%s' "$REPO_ROOT" | md5sum | cut -c1-12).lock"
 
