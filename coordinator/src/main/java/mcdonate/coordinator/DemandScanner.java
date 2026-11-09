@@ -197,7 +197,18 @@ public final class DemandScanner {
         }
         lastPlayers = at0;
         lastOuter = outer;
-        for (ServerPlayer p : level.players()) {
+        // 11-09（codex-pipe）：移动快的玩家先扫，每个玩家一份预算（站着的玩家原来能把整次扫描的预算用完，飞的派不到任务）
+        List<ServerPlayer> players = level.players();
+        double[] speeds = new double[players.size()];
+        for (int i = 0; i < speeds.length; i++) {
+            Motion mo = motions.get(players.get(i).getUUID());
+            double[] v = mo == null ? new double[] {0, 0} : mo.velocity();
+            speeds[i] = Math.hypot(v[0], v[1]);
+        }
+        long slice = sliceNanos(BUDGET_NANOS, players.size());
+        for (int pi : scanOrder(speeds)) {
+            ServerPlayer p = players.get(pi);
+            long pt0 = System.nanoTime();
             ChunkPos at = p.chunkPosition();
             // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再按离玩家远近排序。
             // 和 Demand.tilesAround / nearestFirst 同样的范围和顺序，只是不新建 TilePos、不装箱。
@@ -230,8 +241,8 @@ public final class DemandScanner {
                 return c != 0 ? c : Integer.compare(tz[i], tz[j]);
             });
             for (int k = 0; k < m; k++) {
-                if (System.nanoTime() - t0 > BUDGET_NANOS) {
-                    break; // 这次扫描的时间用完了，剩下的（离玩家较远的）下一秒再查
+                if (System.nanoTime() - pt0 > slice) {
+                    break; // 这个玩家这次的时间用完了，剩下的（离玩家较远的）下一秒再查
                 }
                 int x = tx[idx[k]], z = tz[idx[k]];
                 long tk = ChunkPos.asLong(x, z);
@@ -336,6 +347,21 @@ public final class DemandScanner {
     /** 离玩家这么多圈以内的 tile 不交给 donor（见类注释）。 */
     /** 上一次扫描实测的前沿（各玩家取最小；没测是 -1），写进 /donor status。 */
     private volatile int lastFrontier = -1;
+
+    /** 扫描顺序：移动快的玩家先（下标）。纯函数。 */
+    static int[] scanOrder(double[] speeds) {
+        Integer[] idx = new Integer[speeds.length];
+        for (int i = 0; i < idx.length; i++) {
+            idx[i] = i;
+        }
+        java.util.Arrays.sort(idx, (a, b) -> Double.compare(speeds[b], speeds[a]));
+        return java.util.Arrays.stream(idx).mapToInt(Integer::intValue).toArray();
+    }
+
+    /** 每个玩家的预算：总预算平分，没有玩家时是总预算。纯函数。 */
+    static long sliceNanos(long budget, int players) {
+        return players <= 1 ? budget : budget / players;
+    }
 
     int innerRadius() {
         return server.getPlayerList().getViewDistance() + ChunkLevel.RADIUS_AROUND_FULL_CHUNK + INNER_MARGIN;
