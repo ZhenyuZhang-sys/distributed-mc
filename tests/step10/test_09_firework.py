@@ -222,3 +222,12 @@ def test_report_has_demo_section():
     assert '## 演示用：10/15 格/秒，同样不卡、前方已生成区域翻倍' in md
     sec = md.split('## 演示用')[1]
     assert '| 10 | 原版（0 个 donor） | 0% | 80 | 50% | 40% |' in sec and '| 10 | 1 个 donor，8 核 | 0% | 160 | 80% | 80% |' in sec
+
+
+def test_report_median_and_range_for_repeats():
+    # 调度 11-09：关键对比每臂至少 3 轮，报中位数和范围
+    rows = [dict(experiment='flight', scenario='firework_turning', speed_bps=33.5, donors=0, stall_after_exit=s, repeat=i)
+            for i, s in enumerate((.41, .35, .48), 1)]
+    md = firework.report(rows)
+    line = next(l for l in md.splitlines() if l.startswith('| 转弯'))
+    assert '41%（35%～48%，3 轮）' in line, line

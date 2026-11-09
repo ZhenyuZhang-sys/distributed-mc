@@ -237,6 +237,16 @@ def _mean(rs, k):
     return sum(vals) / len(vals) if vals else None
 
 
+def _stat(rs, k, pct=False, digits=1):
+    """一轮：就是那个数；多轮（调度 11-09：关键对比每臂至少 3 轮）：中位数（最低～最高，几轮）。"""
+    vals = sorted(r[k] for r in rs if isinstance(r.get(k), (int, float)) and not isinstance(r.get(k), bool))
+    if len(vals) < 2:
+        return _f(vals[0] if vals else None, pct, digits)
+    n = len(vals)
+    med = vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+    return f'{_f(float(med), pct, digits)}（{_f(float(vals[0]), pct, digits)}～{_f(float(vals[-1]), pct, digits)}，{n} 轮）'
+
+
 def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种配置 1 次，可能有别的测试并行') -> str:
     """烟花鞘翅第一段的结果表（markdown）。第一张表：能扛住的最高速度（原版、各 donor 配置，调度要放在最前面）；
     第二张：33.5 格/秒（真实烟花速度）下直线和转弯的每轮指标。只看出了缓存区以后。"""
@@ -270,12 +280,12 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
             rs = [r for r in real if r.get('scenario') == scen and _cfg(r) == n]
             if not rs:
                 continue
-            out.append(f"| {SCEN_NAME[scen]} | {n} | {_f(_mean(rs, 'stall_after_exit'), True)} "
+            out.append(f"| {SCEN_NAME[scen]} | {n} | {_stat(rs, 'stall_after_exit', True)} "
                        f"| {_f(_mean(rs, 'forward_ready_median'), digits=0)} / {_f(_mean(rs, 'forward_ready_min'), digits=0)} "
-                       f"| {_f(_mean(rs, 'view_ready_mean'), True)} / {_f(_mean(rs, 'view_ready_min'), True)} "
-                       f"| {_f(_mean(rs, 'front_sector_ready_mean'), True)} / {_f(_mean(rs, 'front_sector_ready_min'), True)} "
-                       f"| {_f(_mean(rs, 'speed_ratio_after_exit'), True)} "
-                       f"| {_f(_mean(rs, 'first_stall_after_exit_s'), digits=0)} | {_f(_mean(rs, 'mspt_p95'))} / {_f(_mean(rs, 'mspt_max'), digits=0)} "
+                       f"| {_stat(rs, 'view_ready_mean', True)} / {_f(_mean(rs, 'view_ready_min'), True)} "
+                       f"| {_stat(rs, 'front_sector_ready_mean', True)} / {_f(_mean(rs, 'front_sector_ready_min'), True)} "
+                       f"| {_stat(rs, 'speed_ratio_after_exit', True)} "
+                       f"| {_f(_mean(rs, 'first_stall_after_exit_s'), digits=0)} | {_f(_mean(rs, 'mspt_p95'))} / {_stat(rs, 'mspt_max', digits=0)} "
                        f"| {_f(_mean(rs, 'cant_keep_up'), digits=0)} | {_f(_mean(rs, 'moved_too_quickly'), digits=0)} | {_f(_mean(rs, 'resumed_share'), True)} "
                        f"| {_f(_mean(rs, 'discard_late'), digits=0)} / {_f(_mean(rs, 'discard_server'), digits=0)} / {_f(_mean(rs, 'stale_dropped'), digits=0)} "
                        f"| {_f(_mean(rs, 'import_ms'), digits=0)} | {_f(_mean(rs, 'worker_cores'))} | {_f(_mean(rs, 'tile_s'), digits=2)} |")
