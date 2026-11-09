@@ -384,6 +384,25 @@ public final class TaskQueue {
         return new Stale(dropped, cancelled);
     }
 
+    /**
+     * 清空（第 7 步对比每轮开始前，/donor reset）：排队的、在租的、做完的都忘掉，领地和归属不带进下一轮。
+     * 返回在租的（要给 worker 发 cancel）；之后回来的结果不认识，丢掉。worker 认的 donor 世界和累计计数留着。
+     */
+    public synchronized List<Cancelled> reset() {
+        List<Cancelled> out = new ArrayList<>();
+        for (Task t : tasks.values()) {
+            if (t.state == State.LEASED) {
+                out.add(new Cancelled(t.id, t.worker));
+            }
+        }
+        out.sort(java.util.Comparator.comparingLong(Cancelled::taskId));
+        tasks.clear();
+        byTile.clear();
+        queue.clear();
+        leases.clear();
+        return out;
+    }
+
     public synchronized String staleJson() {
         return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + "}";
     }

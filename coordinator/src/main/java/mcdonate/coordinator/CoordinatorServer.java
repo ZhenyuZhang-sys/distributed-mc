@@ -163,6 +163,20 @@ final class CoordinatorServer {
     /** 第 9 步：玩家 worker 的一次性 token。玩家进服时发（Coordinator），worker 握手时用掉。 */
     final TokenRegistry tokens = new TokenRegistry(System::currentTimeMillis);
 
+    /** 第 7 步对比用（/donor reset）：清掉队列、撤回在租的（发 cancel）、放开所有闸门。返回撤回了几个。 */
+    int reset() {
+        List<TaskQueue.Cancelled> cancel = tasks.reset();
+        for (TaskQueue.Cancelled c : cancel) {
+            waitDonor.release(c.taskId());
+            Connection conn = workers.get(c.worker());
+            if (conn != null) {
+                conn.send(new Cancel(c.taskId()));
+            }
+        }
+        LOG.info("清空任务队列，撤回在租的 {} 个", cancel.size());
+        return cancel.size();
+    }
+
     /** 第 9 步：玩家退出：作废他没用过的 token，断开他的 worker（手上的任务回到队列）。 */
     void playerLeft(java.util.UUID player) {
         tokens.revoke(player);

@@ -17,12 +17,13 @@
 import bisect
 import json
 import os
+import shutil
 import time
 
 import pytest
 
 from bench import layer2
-from mcd import compose, donor_imports, limits, wait_until, worker_id
+from mcd import compose, data_root, donor_imports, limits, wait_until, worker_id
 
 ALL = ["territory", "deadline", "throughput", "hedge", "waitdonor"]
 ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"], "vanilla": []}
@@ -153,6 +154,10 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             running = sorted(compose("ps", "--format", "{{.Service}}").split())
             # 来源事件的记录（11-09：几轮有导入、飞行记录里没有 donor 事件，查是没报还是报在了飞行窗口外）：
             # 飞前飞后各抓一次 coordinator 的累计计数和最近 64 条（带时间戳），连同飞行窗口的墙钟时间存进这一轮的目录
+            # 每轮开始前清掉上一轮积压的任务、在租的任务和内存里的归属（kexu 11-09：上一轮的积压带进了下一轮）
+            reset = server.rcon("donor reset")
+            assert reset.startswith("reset"), reset
+            ids_before = {w["name"]: w["id"] for w in status(server)["workers"]}
             prov_before = json.loads(server.rcon("donor provenance stats"))
             fly_start_ms = int(time.time() * 1000)
             if not vanilla:
@@ -161,6 +166,15 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                              seconds=SECONDS, out_dir=base / f"ablation-{label}-{i}-{name}")
             fly_end_ms = int(time.time() * 1000)
             server.rcon("donor demand off")
+            ids_after = {w["name"]: w["id"] for w in status(server)["workers"]}
+            # worker 的崩溃报告（看门狗杀掉时有）存进这一轮的目录
+            for svc in ("worker", "worker2", "worker3"):
+                crash = data_root(svc) / "crash-reports"
+                if crash.is_dir():
+                    for f in crash.glob("*.txt"):
+                        if f.stat().st_mtime * 1000 >= fly_start_ms - 600_000:
+                            (out / f"crash-{svc}").mkdir(exist_ok=True)
+                            shutil.copy2(f, out / f"crash-{svc}" / f.name)
             prov_after = json.loads(server.rcon("donor provenance stats"))
             (out / "provenance-coordinator.json").write_text(json.dumps({
                 "fly_start_ms": fly_start_ms, "fly_end_ms": fly_end_ms, "before": prov_before, "after": prov_after,
@@ -191,8 +205,14 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                                         for k in ("donor", "rejected")},
                 "summary": summary,
             }
-            # 假玩家 tick 里同步加载过：这一轮无效，记下来接着跑别的轮（最后判失败），不浪费整批
-            row["valid"] = row["sync_loads"].get("count", 0) == 0 and (vanilla or row["imports_accepted"] > 0)
+            # 无效的轮记下来接着跑别的轮（最后判失败），不浪费整批：
+            # 假玩家 tick 里同步加载过；donor 中途重启过（worker 编号变了，kexu 11-09：被看门狗杀掉又连回来）；
+            # 有 donor 的轮飞行窗口里没有 donor 事件（done.json 的 provenance 只算飞行期间，imports_accepted 从起飞前就开始算，不能用）
+            done = json.loads((out / "raw" / "done.json").read_text())
+            row["donor_events_in_flight"] = done.get("provenance", {}).get("donor", 0)
+            row["worker_ids"] = {"before": ids_before, "after": ids_after}
+            row["valid"] = (row["sync_loads"].get("count", 0) == 0
+                            and (vanilla or (row["donor_events_in_flight"] > 0 and ids_after == ids_before)))
             rows.append(row)
             print(json.dumps({k: v for k, v in row.items() if k != "summary"}, ensure_ascii=False))
     finally:
@@ -207,6 +227,7 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
         if r["name"] == "vanilla":
             assert not ({"worker", "worker2", "worker3"} & set(r["services"])), f"原版对照那轮 donor 还在跑：{r['services']}"
             continue
-        assert r["imports_accepted"] > 0, f"{r['name']} 这一轮 donor 没导入，测量无效"
+        assert r["worker_ids"]["before"] == r["worker_ids"]["after"], f"{r['name']} 这一轮 donor 中途重启过：{r['worker_ids']}"
+        assert r["donor_events_in_flight"] > 0, f"{r['name']} 飞行期间没有 donor 事件，测量无效"
         assert "count" in r["sync_loads"], "layer2 还是旧的（没有 sync_loads 守护计数），不能做第 7 步对比"
         assert r["sync_loads"]["count"] == 0, f"{r['name']} 假玩家 tick 里同步加载过 chunk，测量无效，要重跑：{r['sync_loads']}"

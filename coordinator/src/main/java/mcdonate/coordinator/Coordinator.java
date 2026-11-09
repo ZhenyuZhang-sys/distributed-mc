@@ -45,6 +45,7 @@ public final class Coordinator implements ModInitializer {
         //   /donor provenance stats 每种来源事件累计几个、第一个和最后一个的时间
         //   /donor syncload <x> <z>  测试用：在主线程上同步要这个 chunk（FULL），回复用了多少毫秒（7.6a）
         //   /donor waitimport chunkcache|server  测试用：等 donor 的导入走哪个队列（7.6a，正确的是 chunkcache）
+        //   /donor reset            第 7 步对比用：清掉任务队列（排队、在租、做完的）、撤回在租的；导入账本不动
         //   /donor waitsync abandon|wait  变异检查用：主线程同步要 chunk 时放弃闸门（正确）还是照样等
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
@@ -91,6 +92,8 @@ public final class Coordinator implements ModInitializer {
                         .then(Commands.literal("waitimport")
                                 .then(Commands.literal("chunkcache").executes(ctx -> setWaitImport(ctx.getSource(), true)))
                                 .then(Commands.literal("server").executes(ctx -> setWaitImport(ctx.getSource(), false))))
+                        .then(Commands.literal("reset").executes(ctx -> reply(ctx.getSource(),
+                                network == null ? "not running" : "reset cancelled=" + network.reset())))
                         .then(Commands.literal("waitsync")
                                 .then(Commands.literal("abandon").executes(ctx -> setWaitSync(ctx.getSource(), true)))
                                 .then(Commands.literal("wait").executes(ctx -> setWaitSync(ctx.getSource(), false))))
