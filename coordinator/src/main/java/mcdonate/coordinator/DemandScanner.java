@@ -49,6 +49,9 @@ public final class DemandScanner {
     static final long BUDGET_NANOS = Config.getLong("demandScanBudgetMicros", 500) * 1000;
     private final LongArrayList toRead = new LongArrayList();
     static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
+
+    /** 11-09：开 deadline 时实测服务器前沿（Frontier），按它算 importBy，来不及导入的不派。false 退回只按 due。 */
+    static final boolean IMPORT_FRONTIER = !"false".equalsIgnoreCase(Config.get("importFrontier", "true"));
     private static final int PENDING = Integer.MIN_VALUE;
     private static final int ABSENT = -1;
     private static final int UNKNOWN = Integer.MIN_VALUE + 1;
@@ -172,6 +175,20 @@ public final class DemandScanner {
             motions.computeIfAbsent(p.getUUID(), k -> new Motion()).record(now, p.getX(), p.getZ());
         }
         motions.keySet().retainAll(present);
+        // 11-09：每个玩家前进方向上服务器占住的最远圈数（前沿），算 importBy 用
+        java.util.Map<Motion, Integer> fronts = new java.util.HashMap<>();
+        if (deadline && IMPORT_FRONTIER) {
+            for (ServerPlayer p : level.players()) {
+                Motion mo = motions.get(p.getUUID());
+                double[] v = mo.velocity();
+                int f = Frontier.ahead(p.chunkPosition().x, p.chunkPosition().z, v[0], v[1], inner,
+                        k -> access.mcdonate$getUpdatingChunkIfPresent(k) != null);
+                if (f >= 0) {
+                    fronts.put(mo, f);
+                }
+            }
+            lastFrontier = fronts.isEmpty() ? -1 : java.util.Collections.min(fronts.values());
+        }
         long[] at0 = new long[level.players().size()];
         for (int i = 0; i < at0.length; i++) {
             at0[i] = level.players().get(i).chunkPosition().toLong();
@@ -229,11 +246,18 @@ public final class DemandScanner {
                 }
                 if (deadline && known) {
                     // 7.2：玩家（取最快看到它的那个）什么时候看到这个 tile
-                    double best = Double.POSITIVE_INFINITY;
+                    double best = Double.POSITIVE_INFINITY, by = Double.POSITIVE_INFINITY;
+                    TilePos tp = new TilePos(x, z);
                     for (Motion mo : motions.values()) {
-                        best = Math.min(best, mo.deadlineSecondsFast(new TilePos(x, z), view));
+                        best = Math.min(best, mo.deadlineSecondsFast(tp, view));
+                        Integer f = fronts.get(mo);
+                        if (f != null) {
+                            // 区域比 tile 多一圈：tile 进 f+1 圈时区域碰到前沿
+                            by = Math.min(by, mo.deadlineSecondsFast(tp, f + 1));
+                        }
                     }
-                    tasks.setDue(x, z, Double.isInfinite(best) ? Long.MAX_VALUE : now + (long) (best * 1000));
+                    tasks.setDue(x, z, Double.isInfinite(best) ? Long.MAX_VALUE : now + (long) (best * 1000),
+                            Double.isInfinite(by) ? Long.MAX_VALUE : now + (long) (by * 1000));
                 }
             }
         }
@@ -304,6 +328,9 @@ public final class DemandScanner {
     }
 
     /** 离玩家这么多圈以内的 tile 不交给 donor（见类注释）。 */
+    /** 上一次扫描实测的前沿（各玩家取最小；没测是 -1），写进 /donor status。 */
+    private volatile int lastFrontier = -1;
+
     int innerRadius() {
         return server.getPlayerList().getViewDistance() + ChunkLevel.RADIUS_AROUND_FULL_CHUNK + INNER_MARGIN;
     }
@@ -314,6 +341,7 @@ public final class DemandScanner {
         return "{\"count\":" + scans + ",\"avgMicros\":" + avgMicros + ",\"maxMicros\":" + maxNanos / 1000
                 + ",\"avgCpuMicros\":" + (scans == 0 ? 0 : totalCpuNanos / scans / 1000)
                 + ",\"recent\":[" + String.join(",", recent) + "]"
-                + ",\"inner\":" + inner + ",\"outer\":" + (inner + lookahead) + ",\"lookahead\":" + lookahead + "}";
+                + ",\"inner\":" + inner + ",\"outer\":" + (inner + lookahead) + ",\"lookahead\":" + lookahead
+                + ",\"frontier\":" + lastFrontier + "}";
     }
 }

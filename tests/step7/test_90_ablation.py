@@ -85,6 +85,8 @@ def counters(s: dict) -> dict:
         "waitdonor_hits": s["waitdonor"]["hits"], "waitdonor_timeouts": s["waitdonor"]["timeouts"],
         "waitdonor_abandoned": s["waitdonor"]["abandoned"],
         "stale_dropped": s.get("stale", {}).get("dropped", 0), "stale_cancelled": s.get("stale", {}).get("cancelled", 0),
+        # 11-09：区域已进服务器前沿、还没派出去就丢掉的（交回也会被整个丢弃）
+        "import_late": s.get("stale", {}).get("import_late", 0),
         "donor_tiles": {w["name"]: w["done"] for w in s["workers"]},
         # 主线程上导入用了多久（coordinator 11-09 加的计时；旧版没有就是 0）
         "import_ms": s.get("import", {}).get("totalMs", 0), "imports_timed": s.get("import", {}).get("count", 0),
@@ -159,6 +161,20 @@ def spread(values: list) -> dict:
     if not v:
         return {"n": 0}
     return {"n": len(v), "p50": v[len(v) // 2], "p90": v[int(len(v) * 0.9)], "max": v[-1]}
+
+
+SEG_KEYS = ["queue", "to_worker", "wait", "gen", "pack", "back", "main_wait", "import"]
+
+
+def segments(imports: list) -> dict:
+    """分段耗时的分布（coordinator 11-09 起在 /donor imports 的 seg），被接受的和被丢的分开：
+    时间花在 coordinator 队列、worker 上排队、生成、回传还是等主线程。"""
+    out = {}
+    for kind, rows in (("accepted", [r for r in imports if r.get("accepted")]),
+                       ("discarded", [r for r in imports if not r.get("accepted")])):
+        segs = [r["seg"] for r in rows if r.get("seg")]
+        out[kind] = {k: spread([g.get(k) for g in segs]) for k in SEG_KEYS}
+    return out
 
 
 def set_features(server, on: list[str]):
@@ -239,6 +255,7 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "result_bytes": spread([r.get("bytes") for r in imports]), "result_ms": spread([r.get("ms") for r in imports]),
                 # 线上字节（gzip 后的帧，限速卡的是它）和按 20 Mbps 估的传输毫秒数，和实测的派出到收到对照
                 "wire_bytes": spread([r.get("wire_bytes") for r in imports]),
+                "seg": segments(imports),
                 "wire_ms_at_20mbps": spread([r["wire_bytes"] * 8 / 20_000 for r in imports if r.get("wire_bytes", -1) >= 0]),
                 "donors": [{"name": s, "cpuset": lim.get(f"{s.upper()}_CPUSET"),
                             "cpus": float(lim.get("WORKER3_CPUS", 0.5)) if s == "worker3" else None}
@@ -252,7 +269,7 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "ring_overhead": (n + 2) ** 2 / n ** 2 - 1,
                 **{k: d[k] for k in ("hedge_cancelled", "hedge_wasted_tiles", "waitdonor_hits", "waitdonor_timeouts",
                                      "waitdonor_abandoned", "donor_tiles", "import_ms", "imports_timed",
-                                     "stale_dropped", "stale_cancelled")},
+                                     "stale_dropped", "stale_cancelled", "import_late")},
                 "main": main_metrics(summary), "sync_loads": flight_guard(out), "lead": donor_lead(out),
                 # coordinator 这一轮报出的 donor / rejected 事件数（和飞行记录里的对照）
                 "coordinator_reports": {k: prov_after.get(k, {}).get("count", 0) - prov_before.get(k, {}).get("count", 0)

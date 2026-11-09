@@ -35,6 +35,11 @@ public final class TaskQueue {
     /** 硬认主的世界多久没有 donor 连着就丢掉任务。 */
     static final long ORPHAN_MS = Config.getLong("orphanMs", 60_000);
 
+    /**
+     * 11-09：派之前问"做得完吗"时，在 importBy 前面再留多少毫秒（结果在主线程上排队等导入、找需求每秒才看一次前沿）。
+     */
+    static final long IMPORT_MARGIN_MS = Config.getLong("importMarginMs", 1_000);
+
     /** 收到结果后要做什么。 */
     public enum Action { IMPORT, REQUEUE, FAIL, DISCARD }
 
@@ -73,6 +78,13 @@ public final class TaskQueue {
         long due = Long.MAX_VALUE;
         /** 7.2：找需求算过 due 没有（没算过的，比如手动派的，不按"飞过了"删）。 */
         boolean scored;
+        /**
+         * 11-09：预计这个 tile 的区域进服务器前沿（Frontier）的时间（毫秒时间戳）；之后交回会被判"在内存里"整个丢掉。
+         * 不知道是 Long.MAX_VALUE。
+         */
+        long importBy = Long.MAX_VALUE;
+        /** 入队时间（分段耗时用）。 */
+        long enqueuedAt = -1;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -189,6 +201,8 @@ public final class TaskQueue {
         t.hedged = false; // 撤回过、又重新需要了：之后的结果照常收
         t.scored = false;
         t.due = Long.MAX_VALUE;
+        t.importBy = Long.MAX_VALUE;
+        t.enqueuedAt = clock.getAsLong();
         t.hardWorld = hardWorld;
         t.softWorker = -1;
         t.orphanSince = clock.getAsLong();
@@ -292,7 +306,12 @@ public final class TaskQueue {
                     continue;
                 }
             }
-            if (!eligible(c, worker) || (c.due != Long.MAX_VALUE && !dueOk.test(c.due))) {
+            if (!eligible(c, worker)) {
+                continue;
+            }
+            // 7.3 / 11-09：知道前沿时问"能不能在区域进前沿之前做完"（留余量），不知道时照旧问 due
+            long limit = c.importBy != Long.MAX_VALUE ? c.importBy - IMPORT_MARGIN_MS : c.due;
+            if (limit != Long.MAX_VALUE && !dueOk.test(limit)) {
                 continue;
             }
             if (!byDue) {
@@ -326,6 +345,11 @@ public final class TaskQueue {
 
     /** 7.2：更新 tile 的预计"被玩家看到"时间（找需求每次扫描时算）。 */
     public synchronized void setDue(int tx, int tz, long due) {
+        setDue(tx, tz, due, Long.MAX_VALUE);
+    }
+
+    /** 同上，再加上预计区域进服务器前沿的时间（11-09；不知道是 Long.MAX_VALUE）。 */
+    public synchronized void setDue(int tx, int tz, long due, long importBy) {
         Long id = byTile.get(tileKey(tx, tz));
         if (id == null) {
             return;
@@ -333,8 +357,15 @@ public final class TaskQueue {
         Task t = tasks.get(id);
         if (t.state == State.QUEUED || t.state == State.LEASED) {
             t.due = due;
+            t.importBy = importBy;
             t.scored = true;
         }
+    }
+
+    /** 入队时间（毫秒时间戳），不认识的任务是 -1。 */
+    public synchronized long enqueuedAt(long taskId) {
+        Task t = tasks.get(taskId);
+        return t == null ? -1 : t.enqueuedAt;
     }
 
     public record Cancelled(long taskId, int worker) {}
@@ -404,16 +435,24 @@ public final class TaskQueue {
     }
 
     public synchronized String staleJson() {
-        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + "}";
+        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + ",\"import_late\":" + importLate + "}";
     }
 
-    /** 7.2：还在排队、玩家已经看到了（due 已过）的任务丢掉，交给服务器。返回丢掉的。 */
+    private int importLate;
+
+    /**
+     * 7.2：还在排队、玩家已经看到了（due 已过）的任务丢掉，交给服务器。
+     * 11-09：区域已经进了服务器前沿（importBy 已过）的也丢掉，交回也会被整个丢弃。返回丢掉的。
+     */
     public synchronized List<Long> dropLate() {
         long now = clock.getAsLong();
         List<Long> dropped = new ArrayList<>();
         for (var it = queue.iterator(); it.hasNext(); ) {
             Task t = tasks.get(it.next());
-            if (t.due < now) {
+            if (t.due >= now && t.importBy < now) {
+                importLate++;
+            }
+            if (t.due < now || t.importBy < now) {
                 t.state = State.DROPPED;
                 it.remove();
                 dropped.add(t.id);

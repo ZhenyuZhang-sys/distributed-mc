@@ -260,9 +260,10 @@ final class CoordinatorServer {
                 if (c.paused) {
                     continue; // 第 9 步：玩家那边帧率低、worker 暂停了：不派新任务，手上的照常续租、等结果
                 }
-                // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个
+                // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
+                // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
                 int max = thr ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
-                java.util.function.LongPredicate canMeet = thr
+                java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
                         ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
                 Optional<TaskQueue.Assignment> a;
                 while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
@@ -292,8 +293,13 @@ final class CoordinatorServer {
     private void onResult(Connection c, Result r) {
         long leasedAt = tasks.leasedAt(r.taskId());
         if (r.ok()) {
-            long ms = leasedAt > 0 ? System.currentTimeMillis() - leasedAt : -1;
-            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, c.lastWireBytes});
+            long got = System.currentTimeMillis();
+            long ms = leasedAt > 0 ? got - leasedAt : -1;
+            // 分段耗时（11-09）：入队、派出、收到，加上 worker 带来的 4 个时间点（没有是 -1）
+            long[] w = mcdonate.common.TaskTiming.read(r.tile());
+            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, c.lastWireBytes,
+                    tasks.enqueuedAt(r.taskId()), leasedAt > 0 ? leasedAt : -1, got,
+                    w == null ? -1 : w[0], w == null ? -1 : w[1], w == null ? -1 : w[2], w == null ? -1 : w[3]});
         }
         if (r.ok() && leasedAt > 0) {
             // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
@@ -343,7 +349,7 @@ final class CoordinatorServer {
     private boolean importResult(Connection c, Result r) {
         long t0 = System.nanoTime();
         try {
-            return importResultTimed(c, r);
+            return importResultTimed(c, r, System.currentTimeMillis());
         } finally {
             long ns = System.nanoTime() - t0;
             importCount.incrementAndGet();
@@ -352,7 +358,8 @@ final class CoordinatorServer {
         }
     }
 
-    private boolean importResultTimed(Connection c, Result r) {
+    /** importStart：主线程开始处理这个结果的时间（分段耗时用）。 */
+    private boolean importResultTimed(Connection c, Result r, long importStart) {
         int workerId = c.workerId;
         try {
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
@@ -375,7 +382,10 @@ final class CoordinatorServer {
                 imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":" + res.accepted()
                         + ",\"written\":" + (res.written() + res.overwritten())
                         + ",\"bytes\":" + (meta == null ? -1 : meta[0]) + ",\"wire_bytes\":" + (meta == null ? -1 : meta[2])
-                        + ",\"ms\":" + (meta == null ? -1 : meta[1]) + "}");
+                        + ",\"ms\":" + (meta == null ? -1 : meta[1])
+                        + ",\"seg\":" + (meta == null ? "null" : TaskTimeline.json(meta[3], meta[4],
+                                meta[6] < 0 ? null : new long[] {meta[6], meta[7], meta[8], meta[9]},
+                                meta[5], importStart, System.currentTimeMillis())) + "}");
                 return res.accepted();
             } else {
                 TileImporter.Result res = TileImporter.importTile(server.overworld(), file, "task " + r.taskId());
@@ -413,6 +423,7 @@ final class CoordinatorServer {
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
+                + ",\"importFrontier\":" + DemandScanner.IMPORT_FRONTIER + ",\"importMarginMs\":" + TaskQueue.IMPORT_MARGIN_MS
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
                 + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))
