@@ -74,3 +74,20 @@ services:
     cpuset: ${CLIENT_CPUSET:-${WORKER_CPUSET:-8-11}}
     cpus: 1
     mem_limit: 1g
+
+  # 第 9 步：无头的真客户端（HeadlessMC 2.10.0，docker/client）。单独的 profile client，只有第 9 步的测试会起（compose run）。
+  # /mods：这一轮要装的 mod（测试准备）；/out：证据（客户端日志、进程快照）；/cache：下载的客户端、库、资源（卷，不进仓库）。
+  client:
+    profiles: ["client"]
+    build: ./client
+    image: mcdonate-client:hmc-2.10.0
+    cpuset: ${CLIENT_CPUSET:-${WORKER_CPUSET:-8-11}}
+    cpus: 4
+    mem_limit: 4g
+    volumes:
+      - client-cache:/cache
+      - ${MCD_CLIENT_MODS:-./client-mods}:/mods:ro
+      - ${MCD_CLIENT_OUT:-./client-out}:/out
+
+volumes:
+  client-cache:
