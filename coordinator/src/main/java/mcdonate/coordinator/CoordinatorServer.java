@@ -551,7 +551,7 @@ final class CoordinatorServer {
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
                     .append('}');
         }
-        return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
+        return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"playerTicketThrottle\":").append(PlayerTicketThrottle.json(server)).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
                 .append(",\"discarded_conflict\":").append(discardedConflict.get())
                 .append(",\"discard_ratio\":").append(discardRatio())
                 .append(",\"discarded\":{\"late\":").append(discardedBy.get(RegionRules.Discard.LOADED).get())
