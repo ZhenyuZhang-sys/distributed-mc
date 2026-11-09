@@ -177,16 +177,24 @@ final class TileExporter {
             prefetch(level, tile); // 收到任务时多半已经排上了，这里补一次（重复调没关系）
         }
         try {
-            return generateNow(level, tile, cache, started);
+            return generateNow(level, tile, cache, started, serial);
         } finally {
             release(level, tile);
         }
     }
 
-    private static Generated generateNow(ServerLevel level, TilePos tile, ServerChunkCache cache, long started) {
+    private static Generated generateNow(ServerLevel level, TilePos tile, ServerChunkCache cache, long started, boolean serial) {
         // tile 的 16 个 chunk 要到 initialize_light（排上了的就是等它们做完）。已经更靠后的也会直接返回，下面统一检查。
         // 11-09：不用原版的 getChunk(..., true) 等（它没有超时，生成被异常打断时主线程永远等下去）：自己一边处理主线程任务一边等，超时抛异常
         long timeout = Waits.tileTimeoutMs(avgMs);
+        if (serial) {
+            // 对照（/donor export ... serial）：按原来的办法一个一个同步要（codex-audit A6：原来这里也一起排上了，对照失效）
+            for (int x = tile.minChunkX(); x <= tile.maxChunkX(); x++) {
+                for (int z = tile.minChunkZ(); z <= tile.maxChunkZ(); z++) {
+                    cache.getChunk(x, z, ChunkStatus.INITIALIZE_LIGHT, true);
+                }
+            }
+        }
         mcdonate.worker.mixin.ServerChunkCacheInvoker inv = (mcdonate.worker.mixin.ServerChunkCacheInvoker) cache;
         List<java.util.concurrent.CompletableFuture<net.minecraft.server.level.ChunkResult<ChunkAccess>>> futures = new ArrayList<>();
         for (int x = tile.minChunkX(); x <= tile.maxChunkX(); x++) {

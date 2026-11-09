@@ -259,14 +259,17 @@ final class CoordinatorServer {
                 }
                 // 11-09：按在线 donor 的实测吞吐估每个排队任务什么时候做完，来不及的现在就丢掉，交给服务器
                 double rate = 0;
+                long latency = 0;
                 int n = 0;
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
-                        rate += 1.0 / Math.max(1, throughput.averageMs(c.workerId));
+                        rate += throughput.ratePerMs(c.workerId); // 11-09（A15）：按完成间隔，不按 1/延迟
+                        latency += throughput.latencyMs(c.workerId);
                         n++;
                     }
                 }
-                List<Long> hopeless = tasks.pruneHopeless(rate, n == 0 ? 0 : (long) (n / rate));
+                // 一个 tile 从开始到做完：各 donor 延迟中位数的平均（不能用 n/速率：并行时速率高、单个 tile 照样要那么久）
+                List<Long> hopeless = tasks.pruneHopeless(rate, n == 0 ? 0 : latency / n);
                 if (!hopeless.isEmpty()) {
                     LOG.info("排队的 {} 个 tile 按现在的吞吐来不及，丢掉，交给服务器", hopeless.size());
                 }
@@ -339,7 +342,8 @@ final class CoordinatorServer {
         }
         if (r.ok() && leasedAt > 0) {
             // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
-            throughput.record(c.workerId, System.currentTimeMillis() - leasedAt);
+            long nowMs = System.currentTimeMillis();
+            throughput.record(c.workerId, nowMs - leasedAt, nowMs);
         }
         if (r.ok()) {
             String world = r.tile().getString("worldId");
