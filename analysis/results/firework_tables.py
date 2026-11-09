@@ -8,7 +8,8 @@ CAMPAIGNS = [('k2-637c2de-ufw-main-8', '637c2de'), ('k3-30a7c22-ufw-main-8', '30
              ('k3-2359f7d-ufw-main-8', '2359f7d'), ('k3-2359f7d-ufw-mspt', '2359f7d'), ('k2-10cadc8-ufw-turn-first', '10cadc8'),
              ('u1-10cadc8-ufw-straight3', '10cadc8'), ('u1-635a362-ufw-turn-first', '635a362'), ('k3-6b63414-ufw-mw-turn', '6b63414'),
              ('k2-03b2981w-ufw-mw-straight', '03b2981 · 新 worker'), ('k3-03b2981w-ufw-mw-turn', '03b2981 · 新 worker'),
-             ('u1-03b2981w-ufw-turn-first', '03b2981 · 新 worker')]
+             ('u1-03b2981w-ufw-turn-first', '03b2981 · 新 worker'),
+             ('k3-f19d087sb-ufw-scan-straight', 'f19d087'), ('u1-f19d087sb-ufw-scan-turn', 'f19d087')]
 NOTE = ('用户同款服务器：2 核、3G、-Xmx2G、视距 10/6；donor 8 核。几个槽位并行跑，粗测。代码：637c2de = fish-opt+kexu，'
         '30a7c22 / 2359f7d / 3132230 = fish-perf 各版本 + kexu。前方已就绪距离、扇形按 codex-audit K1～K3 修好的算法从归档重算'
         '（初始视野补上、route 按航段取方向、DDA 逐 chunk），单位格。多轮的格子写中位数（最低～最高，几轮）')
@@ -75,6 +76,7 @@ def conclusion():
          f'有 GC 日志的轮里 GC 最长停顿只有 {f._f(gc, digits=0)} ms，不是 GC，是原版生怪时同步取 chunk（codex-server 用 profiler 定位）。详见文末"尖峰"。',
          '5. **上午旧 jar 的那些对比作废**：上午各批 donor 用的是旧 worker jar（构建时没跑 collectWorkerMods），'
          '那些批次里"哪个代码版本更好"的 donor 侧差别（用核、tile/s、卡住、崩溃次数）都不算数，表里没标"· 新 worker"的 donor 行都属于这种。现在驱动会在开跑前核对 worker jar，对不上就拒绝。', '',
+         ''] + scan_budget() + [
          '**只作参考（旧 worker 那批，30a7c22，每种 1 轮）**：', '',
          '| 速度（格/秒） | 卡住（原版 / 1 donor） | 前方已就绪距离，中位（格） | 前方 90 度扇形就绪 |', '| --- | --- | --- | --- |']
     for v in (10, 15):
@@ -92,6 +94,42 @@ def conclusion():
           f'> 说明：k4 转弯和 k3 转弯两批的原版轮有 {reused} 轮是同槽位上午跑的（复用了 635a362、6b63414 两批的原版格子）。原版不用 worker，'
           '服务器一侧的改动不碰原版生成，所以照样算数，但不是严格的交替。各轮的数在文末"每轮明细"。', '']
     return '\n'.join(L)
+
+
+def scan_budget():
+    """扫描预算 500（旧默认）对 2000（部署值）（调度 11-09 下午）：main f19d087，1×8 donor，同槽位交替各 3 轮，原版 1 轮。"""
+    st, tn = 'k3-f19d087sb-ufw-scan-straight', 'u1-f19d087sb-ufw-scan-turn'
+    if st not in rows_of or tn not in rows_of:
+        return []
+    arm = lambda name, b: [r for r in rows_of[name] if r.get('donors') and r.get('scan_budget_us') == b]
+    van = lambda name: [r for r in rows_of[name] if not r.get('donors')]
+    st_ = lambda rs, k, pct=False, d=1: f._stat(rs, k, pct, d)
+    L = ['**扫描预算（部署包里唯一的参数改动）**：-Dmcdonate.demandScanBudgetMicros 500（代码默认）对 2000（部署 .env）。main f19d087，'
+         '1 个 8 核 donor，开关和提前量同部署；同槽位 500、2000 交替各 3 轮，原版 1 轮作参照；每轮跑完核对过服务器用的就是这个值。', '',
+         '| 场景（槽位） | 预算 | 卡住占比 | 前方已就绪（中位，格） | 实际 / 理想速度 | tile/s | worker 核数 | MSPT p95 / max | 任务失败 |',
+         '| --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+    for scen, name in (('直线（k3）', st), ('转弯（k4）', tn)):
+        fails = _crashes(name)
+        L.append(f'| {scen} | 原版 | {st_(van(name), "stall_after_exit", True)} | {st_(van(name), "forward_ready_median", d=0)} '
+                 f'| {st_(van(name), "speed_ratio_after_exit", True)} | — | — | {st_(van(name), "mspt_p95")} / {st_(van(name), "mspt_max", d=0)} | — |')
+        for b in (500, 2000):
+            rs = arm(name, b)
+            L.append(f'| {scen} | {b} µs | {st_(rs, "stall_after_exit", True)} | {st_(rs, "forward_ready_median", d=0)} '
+                     f'| {st_(rs, "speed_ratio_after_exit", True)} | {st_(rs, "tile_s", d=2)} | {st_(rs, "worker_cores")} '
+                     f'| {st_(rs, "mspt_p95")} / {st_(rs, "mspt_max", d=0)} | {"全批 " + str(fails) + " 次" if b == 500 else "（同上）"} |')
+    m = lambda rs, k='stall_after_exit': f._median([r[k] for r in rs if isinstance(r.get(k), (int, float))])
+    L += ['', f'- 直线：2000 把卡住从 {f._f(m(arm(st, 500)), True)} 降到 {f._f(m(arm(st, 2000)), True)}，donor 做完的 tile 多了一倍'
+              f'（{f._f(m(arm(st, 500), "tile_s"), digits=2)} → {f._f(m(arm(st, 2000), "tile_s"), digits=2)} 个/秒），前方准备好的距离 '
+              f'{f._f(m(arm(st, 500), "forward_ready_median"), digits=0)} → {f._f(m(arm(st, 2000), "forward_ready_median"), digits=0)} 格。'
+              '和 codex-server 1 个 4 核 donor 的 17% → 4% 一致：瓶颈是服务器每次扫描找需求的时间预算，不是 donor 算力。',
+          f'- 转弯：{f._f(m(arm(tn, 500)), True)} → {f._f(m(arm(tn, 2000)), True)}，改善小（tile/s 也多了 '
+          f'{f._f(m(arm(tn, 500), "tile_s"), digits=2)} → {f._f(m(arm(tn, 2000), "tile_s"), digits=2)}，多做的没怎么变成少卡，原因没查）。',
+          '- 500 这一臂和上午新 worker（03b2981）的 1×8 对得上（直线 16%，转弯 30%～31%），两批之间可比。',
+          f'- 代价：服务器 MSPT p95 直线 {f._f(m(arm(st, 500), "mspt_p95"))} → {f._f(m(arm(st, 2000), "mspt_p95"))} ms、'
+          f'转弯 {f._f(m(arm(tn, 500), "mspt_p95"))} → {f._f(m(arm(tn, 2000), "mspt_p95"))} ms，离 50 ms 很远。部署值 2000 保留。',
+          '- f19d087 的 worker 有"重导出外圈 chunk 不在内存"的 bug（v2.1 修了），会偶尔让一个任务失败重排；这两批数下来 '
+          f'{_crashes(st) + _crashes(tn)} 次，对比不受影响。', '']
+    return L
 
 
 def _same_cell(name, old, cell):
