@@ -130,7 +130,8 @@ class OverlayPayloadTest {
         ByteBufCodecs.VAR_INT.encode(huge, ProvenanceUpdate.MAX_CHUNKS + 1);
         assertFalse(ProvenanceUpdate.CODEC.decode(huge).valid());
         // 来源类别不认识、DONOR 指向没给的 donor、离中心太远：都不合法
-        assertFalse(new ProvenanceUpdate(true, 0, 0, List.of(), List.of(new Entry(0, 0, Source.DONOR, 3)), null).valid());
+        // 给了 donor 表的包里，DONOR 必须指向表里的（没给表的包可以指向之前给过的，见下一条）
+        assertFalse(new ProvenanceUpdate(true, 0, 0, List.of(new Donor(0, "A", "k")), List.of(new Entry(0, 0, Source.DONOR, 3)), null).valid());
         assertFalse(new ProvenanceUpdate(true, 0, 0, List.of(), List.of(new Entry(500, 0, Source.SERVER, -1)), null).valid());
         assertFalse(new ProvenanceUpdate(true, 0, 0, List.of(new Donor(0, "", "k")), List.of(), null).valid());
     }
