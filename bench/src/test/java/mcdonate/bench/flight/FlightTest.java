@@ -68,9 +68,10 @@ class FlightTest {
     void stopsBeforeFirstUnreadyChunk() {
         // 在 chunk 0（x 0～15）里，chunk 1 没就绪：停在 chunk 0 的边上，不进 chunk 1
         Flight f = Flight.eastward(0, 8, 200, 30, 120, Flight.Mode.WALL);
-        Flight.Step s = f.advance(14.0, 8, 0.05, readyBelow(0));
+        // 离边界 1 格，这一 tick 要走 1.5 格：会跨进 chunk 1
+        Flight.Step s = f.advance(15.0, 8, 0.05, readyBelow(0));
         assertTrue(s.stalled());
-        assertTrue(s.x() < 16 && s.x() >= 14.0, "x=" + s.x());
+        assertTrue(s.x() < 16 && s.x() > 15.99, "x=" + s.x());
         assertEquals(0, Math.floorDiv((int) Math.floor(s.x()), 16));
         // 已经贴着边：一步都走不了，仍然卡住
         Flight.Step again = f.advance(s.x(), 8, 0.05, readyBelow(0));

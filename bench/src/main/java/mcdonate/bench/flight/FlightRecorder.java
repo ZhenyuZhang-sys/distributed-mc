@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLongArray;
 import mcdonate.bench.Generation;
+import mcdonate.bench.SyncLoads;
 import mcdonate.common.Provenance;
 import mcdonate.bench.mixin.ChunkMapAccess;
 import net.minecraft.core.SectionPos;
@@ -45,6 +46,23 @@ public final class FlightRecorder {
     private final AtomicLongArray provenance = new AtomicLongArray(Provenance.Kind.values().length);
     private final Provenance.Listener listener = this::provenance;
     private final Generation.Snapshot countersAtStart;
+    /** 现在的位置（按速度积分，不越过没就绪的 chunk，见 Flight.advance）和上次前进到的起飞后纳秒。 */
+    private double posX, posZ, distance;
+    private long movedUntil;
+    private long stalledTicks, unreadyTicks;
+    private double stallNanos;
+    private boolean stalledThisTick;
+    /** 守护计数：这次飞行期间主线程同步取 chunk ≥ 1 ms 的次数、总耗时、最长一次和它的栈（主线程上更新）。 */
+    private long syncCount, syncTotalNanos, syncMaxNanos;
+    private String syncMaxStack = "";
+    private final SyncLoads.Listener syncListener = (cx, cz, nanos, stack) -> {
+        syncCount++;
+        syncTotalNanos += nanos;
+        if (nanos > syncMaxNanos) {
+            syncMaxNanos = nanos;
+            syncMaxStack = "chunk " + cx + "," + cz + "\n" + stack;
+        }
+    };
     private int enters, readies, leaves;
     private boolean finished;
 
@@ -62,11 +80,14 @@ public final class FlightRecorder {
         player.getAbilities().mayfly = true;
         player.getAbilities().flying = true;
         player.onUpdateAbilities();
-        place(player, flight.x(0), flight.z(0));
+        posX = flight.startX();
+        posZ = flight.startZ();
+        place(player, posX, posZ);
         ChunkPos c = player.chunkPosition();
         this.initial = tracker.start(c.x, c.z, this::ready);
         out.runJson(config().toString());
         countersAtStart = Generation.listen(listener);
+        SyncLoads.addListener(syncListener);
     }
 
     UUID playerId() {
@@ -98,8 +119,22 @@ public final class FlightRecorder {
         long now = System.nanoTime();
         started = true;
         tickStart = now;
-        double e = flight.elapsed(now - t0, ticks);
-        place(p, flight.x(e), flight.z(e));
+        // 像客户端一样前进：这一 tick 该走的时间（墙钟模式按真实时间，tick 模式每 tick 1/20 秒），不越过没就绪的 chunk
+        long target = flight.mode() == Flight.Mode.WALL ? Math.min(now - t0, (long) (flight.seconds() * 1e9))
+                : Math.min(ticks + 1, (long) Math.ceil(flight.seconds() * 20)) * 50_000_000L;
+        double dt = Math.max(0, target - movedUntil) / 1e9;
+        movedUntil = Math.max(movedUntil, target);
+        Flight.Step step = flight.advance(posX, posZ, dt, this::ready);
+        stalledThisTick = step.stalled();
+        if (step.stalled()) {
+            stalledTicks++;
+            double want = flight.blocksPerSecond() * dt;
+            stallNanos += want > 0 ? dt * 1e9 * (1 - step.moved() / want) : 0;
+        }
+        posX = step.x();
+        posZ = step.z();
+        distance += step.moved();
+        place(p, posX, posZ);
     }
 
     void endTick(MinecraftServer server) {
@@ -116,9 +151,11 @@ public final class FlightRecorder {
         long scan = System.nanoTime();
         ViewTracker.Snapshot s = tracker.tick(endMs, SectionPos.blockToSectionCoord(p.getX()), SectionPos.blockToSectionCoord(p.getZ()), this::ready);
         scanNanos += System.nanoTime() - scan;
-        rows.tick(elapsed, now - tickStart, p.getX(), p.getZ(), s);
+        if (!ready(SectionPos.blockToSectionCoord(p.getX()), SectionPos.blockToSectionCoord(p.getZ()))) {
+            unreadyTicks++;   // 不该发生：前进时已经挡住了。不为 0 说明模拟客户端的逻辑有漏洞
+        }
+        rows.tick(elapsed, now - tickStart, p.getX(), p.getZ(), s, stalledThisTick);
         if (flight.finished(flight.elapsed(elapsed, ticks))) {
-            place(p, flight.x(flight.seconds()), flight.z(flight.seconds()));
             finish(false, null);
         }
     }
@@ -129,6 +166,7 @@ public final class FlightRecorder {
         finished = true;
         rows.finish();
         Generation.Snapshot end = Generation.unlisten(listener);
+        SyncLoads.removeListener(syncListener);
         ServerPlayer p = level.getServer().getPlayerList().getPlayer(playerId);
         JsonObject done = config();
         done.addProperty("end_x", p != null ? (Number) p.getX() : null);
@@ -138,6 +176,18 @@ public final class FlightRecorder {
         done.addProperty("end_ms", endMs);
         // 第一个 tick 开始时的 System.nanoTime。Linux 上它就是 CLOCK_MONOTONIC，容器和宿主机共用，宿主机的 cgroup 采样靠它对齐
         done.addProperty("t0_nanotime", t0);
+        // 像客户端一样前进（11-09）：实际距离、理想距离、卡在没就绪 chunk 前面的 tick 数和时长
+        done.addProperty("distance", distance);
+        done.addProperty("ideal_distance", flight.blocksPerSecond() * flight.seconds());
+        done.addProperty("stalled_ticks", stalledTicks);
+        done.addProperty("stall_ms", stallNanos / 1e6);
+        done.addProperty("unready_ticks", unreadyTicks);
+        JsonObject sync = new JsonObject();
+        sync.addProperty("count", syncCount);
+        sync.addProperty("total_ms", syncTotalNanos / 1e6);
+        sync.addProperty("max_ms", syncMaxNanos / 1e6);
+        sync.addProperty("stack", syncMaxStack);
+        done.add("sync_loads", sync);
         // 监听期间收到的来源事件数，和同一段时间的计数增量（Generation 保证两者对得上：原版 = generated + resumed）
         JsonObject prov = new JsonObject();
         for (Provenance.Kind k : Provenance.Kind.values()) prov.addProperty(k.name().toLowerCase(java.util.Locale.ROOT), provenance.get(k.ordinal()));
@@ -164,6 +214,8 @@ public final class FlightRecorder {
         o.addProperty("player", playerName);
         o.addProperty("elapsed_s", (System.nanoTime() - t0) / 1e9);
         o.addProperty("rows", rows.written());
+        o.addProperty("distance", distance);
+        o.addProperty("stalled_ticks", stalledTicks);
         ViewTracker.Snapshot s = tracker.snapshot();
         o.addProperty("view", s.view());
         o.addProperty("not_ready", s.notReady());

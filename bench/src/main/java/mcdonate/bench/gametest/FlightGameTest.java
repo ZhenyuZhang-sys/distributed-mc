@@ -202,20 +202,20 @@ public class FlightGameTest implements FabricGameTest {
 
     /**
      * 像真实客户端一样（11-09，看门狗问题）：前面的 chunk 没就绪就停在边缘，不进去，所以玩家的实体 tick 不会在主线程上同步生成。
-     * tick 模式每 tick 100 格，生成跟不上：一定会卡住，但每个 tick 结束时玩家所在的 chunk 都已就绪。
+     * tick 模式每 tick 50 格，生成跟不上：一定会卡住，但每个 tick 结束时玩家所在的 chunk 都已就绪。
      */
     @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
     public void fastFlightStallsAtEdgeInsteadOfEnteringUnreadyChunks(GameTestHelper h) {
         ServerPlayer p = player(h);
         String run = newRun("edge");
         h.startSequence().thenWaitUntil(() -> check(run(h, "bench fly ready " + p.getStringUUID()) == 0, "初始视野没就绪"))
-                .thenExecute(() -> check(run(h, "bench fly start " + p.getStringUUID() + " 2000 2 " + run + " tick") == 1, "fly start 失败"))
+                .thenExecute(() -> check(run(h, "bench fly start " + p.getStringUUID() + " 1000 2 " + run + " tick") == 1, "fly start 失败"))
                 .thenWaitUntil(() -> {
             JsonObject done = done(h, run);
             check(FlightGameTest.field(done, "unready_ticks").getAsInt() == 0, "有 tick 结束时玩家在没就绪的 chunk 里：" + done);
             check(FlightGameTest.field(done, "stalled_ticks").getAsInt() > 0 && FlightGameTest.field(done, "stall_ms").getAsDouble() > 0, "生成跟不上却没卡住：" + done);
             check(FlightGameTest.field(done, "distance").getAsDouble() < FlightGameTest.field(done, "ideal_distance").getAsDouble(), "卡住了距离应该比理想的短：" + done);
-            check(Math.abs(FlightGameTest.field(done, "ideal_distance").getAsDouble() - 4000) < 1e-6, "理想距离 = 速度 × 时长：" + done);
+            check(Math.abs(FlightGameTest.field(done, "ideal_distance").getAsDouble() - 2000) < 1e-6, "理想距离 = 速度 × 时长：" + done);
             JsonObject sync = FlightGameTest.field(done, "sync_loads").getAsJsonObject();
             check(sync.has("count") && sync.has("max_ms") && sync.has("stack"), "缺同步加载计数：" + done);
             long stalled = lines(h, run, "seconds.jsonl").stream().mapToLong(r -> FlightGameTest.field(r, "stalled_ticks").getAsLong()).sum();

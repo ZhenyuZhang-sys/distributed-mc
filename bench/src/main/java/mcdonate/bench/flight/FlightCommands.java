@@ -51,6 +51,7 @@ public final class FlightCommands {
     /** 注册 tick 和停服事件。Bench.onInitialize 调一次。 */
     public static void registerEvents() {
         ServerTickEvents.START_SERVER_TICK.register(server -> {
+            mcdonate.bench.SyncLoads.onTickStart();
             for (FlightRecorder r : new ArrayList<>(ACTIVE.values())) r.startTick(server);
             prune();
         });

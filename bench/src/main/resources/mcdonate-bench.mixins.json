@@ -9,7 +9,8 @@
     "ThreadedLevelLightEngineMixin",
     "ProtoChunkMixin",
     "ChunkSerializerMixin",
-    "ChunkMapAccess"
+    "ChunkMapAccess",
+    "ServerChunkCacheSyncLoadMixin"
   ],
   "injectors": {
     "defaultRequire": 1

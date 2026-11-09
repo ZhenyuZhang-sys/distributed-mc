@@ -18,18 +18,19 @@ public final class SecondRows {
 
     /** 一秒的汇总。位置是这一秒最后一个 tick 时的位置；MSPT 单位毫秒。 */
     public record Row(int tS, double x, double z, int view, double voidRate, double voidRateMax,
-            double msptMean, double msptMax, int ticks) {
+            double msptMean, double msptMax, int ticks, int stalledTicks) {
         public String json() {
             return "{\"t_s\":" + tS + ",\"x\":" + x + ",\"z\":" + z + ",\"view_chunks\":" + view
                     + ",\"void_rate\":" + voidRate + ",\"void_rate_max\":" + voidRateMax
-                    + ",\"mspt_mean\":" + msptMean + ",\"mspt_max\":" + msptMax + ",\"ticks\":" + ticks + "}";
+                    + ",\"mspt_mean\":" + msptMean + ",\"mspt_max\":" + msptMax + ",\"ticks\":" + ticks
+                    + ",\"stalled_ticks\":" + stalledTicks + "}";
         }
     }
 
     private final int cap;
     private final Consumer<Row> out;
     private int second;
-    private int ticks;
+    private int ticks, stalled;
     private double voidSum, voidMax, msptSum, msptMax, x, z;
     private int view;
     private ViewTracker.Snapshot last;
@@ -46,6 +47,11 @@ public final class SecondRows {
 
     /** 一个 tick 结束：elapsed 是起飞后到这个 tick 结束的墙钟纳秒，tickNanos 是这个 tick 的耗时。 */
     public void tick(long elapsedNanos, long tickNanos, double x, double z, ViewTracker.Snapshot s) {
+        tick(elapsedNanos, tickNanos, x, z, s, false);
+    }
+
+    /** stalledTick：这个 tick 玩家被没就绪的 chunk 挡住了（停在边缘）。 */
+    public void tick(long elapsedNanos, long tickNanos, double x, double z, ViewTracker.Snapshot s, boolean stalledTick) {
         if (finished) throw new IllegalStateException("已经结束");
         if (elapsedNanos < lastElapsed) throw new IllegalArgumentException("时间倒退：" + elapsedNanos + " < " + lastElapsed);
         lastElapsed = elapsedNanos;
@@ -57,11 +63,12 @@ public final class SecondRows {
             if (second > 0) flush();
             double longTick = tickNanos / 1e6;
             for (int g = second + 1; g < sec; g++)
-                emit(new Row(g, gx, gz, state.view(), state.voidRate(), state.voidRate(), longTick, longTick, 0));
+                emit(new Row(g, gx, gz, state.view(), state.voidRate(), state.voidRate(), longTick, longTick, 0, 0));
             second = sec;
         }
         double v = s.voidRate(), ms = tickNanos / 1e6;
         ticks++;
+        if (stalledTick) stalled++;
         voidSum += v;
         voidMax = Math.max(voidMax, v);
         msptSum += ms;
@@ -85,8 +92,9 @@ public final class SecondRows {
     }
 
     private void flush() {
-        emit(new Row(second, x, z, view, voidSum / ticks, voidMax, msptSum / ticks, msptMax, ticks));
+        emit(new Row(second, x, z, view, voidSum / ticks, voidMax, msptSum / ticks, msptMax, ticks, stalled));
         ticks = 0;
+        stalled = 0;
         voidSum = voidMax = msptSum = msptMax = 0;
     }
 

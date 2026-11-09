@@ -204,6 +204,12 @@ def run_campaign(p: dict, root, fly_slot) -> dict:
                     continue
                 result = {**result, **{k: slot[k] for k in ('slot', 'kind', 'name', 'speed_name', 'speed', 'cpus', 'repeat', 'order')},
                           'attempt': a.name}
+                if result.get('invalid'):
+                    # 无效（比如主线程同步加载不为 0，调度 11-09）：照样留档，重跑
+                    manifest.update(status='invalid', invalid=result['invalid'], finished_utc=_now())
+                    _write(a / 'manifest.json', manifest)
+                    _write(a / 'result.json', result)
+                    continue
                 conc = list(result.get('concurrent', []))
                 if conc and p['rerun_on_interference']:
                     manifest.update(status='invalid', concurrent=conc, finished_utc=_now())
@@ -333,8 +339,11 @@ def real_fly_slot(p: dict):
                 f.write(json.dumps(e) + '\n')
         foreign = interference(events, own, tuple(p['interference_actions']))
         world.cleanup()
-        return {**summary, 'cpuset': cpuset, 'world': world.level, 'flight_dir': str(out), 'pregenerated': pregenerated, 'workers_running': workers_running(),
-                'concurrent': [f"{e['name']} {e['action']}" for e in foreign]}
+        result = {**summary, 'cpuset': cpuset, 'world': world.level, 'flight_dir': str(out), 'pregenerated': pregenerated,
+                  'workers_running': workers_running(), 'concurrent': [f"{e['name']} {e['action']}" for e in foreign]}
+        if summary['sync_loads']:
+            result['invalid'] = f"主线程同步加载 {summary['sync_loads']} 次（最长 {summary['sync_load_max_ms']:.0f} 毫秒）"
+        return result
 
     return fly_slot
 
@@ -342,9 +351,9 @@ def real_fly_slot(p: dict):
 # ---- 发布（4.8） ----
 
 SUMMARY_KEYS = ('void_mean', 'void_p95', 'latency_p50_ms', 'latency_p95_ms', 'latency_p99_ms', 'censored_fraction',
-                'mspt_mean', 'mspt_max', 'cpu_cores_mean', 'initial_load_s')
+                'stall_s', 'stall_fraction', 'distance_ratio', 'mspt_mean', 'mspt_max', 'cpu_cores_mean', 'initial_load_s')
 RUN_COLUMNS = ('slot', 'kind', 'name', 'speed_name', 'speed', 'cpus', 'repeat', 'order', 'attempt', *SUMMARY_KEYS,
-               'available_processors', 'scan_ms_total', 'scan_every_ticks', 'concurrent')
+               'distance', 'sync_loads', 'available_processors', 'scan_ms_total', 'scan_every_ticks', 'concurrent')
 ARTIFACTS = ('layer2-runs.csv', 'layer2-summary.csv', 'layer2.csv', 'layer2-chunks.csv', 'selfcheck.json', 'baseline-layer2.md')
 STATUS = {'passed': '通过', 'failed': '没过', 'reference': '参考（有并发，不算通过）'}
 
@@ -389,7 +398,7 @@ def report(p, result, ordered, summary, verdict) -> str:
     smoke = [r for r in ordered if r['kind'] == 'smoke']
     conc = [r for r in ordered if r.get('concurrent')]
     lines = [
-        '# 第 2 层基线：飞行时的虚空率和就绪延迟（冒烟）',
+        '# 第 2 层基线：飞行时的卡住、虚空率和就绪延迟（冒烟）',
         '',
         '**冒烟，在这台 EPYC 上限核测得，部署机器 N100 上要重测。** 降级（调度 11-08）：每种速度 1～2 次，只能看量级；'
         '部署机器上把 `bench/layer2-protocol.json` 的 repeats 改成 5、rerun_on_interference 改成 true 跑满。',
@@ -411,18 +420,21 @@ def report(p, result, ordered, summary, verdict) -> str:
     if any(v['status'] == 'reference' for v in verdict.values()):
         lines += ['自检那轮有并发，结论只算参考，要在安静时补一轮（调度 11-08）。', '']
     lines += ['## 每轮', '',
-              '| 槽位 | 核数 | availableProcessors | 虚空率均值 | 虚空率 p95 | 就绪 p50 / p95 / p99（毫秒） | 删失比例 | MSPT 均值 / 最大 | 服务器 CPU（核） | 并发 |',
-              '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+              '| 槽位 | 核数 | availableProcessors | 卡住（秒，占比） | 实际 / 理想距离 | 虚空率均值 | 虚空率 p95 | 就绪 p50 / p95 / p99（毫秒） | 删失比例 | MSPT 均值 / 最大 | 服务器 CPU（核） | 同步加载 | 并发 |',
+              '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for r in ordered:
-        lines.append(f"| {r['slot']} | {r['cpus']} | {r.get('available_processors')} | {_fmt(r['void_mean'])} | {_fmt(r['void_p95'])} "
+        lines.append(f"| {r['slot']} | {r['cpus']} | {r.get('available_processors')} | {_fmt(r.get('stall_s'))}（{_fmt(r.get('stall_fraction'))}） "
+                     f"| {_fmt(r.get('distance_ratio'))} | {_fmt(r['void_mean'])} | {_fmt(r['void_p95'])} "
                      f"| {_fmt(r['latency_p50_ms'])} / {_fmt(r['latency_p95_ms'])} / {_fmt(r['latency_p99_ms'])} "
-                     f"| {_fmt(r['censored_fraction'])} | {_fmt(r['mspt_mean'])} / {_fmt(r['mspt_max'])} | {_fmt(r['cpu_cores_mean'])} "
+                     f"| {_fmt(r['censored_fraction'])} | {_fmt(r['mspt_mean'])} / {_fmt(r['mspt_max'])} | {_fmt(r['cpu_cores_mean'])} | {r.get('sync_loads')} "
                      f"| {'; '.join(r.get('concurrent') or []) or '无'} |")
     lines += ['', '## 每个配置（只算冒烟矩阵，不含自检）', '',
               '1 次的配置不报波动；2 次的报两次之差。差值能不能算显著（> 5 次标准差的 2 倍，计划 5.2）要等部署机器上的完整矩阵。', '',
-              '| 速度 | 核数 | 次数 | 虚空率均值 | 两次之差 | 就绪 p95 均值（毫秒） | 两次之差 |', '| --- | --- | --- | --- | --- | --- | --- |']
+              '| 速度 | 核数 | 次数 | 卡住时长均值（秒） | 两次之差 | 实际 / 理想距离 | 虚空率均值 | 两次之差 | 就绪 p95 均值（毫秒） | 两次之差 |',
+              '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for s in summary:
-        lines.append(f"| {s['speed_name']} | {s['cpus']} | {s['n']} | {_fmt(s['void_mean_mean'])} | {_fmt(s['void_mean_diff'])} "
+        lines.append(f"| {s['speed_name']} | {s['cpus']} | {s['n']} | {_fmt(s['stall_s_mean'])} | {_fmt(s['stall_s_diff'])} "
+                     f"| {_fmt(s['distance_ratio_mean'])} | {_fmt(s['void_mean_mean'])} | {_fmt(s['void_mean_diff'])} "
                      f"| {_fmt(s['latency_p95_ms_mean'])} | {_fmt(s['latency_p95_ms_diff'])} |")
     every = ', '.join(sorted({str(r.get('scan_every_ticks')) for r in ordered}))
     # 每 tick 扫视野的平均耗时占 MSPT 均值的比例（扫描本身不计进 MSPT，但占服务器时间）
@@ -432,6 +444,11 @@ def report(p, result, ordered, summary, verdict) -> str:
               '- 1.21.1 的后台生成线程数是 `clamp(可用核数 − 1, 1, 上限)`：1 核和 2 核都只有 1 个生成线程，4 核有 3 个（第 1 步发现，计划 5.5）。'
               '2 核基线上原版生成只用到大约一个核；第 6 步解读 donor 的效果时要记住这一点。每轮容器里实际的 availableProcessors 见上表。',
               '- 就绪是服务器那一侧的：`ChunkHolder.getChunkToSend()` 不为空（sendSync 完成且到 BLOCK_TICKING）。假玩家没有真客户端，不算网络和渲染。',
+              '- **假玩家像真实客户端一样飞**（11-09）：客户端不会走进自己还没收到的 chunk（`LocalPlayer.tick` 先查 `hasChunkAt`），'
+              '所以飞行按速度积分前进，前面的 chunk 没就绪就停在边缘等。**卡住**的时长（玩家停在边缘的时间）是真实玩家最直接的感受，'
+              '和实际距离对比理想距离一起列出；第 10 步的 X 仍按就绪 p95 算。原来按"起点 + 速度 × 时间"直接放玩家，假玩家会跑到生成前面，'
+              '实体 tick 查脚下流体（`Entity.updateFluidHeightAndDoFluidPushing` → `Level.getFluidState`）时在主线程上同步生成，2 核鞘翅一个 tick 卡满 60 秒被看门狗杀掉（fish 6.6）。',
+              '- **同步加载**是守护计数：飞行期间主线程上 `ServerChunkCache.getChunk(load=true)` 耗时 ≥ 1 毫秒的次数。真实玩家不会造成它，不为 0 的一轮判无效重跑。',
               f"- 扫视野的间隔 scan_every_ticks = {every}。扫描耗时不计进 MSPT，但占服务器时间："
               + (f"每 tick 平均扫描耗时是 MSPT 均值的 {min(share):.1%}～{max(share):.1%}。" if share else "这批结果没有 tick 数，算不出占比。")
               + "计划 5.1 要求 < 2%，超过就改成每 2 tick 扫一次再测。",
@@ -495,14 +512,16 @@ def readme_block(out) -> str:
     lines = [README_BEGIN, '### 第 4 步冒烟给的第 2 层初值', '',
              f"> **冒烟**，在这台 EPYC 7542 上限核测得，部署机器 N100 上要重测。每种速度 1～2 次，只能看量级。"
              f"campaign `{state['campaign']}`，详见 [baseline-layer2.md](analysis/results/baseline-layer2.md)。", '',
-             '| 速度 | 核数 | 次数 | 虚空率均值 | 就绪 p95（毫秒） | MSPT 均值（毫秒） | 服务器 CPU（核） |',
-             '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
+             '| 速度 | 核数 | 次数 | 卡住时长（秒） | 实际 / 理想距离 | 虚空率均值 | 就绪 p95（毫秒） | MSPT 均值（毫秒） | 服务器 CPU（核） |',
+             '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     for s in summary:
-        lines.append(f"| {SPEED_NAMES.get(s['speed_name'], s['speed_name'])} | {s['cpus']} | {s['n']} | {num(s['void_mean_mean'])} "
+        lines.append(f"| {SPEED_NAMES.get(s['speed_name'], s['speed_name'])} | {s['cpus']} | {s['n']} | {num(s['stall_s_mean'])} "
+                     f"| {num(s['distance_ratio_mean'])} | {num(s['void_mean_mean'])} "
                      f"| {num(s['latency_p95_ms_mean'])} | {num(s['mspt_mean_mean'])} | {num(s['cpu_cores_mean_mean'])} |")
     status = {'passed': '通过', 'failed': '没过', 'reference': '只算参考（那轮有并发）'}
     lines += ['', f"- 指标自检：预生成后再飞{status[check['pregen']['status']]}（虚空率均值 {num(check['pregen']['void_mean'])}）；"
                   f"1 核鞘翅{status[check['one_core']['status']]}（虚空率均值 {num(check['one_core']['void_mean'])}）。",
+              '- 卡住 = 玩家停在还没就绪的 chunk 前面等（假玩家像真实客户端一样不走进没收到的 chunk），是玩家最直接的感受。',
               '- 2 核时原版只有 1 个生成线程（和第 1 步一样），第 6 步 donor 的提升里有一部分来自原版本来就没用上的那个核。',
               README_END]
     return '\n'.join(lines) + '\n'

@@ -20,7 +20,8 @@ from bench import layer2_stats as stats
 from bench.server import TEST_DATA, wait_until
 
 RUNS = TEST_DATA / 'bench-runs'
-SECOND_COLUMNS = ('t_s', 'x', 'z', 'view_chunks', 'void_rate', 'void_rate_max', 'mspt_mean', 'mspt_max', 'ticks', 'cpu_cores')
+SECOND_COLUMNS = ('t_s', 'x', 'z', 'view_chunks', 'void_rate', 'void_rate_max', 'mspt_mean', 'mspt_max', 'ticks', 'stalled_ticks',
+                  'cpu_cores')
 CHUNK_COLUMNS = ('cx', 'cz', 'enter_ms', 'latency_ms', 'censored')
 # done.json 里原样带进 summary.json 的配置（第 7 步预留的两项没有 coordinator 时是 null）
 CONFIG_KEYS = ('run', 'player', 'mode', 'speed', 'y', 'start_x', 'start_z', 'view_distance', 'requested_view_distance',
@@ -52,6 +53,14 @@ def compose(run_dir, samples, out_dir, initial_load_s=None, tail_exclude_ms=10_0
     summary.update(flight_seconds=done['seconds'], ticks_total=done['ticks'], initial_load_s=initial_load_s,
                    initial_view=done['initial']['view'], initial_not_ready=done['initial']['not_ready'],
                    tail_exclude_ms=tail_exclude_ms)
+    # 像客户端一样飞（11-09）：卡在没就绪 chunk 前面的时间是真实玩家最直接的感受；同步加载是守护计数，测量时必须是 0
+    end_s = done['end_ms'] / 1000
+    summary.update(stall_s=done['stall_ms'] / 1000, stalled_ticks_total=done['stalled_ticks'],
+                   stall_fraction=done['stall_ms'] / 1000 / end_s if end_s else None,
+                   distance=done['distance'], ideal_distance=done['ideal_distance'],
+                   distance_ratio=done['distance'] / done['ideal_distance'] if done['ideal_distance'] else None,
+                   unready_ticks=done['unready_ticks'], sync_loads=done['sync_loads']['count'],
+                   sync_load_max_ms=done['sync_loads']['max_ms'])
 
     out_dir.mkdir(parents=True, exist_ok=True)
     if (out_dir / 'layer2.csv').exists():
