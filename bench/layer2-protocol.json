@@ -63,7 +63,7 @@
  "tail_exclude_ms": 10000,
  "matrix_seed": 424242,
  "rerun_on_interference": false,
- "max_attempts": 3,
+ "max_attempts": 4,
  "interference_actions": [
   "create",
   "start",

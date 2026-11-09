@@ -163,8 +163,8 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-# 只记录决定、不改变怎么飞的协议字段：变了照样能续跑和重新发布
-DOC_KEYS = ('note', 'user_decision', 'selfcheck_concurrency_counts')
+# 只记录决定或只管编排、不改变怎么飞的协议字段：变了照样能续跑和重新发布
+DOC_KEYS = ('note', 'user_decision', 'selfcheck_concurrency_counts', 'max_attempts')
 
 
 def _measurement(p: dict) -> dict:
