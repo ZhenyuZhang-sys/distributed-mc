@@ -67,8 +67,13 @@ final class TileExporter {
 
     /** 生成并写进交换目录（第 3 步的 /donor export）。 */
     static Result export(ServerLevel level, TilePos tile) throws IOException {
+        return export(level, tile, false);
+    }
+
+    /** serial：按原来的办法一个一个同步要（对照用，/donor export ... serial）。 */
+    static Result export(ServerLevel level, TilePos tile, boolean serial) throws IOException {
         long t0 = System.nanoTime();
-        Generated g = generate(level, tile);
+        Generated g = generate(level, tile, serial);
         Path dir = exchangeDir();
         Files.createDirectories(dir);
         Path out = dir.resolve("tile_" + tile.x() + "_" + tile.z() + ".nbt");
@@ -80,9 +85,24 @@ final class TileExporter {
 
     /** 生成 tile 并序列化成内存里的 TileFile，不写文件（第 5 步的 result 用）。在主线程上调用。 */
     static Generated generate(ServerLevel level, TilePos tile) {
+        return generate(level, tile, false);
+    }
+
+    static Generated generate(ServerLevel level, TilePos tile, boolean serial) {
         ServerChunkCache cache = level.getChunkSource();
 
-        // tile 的 16 个 chunk 要到 initialize_light。已经更靠后的也会直接返回，下面统一检查
+        // 11-09：先把 16 个都排上（加票、排生成任务，不等），世界生成线程池同时做；原来一个一个同步要，
+        // 主线程等一个做完才要下一个，worker 实际只用约 1 个核（用户真机：一次 1 个 943 ms，一次 4 个 3981 ms）。
+        // 这里的票是原版 getChunk 用的那种（UNKNOWN，过一个 tick 失效）；下面等的时候还在这一次任务里，tick 不会走。
+        if (!serial) {
+            mcdonate.worker.mixin.ServerChunkCacheInvoker inv = (mcdonate.worker.mixin.ServerChunkCacheInvoker) cache;
+            for (int x = tile.minChunkX(); x <= tile.maxChunkX(); x++) {
+                for (int z = tile.minChunkZ(); z <= tile.maxChunkZ(); z++) {
+                    inv.mcdonate$schedule(x, z, ChunkStatus.INITIALIZE_LIGHT, true);
+                }
+            }
+        }
+        // tile 的 16 个 chunk 要到 initialize_light（排上了的就是等它们做完）。已经更靠后的也会直接返回，下面统一检查
         for (int x = tile.minChunkX(); x <= tile.maxChunkX(); x++) {
             for (int z = tile.minChunkZ(); z <= tile.maxChunkZ(); z++) {
                 cache.getChunk(x, z, ChunkStatus.INITIALIZE_LIGHT, true);

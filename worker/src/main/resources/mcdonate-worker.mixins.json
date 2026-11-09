@@ -3,7 +3,8 @@
   "package": "mcdonate.worker.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "DedicatedServerPropertiesMixin"
+    "DedicatedServerPropertiesMixin",
+    "ServerChunkCacheInvoker"
   ],
   "injectors": {
     "defaultRequire": 1

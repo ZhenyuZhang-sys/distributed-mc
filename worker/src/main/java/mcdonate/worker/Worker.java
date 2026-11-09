@@ -63,7 +63,11 @@ public final class Worker implements ModInitializer {
                                         .then(Commands.argument("tz", IntegerArgumentType.integer())
                                                 .executes(ctx -> export(ctx.getSource(),
                                                         new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
-                                                                IntegerArgumentType.getInteger(ctx, "tz")))))))));
+                                                                IntegerArgumentType.getInteger(ctx, "tz")), false))
+                                                // 对照用：按原来的办法一个一个同步要（11-09）
+                                                .then(Commands.literal("serial").executes(ctx -> export(ctx.getSource(),
+                                                        new TilePos(IntegerArgumentType.getInteger(ctx, "tx"),
+                                                                IntegerArgumentType.getInteger(ctx, "tz")), true))))))));
         // 第 5 步：配了 coordinator（系统属性 mcdonate.coordinator=host:port）就连上去领任务
         // 客户端起的 worker：服务器起来之前把标准输入拿给控制通道，不让原版控制台读走（ControlStdin）
         InputStream control = mcdonate.common.Config.getLong("parentPid", -1) > 0 ? ControlStdin.claim() : null;
@@ -123,9 +127,9 @@ public final class Worker implements ModInitializer {
         return 1;
     }
 
-    private static int export(CommandSourceStack source, TilePos tile) {
+    private static int export(CommandSourceStack source, TilePos tile, boolean serial) {
         try {
-            TileExporter.Result r = TileExporter.export(source.getServer().overworld(), tile);
+            TileExporter.Result r = TileExporter.export(source.getServer().overworld(), tile, serial);
             LOG.info("导出 tile {}：{} 个 chunk，{} ms，{}", tile, r.chunks(), r.millis(), r.file());
             String json = r.json();
             source.sendSuccess(() -> Component.literal(json), false);
