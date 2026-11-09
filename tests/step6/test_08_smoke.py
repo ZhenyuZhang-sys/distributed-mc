@@ -51,6 +51,7 @@ def test_elytra_smoke_0_vs_2_donors(server, worker, worker2, tmp_path_factory):
     try:
         for i, (kind, start) in enumerate(ROUNDS):
             before = len(donor_imports(server))
+            imp0 = json.loads(server.rcon("donor status")).get("import", {})
             if kind == "donors0":
                 server.rcon("donor demand off")
                 donors_down()
@@ -67,6 +68,9 @@ def test_elytra_smoke_0_vs_2_donors(server, worker, worker2, tmp_path_factory):
             row = {"round": i, "kind": kind, "services": services,
                    "imports_accepted": sum(1 for r in donor_imports(server)[before:] if r["accepted"]),
                    "discard_ratio": status["discard_ratio"], "discarded": status["discarded"], "sync_loads": sync_loads,
+                   # 主线程上导入的耗时（这一轮的增量；旧 coordinator 没有就是 0）
+                   "import_ms": status.get("import", {}).get("totalMs", 0) - imp0.get("totalMs", 0),
+                   "import_max_ms": status.get("import", {}).get("maxMs", 0),
                    **{k: v for k, v in summary.items() if "stall" in k or "stuck" in k or "distance" in k},
                    **{k: summary[k] for k in ("cpu_cores_mean", "void_mean", "void_p95", "latency_p95_ms",
                                                "mspt_mean", "mspt_max", "ticks_per_s")}}
