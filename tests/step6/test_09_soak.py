@@ -55,7 +55,12 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     # 拍快照时正好写 region 文件就会拷到一半（11-09 f2 两次：航线末端的 region 头部截断）。停掉后它们手上的任务回队列，不再导入
     compose("stop", "worker", "worker2", timeout=300)
     wait_until(lambda: not json.loads(server.rcon("donor status"))["workers"], timeout=60, interval=1, what="donor 断开")
-    snap = server.snapshot(base / "soak")
+    # 停服再拷（调度 11-09）：save-off 只停自动存盘，玩家（假玩家飞完被移走）周围的 chunk 卸载时照样写 region，
+    # 拍快照正好拷到写了一半的文件——两次截断都在航线末端，正是飞完以后卸载的地方。停服以后存档是一致的；
+    # 这时还读不出来，就是存档真坏了。后面要换新世界做对照，用不着这台服务器了。
+    imported_tiles = {tuple(r["tile"]) for r in donor_imports(server)[before:] if r["accepted"]}  # 停服前取
+    compose("stop", "minecraft", timeout=300)
+    snap = server._copy_world(base / "soak")
     # 1. 每个 chunk 都读得出来（读不出会抛异常）
     # 11-09 f2 停了 donor 再拍快照，航线末端的 region 头部照样截断过两次：读不出来时把快照里的和服务器存档里的同一个 region
     # 都存进证据目录（pytest 的临时目录会被清掉），分清是拷到一半还是存档真坏了
@@ -73,7 +78,6 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
         raise
 
     # 2. 抽 1%，在全新世界里单独生成作对照
-    imported_tiles = {tuple(r["tile"]) for r in donor_imports(server)[before:] if r["accepted"]}
     imported = {(tx * 4 + dx, tz * 4 + dz) for tx, tz in imported_tiles for dx in range(4) for dz in range(4)}
     rng = random.Random(424242)
     sample = rng.sample(full, max(1, len(full) // 100))
