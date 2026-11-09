@@ -468,8 +468,19 @@ final class CoordinatorServer {
 
     /** /donor imports [from]：从第 from 条起最多 30 条导入记录，{"total": N, "items": [...]}。 */
     String importsJson(int from) {
-        List<String> all = List.copyOf(imports);
-        int a = Math.min(Math.max(from, 0), all.size()), b = Math.min(a + IMPORTS_PAGE, all.size());
+        return importsPage(List.copyOf(imports), from, IMPORTS_PAGE_BYTES);
+    }
+
+    /** 一页最多多少字节：RCON 一次回复只有约 4096 字节，条目长短不一（11-09 加了 bytes、wire_bytes、ms 以后 30 条会超）。 */
+    static final int IMPORTS_PAGE_BYTES = 3000;
+
+    /** 从 from 起取一页：总长不超过 budget（至少一条），调用方按拿到的条数往后翻。纯函数。 */
+    static String importsPage(List<String> all, int from, int budget) {
+        int a = Math.min(Math.max(from, 0), all.size()), b = a, used = 0;
+        while (b < all.size() && b - a < IMPORTS_PAGE && (b == a || used + all.get(b).length() + 1 <= budget)) {
+            used += all.get(b).length() + 1;
+            b++;
+        }
         return "{\"total\":" + all.size() + ",\"items\":[" + String.join(",", all.subList(a, b)) + "]}";
     }
 
