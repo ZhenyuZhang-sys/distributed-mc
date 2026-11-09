@@ -23,8 +23,10 @@ from bench import layer2
 from mcd import compose, donor_imports, limits, wait_until, worker_id
 
 ALL = ["territory", "deadline", "throughput", "hedge", "waitdonor"]
-ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"]}
-DEFAULT = "v0,v0,territory,deadline,throughput,slow-v0,slow-throughput,hedge,waitdonor,all,all"
+ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"], "vanilla": []}
+# vanilla：原版对照（0 个 donor，worker 容器停掉，不找需求），同一组核、同样航线长度和时长（调度 11-09：
+# 有效轮的卡住比例比 kexu 的原版基线高，要在同一批里看 donor 加进来是不是更差）
+DEFAULT = "vanilla,v0,v0,territory,deadline,throughput,slow-v0,slow-throughput,hedge,waitdonor,all,vanilla,all"
 LABELS = ["default", "tile2", "tile8", "look16", "look24"]
 SPEED = 30
 SECONDS = 120
@@ -57,6 +59,8 @@ def counters(s: dict) -> dict:
         "waitdonor_hits": s["waitdonor"]["hits"], "waitdonor_timeouts": s["waitdonor"]["timeouts"],
         "waitdonor_abandoned": s["waitdonor"]["abandoned"],
         "donor_tiles": {w["name"]: w["done"] for w in s["workers"]},
+        # 主线程上导入用了多久（coordinator 11-09 加的计时；旧版没有就是 0）
+        "import_ms": s.get("import", {}).get("totalMs", 0), "imports_timed": s.get("import", {}).get("count", 0),
     }
 
 
@@ -75,6 +79,18 @@ def slow_donor(server, up: bool):
         compose("stop", "worker3", timeout=300)
         wait_until(lambda: "worker3" not in compose("ps", "--format", "{{.Service}}").split(), timeout=60,
                    interval=1, what="worker3 停了")
+
+
+def donors(server, up: bool):
+    """vanilla 轮停掉全部 donor 并确认不在跑；其他轮把 worker、worker2 起来并连上。"""
+    if up:
+        compose("up", "-d", "--wait", "--wait-timeout", "600", "worker", "worker2", timeout=660)
+        worker_id(server, "worker")
+        worker_id(server, "worker2")
+    else:
+        compose("stop", "worker", "worker2", "worker3", timeout=300)
+        wait_until(lambda: not ({"worker", "worker2", "worker3"} & set(compose("ps", "--format", "{{.Service}}").split())),
+                   timeout=60, interval=1, what="donor 都停了")
 
 
 def set_features(server, on: list[str]):
@@ -102,11 +118,15 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             # 每组配置、每轮一条没生成过的航线：z 方向隔 8000 格，组和组之间隔 100000 格
             start = (0, -200_000 + 100_000 * LABELS.index(label) + 8000 * i)
             slow = name.startswith("slow-")
+            vanilla = name == "vanilla"
+            donors(server, not vanilla)
             slow_donor(server, slow)
             set_features(server, ROUNDS[name])
             before_imports = len(donor_imports(server))
             before = counters(status(server))
-            server.rcon("donor demand on")
+            running = sorted(compose("ps", "--format", "{{.Service}}").split())
+            if not vanilla:
+                server.rcon("donor demand on")
             out = layer2.fly(server, run=f"abl-{label}-{i}", player=f"abl{i}", start=start, speed=SPEED,
                              seconds=SECONDS, out_dir=base / f"ablation-{label}-{i}-{name}")
             server.rcon("donor demand off")
@@ -115,11 +135,11 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             imports = donor_imports(server)[before_imports:]
             n = cfg["tileSize"]
             row = {
-                "label": label, "round": i, "name": name, "start": start,
+                "label": label, "round": i, "name": name, "start": start, "services": running,
                 "coordinator_features": ROUNDS[name], "demand_lookahead": cfg["demandLookahead"], "tile_size": n,
                 "donors": [{"name": s, "cpuset": lim.get(f"{s.upper()}_CPUSET"),
                             "cpus": float(lim.get("WORKER3_CPUS", 0.5)) if s == "worker3" else None}
-                           for s in ("worker", "worker2", *(["worker3"] if slow else []))],
+                           for s in ([] if vanilla else ["worker", "worker2", *(["worker3"] if slow else [])])],
                 "server_cpus": lim.get("MC_CPUS"), "server_cpuset": lim.get("MC_CPUSET"),
                 "bots": 1, "speed": "elytra",
                 "imports_accepted": sum(1 for r in imports if r["accepted"]),
@@ -128,21 +148,26 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "discarded": {k: d[k] for k in ("late", "other_world", "server")},
                 "ring_overhead": (n + 2) ** 2 / n ** 2 - 1,
                 **{k: d[k] for k in ("hedge_cancelled", "hedge_wasted_tiles", "waitdonor_hits", "waitdonor_timeouts",
-                                     "waitdonor_abandoned", "donor_tiles")},
+                                     "waitdonor_abandoned", "donor_tiles", "import_ms", "imports_timed")},
                 "main": main_metrics(summary), "sync_loads": flight_guard(out),
                 "summary": summary,
             }
+            # 假玩家 tick 里同步加载过：这一轮无效，记下来接着跑别的轮（最后判失败），不浪费整批
+            row["valid"] = row["sync_loads"].get("count", 0) == 0 and (vanilla or row["imports_accepted"] > 0)
             rows.append(row)
             print(json.dumps({k: v for k, v in row.items() if k != "summary"}, ensure_ascii=False))
-            assert row["sync_loads"].get("count", 0) == 0, f"{name} 测量无效（假玩家 tick 里同步加载），停下来查"
     finally:
         server.rcon("donor demand off")
         set_features(server, [])
         slow_donor(server, False)
+        donors(server, True)  # 后面的 fixture 收尾要 worker
         (base / f"ablation-{label}.json").write_text(json.dumps({"config": cfg, "rounds": rows}, ensure_ascii=False,
                                                                 indent=2) + "\n")
     assert len(rows) == len(names)
     for r in rows:
+        if r["name"] == "vanilla":
+            assert not ({"worker", "worker2", "worker3"} & set(r["services"])), f"原版对照那轮 donor 还在跑：{r['services']}"
+            continue
         assert r["imports_accepted"] > 0, f"{r['name']} 这一轮 donor 没导入，测量无效"
         assert "count" in r["sync_loads"], "layer2 还是旧的（没有 sync_loads 守护计数），不能做第 7 步对比"
         assert r["sync_loads"]["count"] == 0, f"{r['name']} 假玩家 tick 里同步加载过 chunk，测量无效，要重跑：{r['sync_loads']}"

@@ -78,6 +78,10 @@ final class CoordinatorServer {
     }
     /** 严格导入里被接受的结果数（丢弃比例的分母之一）。 */
     final AtomicInteger acceptedImports = new AtomicInteger();
+    /** 主线程上导入用了多久（每次结果的校验 + 写存档请求，调度 11-09：看 donor 加进来是不是拖慢服务器）。 */
+    private final java.util.concurrent.atomic.AtomicLong importCount = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong importNanos = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong importMaxNanos = new java.util.concurrent.atomic.AtomicLong();
     /** 每个导入的记录，测试用：tile、donor 世界、写了几个、是否整个丢弃。 */
     private final List<String> imports = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -297,6 +301,18 @@ final class CoordinatorServer {
 
     /** 主线程上：校验 tile 并导入。出错就让任务回到队列。返回是否被接受。 */
     private boolean importResult(Connection c, Result r) {
+        long t0 = System.nanoTime();
+        try {
+            return importResultTimed(c, r);
+        } finally {
+            long ns = System.nanoTime() - t0;
+            importCount.incrementAndGet();
+            importNanos.addAndGet(ns);
+            importMaxNanos.accumulateAndGet(ns, Math::max);
+        }
+    }
+
+    private boolean importResultTimed(Connection c, Result r) {
         int workerId = c.workerId;
         try {
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
@@ -386,7 +402,10 @@ final class CoordinatorServer {
                 .append("},\"accepted\":").append(acceptedImports.get())
                 .append(",\"hedge\":{\"cancelled\":").append(tasks.hedgeCancelled()).append(",\"wasted\":").append(tasks.hedgeWasted())
                 .append("},\"ledger\":").append(Ownership.LEDGER.size())
-                .append(",\"waitdonor\":").append(waitDonor.json()).append('}').toString();
+                .append(",\"waitdonor\":").append(waitDonor.json())
+                .append(",\"import\":{\"count\":").append(importCount.get())
+                .append(",\"totalMs\":").append(importNanos.get() / 1_000_000.0)
+                .append(",\"maxMs\":").append(importMaxNanos.get() / 1_000_000.0).append("}}").toString();
     }
 
     /** 跨 donor 冲突被整个丢弃的结果占所有严格导入结果的比例（donor 白干的比例）。第 7 步要压低它。 */
