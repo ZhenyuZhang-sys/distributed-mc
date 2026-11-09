@@ -59,7 +59,7 @@ cleanup() {
       # 测试服务器和两个 worker 各有一份同名世界
       if [[ -n "$level" ]]; then
         (delete_test_world "$level" "$TEST_DATA" && delete_test_world "$level" "$WORKER_DATA" \
-          && delete_test_world "$level" "$WORKER2_DATA") || status=1
+          && delete_test_world "$level" "$WORKER2_DATA" && delete_test_world "$level" "$WORKER3_DATA") || status=1
       fi
     fi
   fi

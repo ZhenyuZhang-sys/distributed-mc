@@ -24,6 +24,7 @@ docker/.env.local
 docker/test-data/
 docker/test-data-worker/
 docker/test-data-worker2/
+docker/test-data-worker3/
 docker/test-exchange/
 .pytest_cache/
 artifacts/

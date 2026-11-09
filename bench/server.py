@@ -16,12 +16,13 @@ SCRIPTS = REPO_ROOT / "scripts"
 TEST_DATA = REPO_ROOT / "docker" / "test-data"
 WORKER_DATA = REPO_ROOT / "docker" / "test-data-worker"
 WORKER2_DATA = REPO_ROOT / "docker" / "test-data-worker2"
+WORKER3_DATA = REPO_ROOT / "docker" / "test-data-worker3"  # 7.3 的慢 donor
 EXCHANGE = REPO_ROOT / "docker" / "test-exchange"
 
 
 def data_root(service: str) -> Path:
     """compose 服务 → 存档目录。调用时再取模块变量（测试会替换 TEST_DATA）。"""
-    return {"minecraft": TEST_DATA, "worker": WORKER_DATA, "worker2": WORKER2_DATA}[service]
+    return {"minecraft": TEST_DATA, "worker": WORKER_DATA, "worker2": WORKER2_DATA, "worker3": WORKER3_DATA}[service]
 WHITELIST = REPO_ROOT / "tests/log_whitelist.txt"
 
 # Minecraft 的颜色代码，比如 §a

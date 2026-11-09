@@ -221,7 +221,11 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 - [ ] 第一批消融：v0 + 7.1 + 7.2，正确性检查
 - [ ] 7.3、7.4、7.5，第二批消融，正确性检查
 - [ ] 7.6a 原型 → 7.6b → 第三批消融
-- [ ] 7.7 归属持久化
+- [x] 7.7 归属持久化
+- 收尾 F（给第 8 步的黑名单、删 chunk、重算任务）：11-09 用户决定先跳过第 8 步，F 不做。写到一半的代码在分支 `fish-step8-f`（没编译测试）。
+- [ ] 快速对比的驱动：`scripts/ablation.sh` → `tests/step7/test_90_ablation.py`（每组一次 test.sh --slow，字段见 0.3）。
+  7.3 的"慢 donor"：第三个 donor worker3（只在 compose.test.yaml，单独的 profile，0.5 核，fish 目录绑 56 号核，存档 test-data-worker3），
+  只有 slow-v0、slow-throughput 两轮起它，看加了慢 donor 后开 throughput 整体有没有变差（降级后各 1 次）。平时不起（test_06_worker3）。
 - [ ] 4 核记录、可持续探索容量（降级：留到部署机器上，进"已跳过"）
 - [ ] 报告：每项的结果（含没过的）、选出的 tile 大小、容量 v0 vs 全开
 
