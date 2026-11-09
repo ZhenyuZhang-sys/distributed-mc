@@ -24,7 +24,7 @@ def fake_flight(d, void, p95):
     return d
 
 
-def campaign(tmp_path, concurrent_slot=None, pregen_void=.002, **over):
+def campaign(tmp_path, concurrent_slot=None, pregen_void=.002, events=('mc-test-fish start',), **over):
     p = lc.validate({**lc.load_protocol(PROTOCOL), **over})
 
     def fly_slot(slot, directory):
@@ -34,7 +34,7 @@ def campaign(tmp_path, concurrent_slot=None, pregen_void=.002, **over):
                     mspt_mean=10.0, mspt_max=40.0, cpu_cores_mean=1.5, censored_fraction=0.0, available_processors=slot['cpus'],
                     scan_ms_total=5.0, scan_every_ticks=1, ticks_total=2400, initial_load_s=20.0, flight_dir=str(out),
                     stall_s=3.0, stall_fraction=.025, distance_ratio=.9, distance=3240.0, sync_loads=0,
-                    concurrent=['mc-test-fish start'] if slot['slot'] == concurrent_slot else [])
+                    concurrent=list(events) if slot['slot'] == concurrent_slot else [])
     root = tmp_path / 'runs' / 'layer2-x'
     return p, lc.run_campaign(p, root, fly_slot), root
 
@@ -64,7 +64,7 @@ def test_publish_writes_tables_report_and_digests(tmp_path):
     assert check['pregen']['status'] == 'passed' and check['one_core']['status'] == 'passed'
     report = (out / 'baseline-layer2.md').read_text()
     for text in ('冒烟', 'N100 上要重测', '生成线程', 'availableProcessors', '自检', 'scan_every_ticks', '个百分点', '0.0%～0.0%',
-                 '卡住', '实际距离', '同步加载'):
+                 '卡住', '实际距离', '同步加载', '0.00～0.00 毫秒', 'tick 预算', '开 / 关逐 tick 扫描'):
         assert text in report, text
     assert state['smoke'] is True and state['campaign'] == 'layer2-x'
     for name, value in state['artifacts'].items():
@@ -80,7 +80,7 @@ def test_publish_lists_concurrency_and_reference_selfchecks(tmp_path):
     check = json.loads((out / 'selfcheck.json').read_text())
     assert check['pregen']['status'] == 'reference'
     report = (out / 'baseline-layer2.md').read_text()
-    assert '有并发' in report and 'mc-test-fish start' in report and '参考' in report
+    assert '有并发' in report and 'mc-test-fish（start）' in report and '参考' in report
 
 
 def test_publish_refuses_failed_slots_and_failed_selfcheck(tmp_path):
@@ -118,4 +118,22 @@ def test_publish_counts_concurrent_selfcheck_under_user_decision(tmp_path):
     check = json.loads((out / 'selfcheck.json').read_text())
     assert check['pregen']['status'] == 'passed' and check['pregen']['concurrent'] == ['mc-test-fish start']
     report = (out / 'baseline-layer2.md').read_text()
-    assert '允许并行' in report and 'mc-test-fish start' in report
+    assert '允许并行' in report and 'mc-test-fish（start）' in report
+
+
+def test_report_keeps_concurrency_short_in_table(tmp_path):
+    # 11-09 第一次发布时并发列把每个 docker 事件都列进表格，一格十几条，表看不清。
+    # 表格里只写"有（N 个事件）"，明细在"背景和局限"里按容器归在一起
+    events = ['mc-test-f3-minecraft-1 stop', 'mc-test-f3-minecraft-1 die', 'mc-test-f3-minecraft-1 destroy', 'funny_shtern create']
+    p, result, root = campaign(tmp_path, concurrent_slot='elytra-c2-r1', events=events)
+    out = tmp_path / 'results'
+    lc.publish(root, p, result, out)
+    report = (out / 'baseline-layer2.md').read_text()
+    row = next(l for l in report.splitlines() if l.startswith('| elytra-c2-r1 '))
+    assert row.endswith('| 有（4 个事件） |'), row
+    assert 'mc-test-f3-minecraft-1（stop、die、destroy）' in report and 'funny_shtern（create）' in report
+    quiet = next(l for l in report.splitlines() if l.startswith('| walk-c2-r1 '))
+    assert quiet.endswith('| 无 |')
+    # CSV 里还是完整的事件列表
+    runs = {r['slot']: r for r in rows(out / 'layer2-runs.csv')}
+    assert runs['elytra-c2-r1']['concurrent'] == '; '.join(events)
