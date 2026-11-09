@@ -1,6 +1,10 @@
 # 游戏内来源上色和算力面板（overlay / hud）计划
 
-状态：**计划待审**（调度 11-09 安排，用户要的新功能）。负责人 kexu（客户端、common、发送器、测试）；fish 加 worker 状态字段和两个小接口（第 6 节）。在演示矩阵 demo-v2 跑完、演示默认挑好以后开工。
+状态：**计划已通过（调度 11-09 有条件通过，分两期）**。用户想当天下午用上：
+- **第一期**（目标 5～6 小时）：两个 payload 和颜色；`FullStatus` mixin 搬家（bench 复用，第 4 步计数保证不变，改完给 fish 看）；coordinator 的 `OverlayState`、`OverlaySender`；客户端的设置、三条命令、`ChunkSources`、角落小地图（带图例）、HUD；JUnit 照第 8 节；端到端只做一条：无头客户端开 overlay 后收到快照和增量，关掉后不再收。做完 `--quick` 加相关测试过了就进 main。
+- **第二期**（之后）：地面彩色 chunk 边框（`ChunkBorderRenderer`）、更多端到端测试。
+
+（原计划，调度 11-09 安排，用户要的新功能。）负责人 kexu（客户端、common、发送器、测试）；fish 加 worker 状态字段和两个小接口（第 6 节）。在演示矩阵 demo-v2 跑完、演示默认挑好以后开工。
 
 ## 1. 要什么
 
