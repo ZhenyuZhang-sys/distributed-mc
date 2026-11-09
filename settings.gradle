@@ -8,3 +8,5 @@ pluginManagement {
 rootProject.name = 'mc-donate'
 
 include 'common', 'coordinator', 'worker', 'client', 'bench'
+// 只给第 9 步测试用的小 mod：在同意界面替测试点"同意"。不进 collectMods，不进发布产物
+include 'client-testhooks'

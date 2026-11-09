@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "mcdonate-client-testhooks",
+  "version": "${version}",
+  "name": "mc-donate client TEST HOOKS — 只用于测试",
+  "description": "只给第 9 步的自动测试用：进服后像玩家那样打开设置、按开关，在同意界面替测试勾选并按同意。不要装进正常游戏。",
+  "environment": "client",
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "~1.21.1",
+    "mcdonate-client": "*"
+  },
+  "entrypoints": {
+    "mcdonate:consent_driver": [
+      "mcdonate.client.testhooks.TestConsentDriver"
+    ]
+  }
+}
