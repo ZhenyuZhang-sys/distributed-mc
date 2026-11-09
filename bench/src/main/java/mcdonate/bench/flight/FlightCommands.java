@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
  *   /bench fly stop &lt;run名&gt;                                   提前结束，done.json 标 stopped
  *   /bench fly status                                         正在飞的，一行 JSON；返回值是个数
  *   /bench fly ready &lt;玩家&gt;                                   视野里没就绪的 chunk 数（一行 JSON；返回值就是这个数，出错 −1）
+ *   /bench fly route &lt;玩家&gt; &lt;run名&gt; &lt;yaw,速度,秒数;...&gt;          路线飞行（真实场景：转弯、来回、停顿），见 Route
  *   /bench record start &lt;玩家&gt; [run名]                          跟踪真人玩家：只记录不移动（第 10 步 7.2），文件和飞行一样
  *   /bench record stop [run名]                                结束跟踪（不给 run 名就结束全部跟踪）
  * </pre>
@@ -92,6 +93,10 @@ public final class FlightCommands {
                                                         .executes(ctx -> start(ctx, Flight.Mode.WALL))
                                                         .then(Commands.literal("wall").executes(ctx -> start(ctx, Flight.Mode.WALL)))
                                                         .then(Commands.literal("tick").executes(ctx -> start(ctx, Flight.Mode.TICK))))))))
+                .then(Commands.literal("route")
+                        .then(Commands.argument("player", EntityArgument.entity())
+                                .then(Commands.argument("run", StringArgumentType.word())
+                                        .then(Commands.argument("spec", StringArgumentType.greedyString()).executes(FlightCommands::route)))))
                 .then(Commands.literal("stop")
                         .then(Commands.argument("run", StringArgumentType.word()).executes(FlightCommands::stop)))
                 .then(Commands.literal("status").executes(FlightCommands::status))
@@ -146,8 +151,24 @@ public final class FlightCommands {
         return begin(src, player, run, flight);
     }
 
-    /** flight == null：跟踪真人玩家。 */
+    private static int route(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer player = player(ctx);
+        if (player == null) return fail(ctx.getSource(), "不是玩家");
+        Route r;
+        try {
+            r = Route.parse(StringArgumentType.getString(ctx, "spec"));
+        } catch (IllegalArgumentException e) {
+            return fail(ctx.getSource(), "路线不对：" + e.getMessage());
+        }
+        return begin(ctx.getSource(), player, StringArgumentType.getString(ctx, "run"), null, r);
+    }
+
     private static int begin(CommandSourceStack src, ServerPlayer player, String run, Flight flight) {
+        return begin(src, player, run, flight, null);
+    }
+
+    /** flight == null 且 route == null：跟踪真人玩家；route != null：路线飞行。 */
+    private static int begin(CommandSourceStack src, ServerPlayer player, String run, Flight flight, Route route) {
         if (!RUN.matcher(run).matches()) return fail(src, "run 名只能用字母、数字、. _ -，最长 64：" + run);
         if (ACTIVE.containsKey(run)) return fail(src, "run 正在进行：" + run);
         for (FlightRecorder r : ACTIVE.values())
@@ -168,7 +189,8 @@ public final class FlightCommands {
         FlightRecorder r;
         try {
             FlightOutput out = new FlightOutput(dir, writer());
-            r = flight == null ? FlightRecorder.record(run, player, view, out) : new FlightRecorder(run, player, flight, view, out);
+            r = route != null ? FlightRecorder.route(run, player, route, view, out)
+                    : flight == null ? FlightRecorder.record(run, player, view, out) : new FlightRecorder(run, player, flight, view, out);
         } catch (RuntimeException e) {
             LOG.error("起飞失败：{}", run, e);
             try {
@@ -179,7 +201,7 @@ public final class FlightCommands {
             return fail(src, "起飞失败：" + e.getMessage());
         }
         ACTIVE.put(run, r);
-        String what = flight == null ? "bench record started " : "bench fly started ";
+        String what = route != null ? "bench fly started " : flight == null ? "bench record started " : "bench fly started ";
         src.sendSuccess(() -> Component.literal(what + run), false);
         return 1;
     }
