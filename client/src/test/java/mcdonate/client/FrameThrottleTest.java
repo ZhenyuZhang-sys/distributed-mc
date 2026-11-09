@@ -9,7 +9,12 @@ import java.util.List;
 import mcdonate.client.FrameThrottle.Action;
 import org.junit.jupiter.api.Test;
 
-/** 第 9 步（docs/step9-plan.md 第 4 节）：按帧时间暂停、恢复 worker。目标 50 ms：p99 超过持续 2 秒暂停，低于 40 ms 持续 5 秒恢复。 */
+/**
+ * 第 9 步（docs/step9-plan.md 第 4 节）：按帧时间暂停、恢复 worker。
+ * 11-09 改（调度：用户真机上鞘翅进新区域，客户端加载 chunk 必然掉帧，donor 正好在最需要的时候停下）：
+ * 看最近 10 秒帧时间的中位数，超过目标（50 ms）持续 5 秒暂停，低于目标的 0.8（40 ms）持续 5 秒恢复。
+ * 加载 chunk 那几秒的掉帧只是一部分帧慢，中位数不动；整体都慢（一半以上的帧比目标慢）才暂停。
+ */
 class FrameThrottleTest {
     private final FrameThrottle t = new FrameThrottle(50);
     private long now = 0;
@@ -35,29 +40,42 @@ class FrameThrottleTest {
     }
 
     @Test
-    void slowFramesPauseAfterTwoSeconds() {
+    void sustainedSlowFramesPause() {
         run(16, 10);
         long slowFrom = now;
-        run(80, 10);
+        run(80, 30);
         assertEquals(1, actions.size(), actions.toString());
         assertTrue(actions.get(0).startsWith("PAUSE"));
         long at = Long.parseLong(actions.get(0).split("@")[1]);
-        // p99 要等慢帧占到窗口的 1% 以上才超（很快），再持续 2 秒
-        assertTrue(at - slowFrom >= 2000 && at - slowFrom <= 3000, "暂停在 " + (at - slowFrom) + " ms");
+        // 中位数要等慢帧占到窗口里一半以上的帧（80 ms 一帧、16 ms 一帧，约 8 秒），再持续 5 秒
+        assertTrue(at - slowFrom >= 8000 && at - slowFrom <= 15000, "暂停在 " + (at - slowFrom) + " ms");
         assertTrue(t.paused());
     }
 
     @Test
+    void loadingDipsDoNotPause() {
+        // 鞘翅进新区域：几秒里帧时间 60～100 ms（客户端加载 chunk），然后恢复。donor 这时候最有用，不该停
+        run(16, 10);
+        run(100, 3);
+        run(16, 8);
+        run(60, 4);
+        run(16, 8);
+        run(100, 3);
+        run(16, 10);
+        assertTrue(actions.isEmpty(), actions.toString());
+    }
+
+    @Test
     void resumesAfterFiveGoodSecondsNotBefore() {
-        run(80, 5);
+        run(80, 20);
         assertTrue(t.paused());
         actions.clear();
         long goodFrom = now;
-        run(16, 20);
+        run(16, 30);
         assertEquals(1, actions.size(), actions.toString());
         long at = Long.parseLong(actions.get(0).split("@")[1]);
-        // 慢帧要先滑出 5 秒的窗口，p99 才降下来，再持续 5 秒
-        assertTrue(at - goodFrom >= 5000 && at - goodFrom <= 11000, "恢复在 " + (at - goodFrom) + " ms");
+        // 快帧数一多中位数就降下来（约 2 秒），再持续 5 秒
+        assertTrue(at - goodFrom >= 5000 && at - goodFrom <= 12000, "恢复在 " + (at - goodFrom) + " ms");
         assertTrue(actions.get(0).startsWith("RESUME"));
         assertFalse(t.paused());
     }
@@ -67,7 +85,7 @@ class FrameThrottleTest {
         // 45 ms：不超过 50（不暂停），也不低于 40（暂停了也不恢复）
         run(45, 20);
         assertFalse(t.paused());
-        run(80, 5);
+        run(80, 20);
         assertTrue(t.paused());
         actions.clear();
         run(45, 30);
@@ -81,6 +99,14 @@ class FrameThrottleTest {
         run(200, 0.4); // 两帧卡顿：不到窗口里帧数的 1%，p99 不动（卡满 1 秒的话 p99 会高 5 秒，照规则会暂停）
         run(16, 10);
         assertTrue(actions.stream().noneMatch(a -> a.startsWith("PAUSE")), actions.toString());
+    }
+
+    @Test
+    void medianOverWindow() {
+        for (int i = 1; i <= 101; i++) {
+            t.frame(i * 10L, i);  // 1..101 ms，全在 10 秒窗口里
+        }
+        assertEquals(51.0, t.median(1010), 1e-9);
     }
 
     @Test
