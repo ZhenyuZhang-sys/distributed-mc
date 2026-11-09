@@ -27,7 +27,8 @@ def run_client(name: str, seconds: int, mods: Path, out: Path) -> dict:
     try:
         os.environ["MCD_CLIENT_MODS"] = str(mods)
         os.environ["MCD_CLIENT_OUT"] = str(out)
-        compose("run", "--rm", "client", name, str(seconds), timeout=1800)  # 第一次要下载客户端，慢
+        # --build：run.sh 是打进镜像的，改了要重建（有缓存，很快）。第一次要下载客户端，慢
+        compose("run", "--rm", "--build", "client", name, str(seconds), timeout=1800)
     finally:
         os.environ.clear()
         os.environ.update(env)
