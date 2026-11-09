@@ -105,4 +105,10 @@ class DonorThroughputTest {
         }
         assertEquals(0.25, t.ratePerMs(1) * 1000, 1e-9);
     }
+
+    @Test
+    void coldStartRateIsOptimisticForPruning() {
+        // codex-audit G4：冷启动只改了 canMeet，剪枝还按 1/默认延迟（串行）算速率，派出去探路的 4 个里剪掉 3 个
+        assertEquals(DonorThroughput.MAX_CONCURRENCY / (double) DonorThroughput.DEFAULT_MS, new DonorThroughput().ratePerMs(7), 1e-12);
+    }
 }

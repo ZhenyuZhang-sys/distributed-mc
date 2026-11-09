@@ -112,4 +112,15 @@ class MotionTest {
         assertTrue(Double.isFinite(m.deadlineSecondsUnion(aheadOld, 10)), "转弯刚开始，旧方向前方的也还算");
         assertTrue(m.lateralChunksUnion(aheadNew) <= 6, "新方向前方的在走廊里");
     }
+
+    @Test
+    void shortWindowWorksWithSparseSamples() {
+        // codex-audit（3132230）：找需求约每秒记一次位置，0.75 秒的短窗口里只有最新一个样本，速度成了 0，并集形同虚设。
+        // 窗口里只有一个样本时用前一个样本
+        Motion m = new Motion();
+        m.record(0, 0, 0);
+        m.record(1_000, 32, 0);
+        double[] v = m.velocity(Motion.SHORT_WINDOW_MS);
+        assertEquals(32, v[0], 1e-9);
+    }
 }

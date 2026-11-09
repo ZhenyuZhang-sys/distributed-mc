@@ -474,4 +474,18 @@ class TaskQueueDeadlineTest {
         assertEquals(2_000, CoordinatorServer.pruneTileMs(new long[] {20_000, 2_000}));
         assertEquals(0, CoordinatorServer.pruneTileMs(new long[0]));
     }
+
+    @Test
+    void pruneUsesTheIdleFastDonor() {
+        // codex-audit G5：剪枝按所有 donor 加起来的在途数排队，慢 donor 手上的 4 个让空着的快 donor 能做完的任务被剪掉。
+        // 按每个 donor 分别估，排队的依次给最早做完的那个
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 4_000, now.get() + 3_000, 0);           // 2 秒内要做完
+        List<TaskQueue.DonorEstimate> donors = List.of(
+                new TaskQueue.DonorEstimate(20_000, 1.0 / 20_000, 4),        // 慢的，手上 4 个
+                new TaskQueue.DonorEstimate(1_000, 1.0 / 1_000, 0));         // 快的，空着
+        assertEquals(List.of(), q.pruneHopeless(donors), "快 donor 1 秒做完，不剪");
+        assertEquals(1, q.pruneHopeless(List.of(donors.get(0))).size(), "只有慢的：做不完，剪");
+    }
 }
