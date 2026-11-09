@@ -8,6 +8,8 @@ import java.util.Objects;
 /**
  * 增量拆帧：收到多少字节就喂多少，凑齐一帧吐一条消息。
  * 一个连接一个，不是线程安全的。抛过一次 ProtocolException 后不能再用，调用方应断开连接。
+ *
+ * <p>要知道每条消息在线上占多少字节（算传输时间用）就调 {@link #feedFrames}；两个入口共用同一个缓冲，可以混用。
  */
 public final class FrameDecoder {
     /** body 缓冲的初始大小。按实际到达的数据翻倍增长，对方只报长度不发数据时不会占满 16 MiB。 */
@@ -20,8 +22,21 @@ public final class FrameDecoder {
     private int bodyFilled;
     private boolean failed;
 
+    /** 一条消息和它这一帧在线上的字节数：长度前缀里的 N 加 4 字节头（等于 {@link Frame#encode} 的长度）。 */
+    public record Decoded(Message message, int wireBytes) {}
+
     /** 返回这次凑齐的消息（0 条或多条）。长度超限、消息解不开抛 ProtocolException。 */
     public List<Message> feed(byte[] bytes, int offset, int length) {
+        List<Decoded> frames = feedFrames(bytes, offset, length);
+        List<Message> out = new ArrayList<>(frames.size());
+        for (Decoded d : frames) {
+            out.add(d.message());
+        }
+        return out;
+    }
+
+    /** 和 {@link #feed} 一样，但每条消息带上它在线上的字节数。 */
+    public List<Decoded> feedFrames(byte[] bytes, int offset, int length) {
         Objects.checkFromIndexSize(offset, length, bytes.length);
         if (failed) {
             throw new ProtocolException("解码器已出错，连接应断开");
@@ -34,8 +49,8 @@ public final class FrameDecoder {
         }
     }
 
-    private List<Message> feedUnchecked(byte[] bytes, int offset, int length) {
-        List<Message> out = new ArrayList<>();
+    private List<Decoded> feedUnchecked(byte[] bytes, int offset, int length) {
+        List<Decoded> out = new ArrayList<>();
         int pos = offset;
         int end = offset + length;
         while (pos < end) {
@@ -66,7 +81,7 @@ public final class FrameDecoder {
             bodyFilled += take;
             pos += take;
             if (bodyFilled == bodyLength) {
-                out.add(Frame.decodeBody(body, 0, bodyLength));
+                out.add(new Decoded(Frame.decodeBody(body, 0, bodyLength), Frame.HEADER_BYTES + bodyLength));
                 headerFilled = 0;
                 bodyLength = -1;
                 if (body.length > INITIAL_BODY) {

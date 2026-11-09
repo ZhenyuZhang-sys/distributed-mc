@@ -243,6 +243,18 @@
 
 **顺序**：计划过审后，等手上的完整测试过了、第 4 步的 RESUMED 改动进 main，再动手；控制和 A/B 要用 fish 第 7 步的 `/donor feature`、`demand`、`reset`，等它们进 main 再接真机，之前先用假 runner 把接口和编排做完。
 
+### 7.2 跟踪真人玩家（调度 11-09 安排，排在面板 A/B 之后）
+
+用户用 fish 的客户端 mod 当 donor、自己进游戏玩时，地图和面板也要能看。bench 加"只记录、不移动玩家"的模式：
+
+- 命令：`/bench record start <玩家名> [run 名]`、`/bench record stop [run 名]`。和 `/bench fly` 共用 `FlightRecorder` 的记录部分（视野扫描、就绪事件、逐秒行、来源事件、守护计数、done.json），只是不调 `Flight.advance`、不 teleport；文件格式和飞行一样，地图回放、`layer2.compose`、面板直接能用。done.json 里 `mode` 写 `record`，没有速度和理想距离（写 null）。
+- 卡住：真人客户端自己会停在没收到的 chunk 边缘。一个 tick 算卡住 = 这个 tick 玩家位置几乎没动（< 0.01 格）**而且**朝向前方（按视线水平方向，没有视线就按上一次移动方向）挨着的那个 chunk 没就绪。站着不动看风景、前方 chunk 已就绪的不算。这是近似：玩家可能因为别的原因停下，报告里照写。
+- 实际距离：每 tick 位置差的累加，没有理想距离。
+- 玩家下线：自动结束这一轮，done.json 写 `stopped_reason: "left"`。
+- 面板加"跟踪真人玩家"入口：列在线玩家（`/bench stats` 的 players），选一个开始 / 停止；实时曲线和地图跟着这一轮的文件走。
+- **测试（先写）**：JUnit 测卡住判定（位置不动 + 前方未就绪 / 已就绪 / 在动，各一种）；GameTest 用 mock 玩家：record 期间不改玩家位置、文件齐全、来源事件进得来、玩家移除后自动结束；pytest 测面板的跟踪入口调对命令、`compose` 能读 record 的归档。
+- **接入 u1**：u1 上的服务器是 fish 起的，不重启它，只用 rcon 发命令。但新命令要新版 bench mod，u1 现在加载的是 fish 构建的 jar：要等 fish 下次重启 u1 时带上包含 `/bench record` 的 jar，或者由 fish / 用户决定什么时候重启。面板连 u1 用它的 rcon 和端口（25575 / 25585），不动它的 compose。
+
 ## 8. 依赖和接口
 
 | 依赖 | 谁 | 状态 |
