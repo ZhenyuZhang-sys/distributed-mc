@@ -293,3 +293,134 @@ def real_fly_slot(p: dict):
                 'concurrent': [f"{e['name']} {e['action']}" for e in foreign]}
 
     return fly_slot
+
+
+# ---- 发布（4.8） ----
+
+SUMMARY_KEYS = ('void_mean', 'void_p95', 'latency_p50_ms', 'latency_p95_ms', 'latency_p99_ms', 'censored_fraction',
+                'mspt_mean', 'mspt_max', 'cpu_cores_mean', 'initial_load_s')
+RUN_COLUMNS = ('slot', 'kind', 'name', 'speed_name', 'speed', 'cpus', 'repeat', 'order', 'attempt', *SUMMARY_KEYS,
+               'available_processors', 'scan_ms_total', 'scan_every_ticks', 'concurrent')
+ARTIFACTS = ('layer2-runs.csv', 'layer2-summary.csv', 'layer2.csv', 'layer2-chunks.csv', 'selfcheck.json', 'baseline-layer2.md')
+STATUS = {'passed': '通过', 'failed': '没过', 'reference': '参考（有并发，不算通过）'}
+
+
+def _csv(path, columns, rows):
+    import csv
+    tmp = Path(str(path) + '.tmp')
+    with tmp.open('w', newline='') as f:
+        w = csv.DictWriter(f, columns)
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r.get(k) for k in columns})
+    tmp.replace(path)
+
+
+def _merge_csv(results, name, out):
+    """每轮 flight 目录里的同名 CSV 合成一张，最前面加一列 slot。"""
+    import csv
+    columns, merged = None, []
+    for r in results:
+        with (Path(r['flight_dir']) / name).open() as f:
+            reader = csv.DictReader(f)
+            if columns is None:
+                columns = ['slot', *reader.fieldnames]
+            elif ['slot', *reader.fieldnames] != columns:
+                raise ValueError(f"{r['slot']} 的 {name} 列不一样")
+            merged.extend({'slot': r['slot'], **row} for row in reader)
+    _csv(out / name, columns, merged)
+
+
+def _fmt(v, digits=3):
+    if v is None or v == '':
+        return '—'
+    if v == 'inf' or (isinstance(v, float) and math.isinf(v)):
+        return '∞（有删失）'
+    if isinstance(v, float):
+        return f'{v:.{digits}g}'
+    return str(v)
+
+
+def report(p, result, ordered, summary, verdict) -> str:
+    smoke = [r for r in ordered if r['kind'] == 'smoke']
+    conc = [r for r in ordered if r.get('concurrent')]
+    lines = [
+        '# 第 2 层基线：飞行时的虚空率和就绪延迟（冒烟）',
+        '',
+        '**冒烟，在这台 EPYC 上限核测得，部署机器 N100 上要重测。** 降级（调度 11-08）：每种速度 1～2 次，只能看量级；'
+        '部署机器上把 `bench/layer2-protocol.json` 的 repeats 改成 5、rerun_on_interference 改成 true 跑满。',
+        '',
+        f"campaign `{result['campaign']}`。速度 {', '.join(f'{k} {v} 格/秒' for k, v in p['speeds'].items())}；"
+        f"视距 {p['view_distance']}，模拟距离 {p['simulation_distance']}；每轮 {p['seconds']} 秒，{p['mode']} 模式，"
+        f"高度 {p['y']}，沿 +x；seed {p['seed']}，每轮全新世界。定义见 docs/step4-plan.md 第 2 节。",
+        '',
+        '## 指标自检（计划 5.3，判据在看数据之前定）',
+        '',
+        '| 自检 | 判据 | 虚空率均值 | 就绪 p95（毫秒） | 结论 |',
+        '| --- | --- | --- | --- | --- |',
+        f"| 预生成后再飞（2 核鞘翅） | 虚空率 < {p['selfcheck_criteria']['pregen_void_mean_lt']:.0%}，p95 < {p['selfcheck_criteria']['pregen_latency_p95_ms_lt']} 毫秒 "
+        f"| {_fmt(verdict['pregen']['void_mean'])} | {_fmt(verdict['pregen']['latency_p95_ms'])} | {STATUS[verdict['pregen']['status']]} |",
+        f"| 1 核鞘翅、不预生成 | 虚空率比上一条高至少 {p['selfcheck_criteria']['one_core_void_mean_above_pregen'] * 100:.0f} 个百分点 "
+        f"| {_fmt(verdict['one_core']['void_mean'])} | {_fmt(verdict['one_core']['latency_p95_ms'])} | {STATUS[verdict['one_core']['status']]} |",
+        '',
+    ]
+    if any(v['status'] == 'reference' for v in verdict.values()):
+        lines += ['自检那轮有并发，结论只算参考，要在安静时补一轮（调度 11-08）。', '']
+    lines += ['## 每轮', '',
+              '| 槽位 | 核数 | availableProcessors | 虚空率均值 | 虚空率 p95 | 就绪 p50 / p95 / p99（毫秒） | 删失比例 | MSPT 均值 / 最大 | 服务器 CPU（核） | 并发 |',
+              '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+    for r in ordered:
+        lines.append(f"| {r['slot']} | {r['cpus']} | {r.get('available_processors')} | {_fmt(r['void_mean'])} | {_fmt(r['void_p95'])} "
+                     f"| {_fmt(r['latency_p50_ms'])} / {_fmt(r['latency_p95_ms'])} / {_fmt(r['latency_p99_ms'])} "
+                     f"| {_fmt(r['censored_fraction'])} | {_fmt(r['mspt_mean'])} / {_fmt(r['mspt_max'])} | {_fmt(r['cpu_cores_mean'])} "
+                     f"| {'; '.join(r.get('concurrent') or []) or '无'} |")
+    lines += ['', '## 每个配置（只算冒烟矩阵，不含自检）', '',
+              '1 次的配置不报波动；2 次的报两次之差。差值能不能算显著（> 5 次标准差的 2 倍，计划 5.2）要等部署机器上的完整矩阵。', '',
+              '| 速度 | 核数 | 次数 | 虚空率均值 | 两次之差 | 就绪 p95 均值（毫秒） | 两次之差 |', '| --- | --- | --- | --- | --- | --- | --- |']
+    for s in summary:
+        lines.append(f"| {s['speed_name']} | {s['cpus']} | {s['n']} | {_fmt(s['void_mean_mean'])} | {_fmt(s['void_mean_diff'])} "
+                     f"| {_fmt(s['latency_p95_ms_mean'])} | {_fmt(s['latency_p95_ms_diff'])} |")
+    every = ', '.join(sorted({str(r.get('scan_every_ticks')) for r in ordered}))
+    # 每 tick 扫视野的平均耗时占 MSPT 均值的比例（扫描本身不计进 MSPT，但占服务器时间）
+    share = [r['scan_ms_total'] / r['ticks_total'] / r['mspt_mean'] for r in ordered
+             if r.get('ticks_total') and r.get('mspt_mean')]
+    lines += ['', '## 背景和局限', '',
+              '- 1.21.1 的后台生成线程数是 `clamp(可用核数 − 1, 1, 上限)`：1 核和 2 核都只有 1 个生成线程，4 核有 3 个（第 1 步发现，计划 5.5）。'
+              '2 核基线上原版生成只用到大约一个核；第 6 步解读 donor 的效果时要记住这一点。每轮容器里实际的 availableProcessors 见上表。',
+              '- 就绪是服务器那一侧的：`ChunkHolder.getChunkToSend()` 不为空（sendSync 完成且到 BLOCK_TICKING）。假玩家没有真客户端，不算网络和渲染。',
+              f"- 扫视野的间隔 scan_every_ticks = {every}。扫描耗时不计进 MSPT，但占服务器时间："
+              + (f"每 tick 平均扫描耗时是 MSPT 均值的 {min(share):.1%}～{max(share):.1%}。" if share else "这批结果没有 tick 数，算不出占比。")
+              + "计划 5.1 要求 < 2%，超过就改成每 2 tick 扫一次再测。",
+              f"- 就绪延迟只算起飞后进入视野、离结束超过 {p['tail_exclude_ms'] // 1000} 秒的 chunk；删失（出视野时还没就绪）按无穷大算，分位数是保守的上界。",
+              '- 冒烟测量不要求机器安静（降级）。']
+    if conc:
+        lines.append('- **有并发**的轮次（飞行期间别的容器有生命周期事件），照样保留：' +
+                     '；'.join(f"{r['slot']}：{', '.join(r['concurrent'])}" for r in conc) + '。是否重跑由读者决定。')
+    else:
+        lines.append('- 所有轮次飞行期间都没有别的容器的生命周期事件。')
+    return '\n'.join(lines) + '\n'
+
+
+def publish(root, p, result, out) -> dict:
+    """全部槽位通过、自检没有"没过"时，把结果写进 out（analysis/results），返回并写出 layer2-smoke.json。"""
+    from bench.models import digest
+    root, out = Path(root), Path(out)
+    if result['failed']:
+        raise ValueError(f"有 {result['failed']} 个槽位失败，不发布")
+    res = result['results']
+    verdict = selfcheck_verdict({s: res[f'selfcheck-{s}'] for s in SELFCHECKS}, p['selfcheck_criteria'])
+    if any(v['status'] == 'failed' for v in verdict.values()):
+        raise ValueError('自检没过：先重跑那一条再下结论（调度 11-08），不发布')
+    ordered = [res[s['slot']] for s in slots(p)]
+    summary = config_summary([r for r in ordered if r['kind'] == 'smoke'], SUMMARY_KEYS)
+    out.mkdir(parents=True, exist_ok=True)
+    _csv(out / 'layer2-runs.csv', RUN_COLUMNS, [{**r, 'concurrent': '; '.join(r.get('concurrent') or [])} for r in ordered])
+    _csv(out / 'layer2-summary.csv', list(summary[0]), summary)
+    _merge_csv(ordered, 'layer2.csv', out)
+    _merge_csv(ordered, 'layer2-chunks.csv', out)
+    _write(out / 'selfcheck.json', verdict)
+    (out / 'baseline-layer2.md').write_text(report(p, result, ordered, summary, verdict))
+    state = dict(smoke=True, campaign=root.name, protocol_digest=digest(root / 'protocol.json'),
+                 published_utc=_now(), artifacts={name: digest(out / name) for name in ARTIFACTS})
+    _write(out / 'layer2-smoke.json', state)
+    return state
