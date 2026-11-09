@@ -17,7 +17,7 @@ import java.util.Properties;
  *   <li>enabled：帮服务器生成地形（默认关）。打开要先同意（第一次打开时弹出同意界面）。
  *   <li>threads：worker 用几个生成线程（1～{@link #MAX_THREADS}，默认 2）。worker 运行中改不了，下次启动生效。
  *   <li>memoryMb：worker 最多用多少内存（{@link #MIN_MEMORY_MB}～8192，默认 2048）。
- *   <li>frameTargetMs：帧时间目标（默认 50 ms，就是 20 帧/秒），p99 超过它 2 秒就暂停 worker。
+ *   <li>frameTargetMs：帧时间目标（默认 50 ms，就是 20 帧/秒），最近 10 秒帧时间的中位数超过它 5 秒就暂停 worker。
  * </ul>
  */
 public record ClientSettings(boolean enabled, int threads, int memoryMb, int frameTargetMs) {

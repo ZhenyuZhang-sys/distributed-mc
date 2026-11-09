@@ -40,7 +40,7 @@ public final class SettingsScreen extends Screen {
         addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " MB"))
                 .withValues(List.of(1024, 2048, 3072, 4096, 6144, 8192)).withInitialValue(settings().memoryMb())
                 .create(x, y + 52, 200, 20, Component.literal("内存上限"), (b, v) -> save(settings().withMemoryMb(v))));
-        // 帧时间目标：最近 5 秒 p99 帧时间超过它 2 秒就暂停 worker，低于它的 0.8 持续 5 秒恢复。改了马上生效
+        // 帧时间目标：最近 10 秒帧时间的中位数超过它 5 秒就暂停 worker，低于它的 0.8 持续 5 秒恢复。改了马上生效
         addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " ms（恢复线 " + Math.round(v * 0.8) + " ms）"))
                 .withValues(ClientSettings.FRAME_TARGETS).withInitialValue(nearest(settings().frameTargetMs()))
                 .create(x, y + 78, 200, 20, Component.literal("帧时间目标"), (b, v) -> save(settings().withFrameTargetMs(v))));
