@@ -31,6 +31,15 @@ final class OneAtATime<T> {
         return pending.size();
     }
 
+    /** 排着的（还没开始的）项，按先后。 */
+    synchronized java.util.List<T> pendingValues() {
+        java.util.List<T> out = new java.util.ArrayList<>();
+        for (Item<T> i : pending) {
+            out.add(i.value());
+        }
+        return out;
+    }
+
     void submit(T value, Job<T> job) {
         synchronized (this) {
             pending.add(new Item<>(value, job));

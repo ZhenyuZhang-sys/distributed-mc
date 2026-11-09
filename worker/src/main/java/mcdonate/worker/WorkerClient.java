@@ -179,7 +179,11 @@ final class WorkerClient {
         }
         currentTask = t.taskId();
         received.put(t.taskId(), System.currentTimeMillis());
-        // 一次只生成一个：主线程等 chunk 时会执行排着的任务，直接 server.execute 会让下一个 tile 嵌套在上一个里面跑（OneAtATime）
+        // 11-09：收到就把它的 chunk 排上生成（加票、不等，很快），前一个 tile 还在导出时它已经在生成线程池里了。
+        // 开 throughput 时 coordinator 一次给几个，这样几个 tile 同时做；导出（等、序列化）还是一个一个来
+        TilePos tile = new TilePos(t.tx(), t.tz());
+        server.execute(() -> TileExporter.prefetch(server.overworld(), tile));
+        // 一次只导出一个：主线程等 chunk 时会执行排着的任务，直接 server.execute 会让下一个 tile 嵌套在上一个里面跑（OneAtATime）
         generating.submit(t, this::generate);
     }
 
@@ -193,9 +197,16 @@ final class WorkerClient {
         Long got = received.remove(t.taskId());
         if (cancelled.remove(t.taskId())) {
             LOG.info("任务 {} 还没开始就被撤掉，不做", t.taskId());
+            TileExporter.release(server.overworld(), new TilePos(t.tx(), t.tz())); // 收到时加的票去掉
             return;
         }
         currentTask = t.taskId();
+        // 排在后面的任务也先排上生成（收到时 server.execute 的那次可能还在服务器队列里没轮到）：这个 tile 等的时候它们一起做
+        for (Task next : generating.pendingValues()) {
+            if (!cancelled.contains(next.taskId())) {
+                TileExporter.prefetch(server.overworld(), new TilePos(next.tx(), next.tz()));
+            }
+        }
         Result r;
         int chunkCount = 0;
         try {
