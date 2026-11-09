@@ -317,8 +317,9 @@ def test_demo_page_smoke(web):
 class FakeFly:
     """代替 bench.layer2.fly：记下飞的时候服务器是什么状态，写出和真的一样的 summary.json 和 raw/done.json。"""
 
-    def __init__(self, runner, donor_events=50, sync_a=0, restart_in_b=False):
+    def __init__(self, runner, donor_events=50, sync_a=0, restart_in_b=False, resumed_b=0):
         self.runner, self.donor_events, self.sync_a, self.restart_in_b = runner, donor_events, sync_a, restart_in_b
+        self.resumed_b = resumed_b
         self.calls = []
 
     def __call__(self, server, run, player, start, speed, seconds, out_dir, **kw):
@@ -336,7 +337,8 @@ class FakeFly:
         (out_dir / 'summary.json').write_text(json.dumps(dict(stall_s=20.0 if b else 40.0, stall_fraction=.17 if b else .33,
                                                               distance_ratio=.83 if b else .67, void_mean=.5, latency_p95_ms='inf',
                                                               mspt_mean=4.0, mspt_max=90.0, cpu_cores_mean=1.2,
-                                                              sync_loads=0 if b else self.sync_a)))
+                                                              sync_loads=0 if b else self.sync_a,
+                                                              full_resumed=self.resumed_b if b else 0)))
         return out_dir
 
 
@@ -461,3 +463,12 @@ def test_donor_off_only_stops_services_that_exist(web):
     code, r = post(web['base'], '/api/control', dict(action='donor_off'))
     assert code == 200, r
     assert ('compose', 'stop', 'worker', 'worker2') in runner.calls
+
+
+def test_ab_says_when_coordinator_does_not_report_donor_events(tmp_path):
+    # 11-09 k2 冒烟：main 里的 coordinator 还不报 DONOR 事件（fish 分支才有），B 有 107 个导入后接着做完的 chunk 却 0 条 donor 事件。
+    # 照样判无效（判据不变），但原因要写清楚是没上报、不是 donor 没干活
+    runner, ctl, flyer, fly = ab_rig(tmp_path, donor_events=0, resumed_b=107)
+    res = demo_ab.run_ab(runner, ctl, flyer, tmp_path / 'artifacts', events=lambda a, b: [])
+    assert not res['B']['valid']
+    assert any('107' in r and 'coordinator' in r and '没报' in r for r in res['B']['invalid']), res['B']['invalid']
