@@ -158,7 +158,10 @@ public final class OverlayClient {
             ClientPlayNetworking.send(new OverlaySubscribe(settings.overlay(), settings.hud()));
             subscribedThisConnection = true;
         }
-        if (settings.hud() && ++ticks % 20 == 0 && link != null && link.running()) {
+        if (++ticks % 100 == 0) {   // 每 5 秒：来源表超过 2 万个就删掉离玩家 64 圈以外的
+            SOURCES.prune(client.player.chunkPosition().x, client.player.chunkPosition().z, 64, 20_000);
+        }
+        if (settings.hud() && ticks % 20 == 0 && link != null && link.running()) {
             link.send("STATUS");
         }
         if (link != null && !link.running()) {
@@ -184,6 +187,14 @@ public final class OverlayClient {
     }
 
     private static void drawMap(GuiGraphics g, Minecraft mc) {
+        if (mc.level != null && mc.level.dimension() != net.minecraft.world.level.Level.OVERWORLD) {
+            // 来源只记主世界（codex-audit A14）：别的维度不画，免得把主世界同坐标的颜色画上来；回主世界时服务器重发整片快照
+            if (SOURCES.size() > 0) {
+                SOURCES.clear();
+            }
+            g.drawString(mc.font, "mc-donate：这个维度不显示来源", g.guiWidth() - 170, 6, 0xFFCCCCCC, true);
+            return;
+        }
         int cells = 2 * MAP_RADIUS + 1, cell = Math.max(1, MAP_PX / cells), size = cell * cells;
         int x0 = g.guiWidth() - size - 6, y0 = 6;
         int pcx = mc.player.chunkPosition().x, pcz = mc.player.chunkPosition().z;

@@ -95,6 +95,15 @@ public final class ChunkSources {
         return colors.long2IntEntrySet();
     }
 
+    /** 超过 max 个时，删掉离 (cx, cz) 超过 keep 圈的（小地图只画附近，飞一小时约 7 万个 chunk，不能只增不减）。 */
+    public void prune(int cx, int cz, int keep, int max) {
+        if (colors.size() <= max) {
+            return;
+        }
+        colors.keySet().removeIf(k -> Math.abs((int) (k >> 32) - cx) > keep || Math.abs((int) (long) k - cz) > keep);
+        version++;
+    }
+
     /** 关掉 overlay、退出世界：都清掉。 */
     public void clear() {
         colors.clear();

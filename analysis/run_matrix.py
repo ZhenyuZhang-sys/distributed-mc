@@ -29,7 +29,8 @@ CHEATS = ('none', 'ore', 'flatten', 'random', 'flat', 'collude')
 
 # 每种实验：哪些键是维度（配置里给列表，逐个展开）、哪些是固定参数、哪些必须有。
 SCHEMA = {
-    'flight': dict(dims={'donors', 'speed', 'server_cpus', 'latency_ms', 'features', 'bots', 'tile_size', 'lookahead'},
+    'flight': dict(dims={'donors', 'speed', 'server_cpus', 'latency_ms', 'features', 'bots', 'tile_size', 'lookahead', 'scenario',
+                         'donor_profile', 'speed_bps', 'cache_radius', 'view_distance'},
                    fixed={'duration_s', 'jitter_ms', 'repeats', 'estimate_minutes', 'group'}, required={'donors', 'speed', 'server_cpus', 'duration_s'}),
     'capacity': dict(dims={'donors', 'features', 'server_cpus'},
                      fixed={'repeats', 'estimate_minutes', 'max_bots'}, required={'donors', 'server_cpus'}),
@@ -37,7 +38,7 @@ SCHEMA = {
                    fixed={'duration_s', 'repeats', 'estimate_minutes'}, required={'cheat', 'duration_s'}),
 }
 TOP = {'name', 'seed', 'repeats', 'experiments', 'server_cpuset', 'donor_cpuset', 'rerun_on_interference', 'frametime_import', 'note',
-       'order', 'donor_env'}
+       'order', 'donor_env', 'donor_profiles', 'server_env'}
 ORDERS = ('shuffle', 'paired')
 # 每轮估计分钟数的默认值（第 6 节的估计）：起服、预热、停服归档的开销 + 实验本身。
 OVERHEAD_MIN = {'flight': 4, 'verify': 5}
@@ -56,6 +57,11 @@ def _check_value(exp, key, v):
         'cheat': lambda x: x in CHEATS,
         'check_rate': lambda x: type(x) in (int, float) and 0 < x <= 1,
         'lookahead': lambda x: type(x) is int and 1 <= x <= 64,
+        'scenario': lambda x: x in ('straight', 'turning', 'out_and_back', 'mixed', 'two_players', 'firework', 'firework_turning'),
+        'speed_bps': lambda x: type(x) in (int, float) and 1 <= x <= 200,
+        'cache_radius': lambda x: type(x) is int and 0 <= x <= 64,
+        'view_distance': lambda x: type(x) is int and 2 <= x <= 32,
+        'donor_profile': lambda x: type(x) is str and x != '',
     }[key]
     if not ok(v):
         raise ValueError(f'{exp}.{key} 的值不合法：{v!r}')
@@ -75,6 +81,12 @@ def validate(config: dict) -> dict:
         raise ValueError(f'order 只能是 {list(ORDERS)}')
     if not all(isinstance(k, str) and isinstance(v, str) for k, v in config.get('donor_env', {}).items()):
         raise ValueError('donor_env 是字符串到字符串的映射（给 compose 的环境变量）')
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in config.get('server_env', {}).items()):
+        raise ValueError('server_env 是字符串到字符串的映射（换世界时给服务器容器的环境变量）')
+    for name, prof in config.get('donor_profiles', {}).items():
+        if not (isinstance(prof, dict) and type(prof.get('donors')) is int and 1 <= prof['donors'] <= 3
+                and all(isinstance(k, str) and isinstance(v, str) for k, v in prof.get('env', {}).items())):
+            raise ValueError(f'donor_profiles.{name} 要有 donors（1～3）和 env（字符串映射）')
     for exp, grids in config['experiments'].items():
         if exp not in SCHEMA:
             raise ValueError(f'不认识的实验：{exp}')
@@ -120,6 +132,7 @@ def _normalize(exp: str, params: dict) -> dict:
         p.pop('tile_size', None)
         p.pop('jitter_ms', None)
         p.pop('lookahead', None)
+        p.pop('donor_profile', None)
     return p
 
 
@@ -287,7 +300,9 @@ def run_real(config: dict, root: Path) -> dict:
     poller = Poller(runner, runs_dir=TEST_DATA / 'bench-runs')
     flyer = Flyer(runner, poller, ROOT / 'artifacts' / 'demo')
     controller = Controller(runner, poller, flyer)
-    result = run(config, {'flight': make_flight_driver(runner, controller, flyer, donor_env=config.get('donor_env'))}, root)
+    result = run(config, {'flight': make_flight_driver(runner, controller, flyer, donor_env=config.get('donor_env'),
+                                                       donor_profiles=config.get('donor_profiles'),
+                                                       server_env=config.get('server_env'))}, root)
     campaign = Path(result['campaign'])
     write_tables(campaign)
     result['figures'] = demo_figures.draw_all(campaign, campaign / 'figures')

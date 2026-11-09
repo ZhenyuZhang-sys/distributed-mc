@@ -43,4 +43,20 @@ public class BenchGameTest implements FabricGameTest {
             helper.succeed();
         });
     }
+
+    /** 真实场景要按用户正式服的视距测（调度 11-09）：/bench viewdistance 改服务器视距（和 server.properties 的 view-distance 一样）。 */
+    @GameTest(template = EMPTY_STRUCTURE)
+    public void viewDistanceCommand(GameTestHelper helper) {
+        net.minecraft.server.players.PlayerList list = helper.getLevel().getServer().getPlayerList();
+        int before = list.getViewDistance();
+        try {
+            FlightGameTest.check(FlightGameTest.run(helper, "bench viewdistance 16") == 16, "bench viewdistance 失败");
+            FlightGameTest.check(list.getViewDistance() == 16, "视距没改：" + list.getViewDistance());
+            FlightGameTest.check(FlightGameTest.run(helper, "bench viewdistance 99") != 16 && list.getViewDistance() == 16,
+                    "超出 2～32 应该拒绝");
+        } finally {
+            list.setViewDistance(before);
+        }
+        helper.succeed();
+    }
 }

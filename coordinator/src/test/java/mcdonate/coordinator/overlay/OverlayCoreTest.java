@@ -154,4 +154,52 @@ class OverlayCoreTest {
         c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2)));
         assertEquals(3, c.stateSize(), "没超过上限不删");
     }
+
+    @Test
+    void everyPacketCarriesTheDonorsItReferences() {
+        // codex-audit A12：客户端已知 A，下一包同时有 A 和第一次出现的 B，原来只附 B 的表项，valid 拒绝整包，B 也不再补发。
+        // 现在每包都附上它引用的所有 donor（几十字节），每包单独都能解开
+        OverlayCore c = new OverlayCore(id -> Optional.of(new OverlayCore.Name("player:" + id, "P" + id)), () -> 2);
+        c.subscribe(ALICE, new OverlaySubscribe(true, false));
+        c.onEvent(0, 0, Provenance.Kind.DONOR, 1);
+        List<ProvenanceUpdate> a = c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2))).get(ALICE);
+        assertEquals(List.of("P1"), a.get(0).donors().stream().map(ProvenanceUpdate.Donor::name).toList());
+        c.onEvent(1, 0, Provenance.Kind.DONOR, 1);
+        c.onEvent(2, 0, Provenance.Kind.DONOR, 2);
+        List<ProvenanceUpdate> ab = c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2))).get(ALICE);
+        assertEquals(Set.of("P1", "P2"), ab.get(0).donors().stream().map(ProvenanceUpdate.Donor::name).collect(Collectors.toSet()));
+        assertTrue(ab.get(0).valid(), "A 加 B 的增量要能解开");
+        c.onEvent(-1, 0, Provenance.Kind.DONOR, 2);
+        List<ProvenanceUpdate> b = c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2))).get(ALICE);
+        assertEquals(List.of("P2"), b.get(0).donors().stream().map(ProvenanceUpdate.Donor::name).toList());
+        assertTrue(b.get(0).valid());
+    }
+
+    @Test
+    void reopeningOverlayWithHudOnStillHasDonorNames() {
+        // codex-audit A13：hud 一直开着，overlay 关再开：快照里要带 donor 表（客户端关 overlay 时清掉了）
+        core.subscribe(ALICE, new OverlaySubscribe(true, true));
+        core.onEvent(0, 0, Provenance.Kind.DONOR, 7);
+        tick(ALICE, 0, 0);
+        core.subscribe(ALICE, new OverlaySubscribe(false, true));
+        tick(ALICE, 0, 0);
+        core.subscribe(ALICE, new OverlaySubscribe(true, true));
+        List<ProvenanceUpdate> again = tick(ALICE, 0, 0);
+        assertTrue(again.get(0).full());
+        assertEquals(List.of("Alice"), again.get(0).donors().stream().map(ProvenanceUpdate.Donor::name).toList());
+    }
+
+    @Test
+    void awayInAnotherDimensionThenBackGetsAFullSnapshot() {
+        // codex-audit A14：来源只记主世界。玩家去下界时不发；回来以后从整片快照重来
+        core.subscribe(ALICE, new OverlaySubscribe(true, false));
+        core.onEvent(0, 0, Provenance.Kind.VANILLA, -1);
+        assertTrue(tick(ALICE, 0, 0).get(0).full());
+        core.away(ALICE);
+        core.onEvent(1, 0, Provenance.Kind.VANILLA, -1);
+        assertTrue(core.tick(List.of()).isEmpty(), "不在主世界：不在 views 里，不发");
+        List<ProvenanceUpdate> back = tick(ALICE, 0, 0);
+        assertTrue(back.get(0).full(), "回到主世界：整片快照");
+        assertEquals(Set.of(key(0, 0), key(1, 0)), chunks(back));
+    }
 }

@@ -94,6 +94,22 @@ class OverlayClientLogicTest {
     }
 
     @Test
+    void tableIsCappedByDroppingChunksFarFromThePlayer() {
+        // 飞一小时约 7 万个 chunk：超过上限时删掉离玩家远的（小地图只画附近 10 圈），不再只增不减
+        ChunkSources s = new ChunkSources();
+        java.util.List<Entry> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 60; i++) many.add(new Entry(i, 0, Source.SERVER, -1));
+        s.apply(new ProvenanceUpdate(true, 30, 0, List.of(), many, null));
+        assertEquals(60, s.size());
+        s.prune(0, 0, 10, 100);          // 没超过上限：不删
+        assertEquals(60, s.size());
+        s.prune(0, 0, 10, 50);           // 超过上限 50：离 (0,0) 超过 10 圈的删掉
+        assertEquals(11, s.size());
+        assertEquals(-1, s.color(30, 0));
+        assertEquals(DonorColors.of(Source.SERVER), s.color(10, 0));
+    }
+
+    @Test
     void summaryKeptForHud() {
         ChunkSources s = new ChunkSources();
         s.apply(new ProvenanceUpdate(false, 0, 0, List.of(), List.of(), new Summary(3, 200, 50)));

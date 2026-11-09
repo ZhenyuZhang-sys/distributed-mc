@@ -43,6 +43,30 @@ class Runner:
                         return line.split('=', 1)[1].strip()
         raise RuntimeError('找不到服务器的核（MC_CPUSET）')
 
+    def local_env(self, key):
+        """这个槽位 docker/.env.local 里的一项（没有是 None）。"""
+        p = SCRIPTS.parent / 'docker' / '.env.local'
+        if p.exists():
+            for line in p.read_text().splitlines():
+                if line.startswith(key + '='):
+                    return line.split('=', 1)[1].strip()
+        return None
+
+    def worker_cpu(self, services) -> dict:
+        """每个 donor 容器的 (time_ns, usage_usec)，飞前飞后各取一次算核数（宿主机 cgroup，同 bench/metrics.py）。"""
+        from bench.metrics import Cgroup
+        out = {}
+        for svc in services:
+            cid = compose('ps', '-q', svc).strip()
+            if cid:
+                s = Cgroup(cid, run).sample()
+                out[svc] = (s['time_ns'], s['usage_usec'])
+        return out
+
+    def server_log_since(self, t: float) -> list:
+        """服务器 t（unix 秒）以后的日志行（数 Can't keep up、moved too quickly 用）。"""
+        return compose('logs', '--since', str(int(t)), '--no-log-prefix', 'minecraft', timeout=120).splitlines()
+
     def services(self) -> list:
         """compose 里定义了的服务（不管起没起）。"""
         return compose('config', '--services').split()

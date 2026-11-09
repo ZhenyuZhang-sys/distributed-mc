@@ -72,10 +72,33 @@ public final class FlightRecorder {
     private double prevX, prevZ;
     private long lastEndNanos;
     private String stoppedReason;
+    // 路线飞行（调度 11-09 真实场景）：若干段，flight 只是总时长和平均速度的摘要
+    private Route route;
+    private Flight[] legs;
 
     /** 跟踪真人玩家：不移动、不改能力，记录视野、卡住（{@link RealStall} 的近似）、来源事件，文件和飞行一样。 */
     static FlightRecorder record(String run, ServerPlayer player, int viewDistance, FlightOutput out) {
         return new FlightRecorder(run, player, null, viewDistance, out);
+    }
+
+    /** 路线飞行：flight 是摘要（起点、高度、总时长、平均速度，墙钟模式），每段各自按客户端的方式前进。 */
+    static FlightRecorder route(String run, ServerPlayer player, Route route, int viewDistance, FlightOutput out) {
+        double secs = route.seconds();
+        Flight summary = new Flight(player.getX(), player.getZ(), player.getY(), 1, 0, Math.max(1e-6, route.idealDistance() / secs), secs,
+                Flight.Mode.WALL);
+        FlightRecorder r = new FlightRecorder(run, player, summary, viewDistance, out, route);
+        return r;
+    }
+
+    FlightRecorder(String run, ServerPlayer player, Flight flight, int viewDistance, FlightOutput out, Route route) {
+        this(run, player, flight, viewDistance, out);
+        this.route = route;
+        this.legs = new Flight[route.segments().size()];
+        for (int i = 0; i < legs.length; i++) {
+            Route.Segment s = route.segments().get(i);
+            legs[i] = s.speed() > 0 ? new Flight(0, 0, flight.y(), s.dirX(), s.dirZ(), s.speed(), s.seconds(), Flight.Mode.WALL) : null;
+        }
+        out.runJson(config().toString());   // 带上路线再写一遍 run.json
     }
 
     FlightRecorder(String run, ServerPlayer player, Flight flight, int viewDistance, FlightOutput out) {
@@ -148,7 +171,12 @@ public final class FlightRecorder {
         long target = flight.mode() == Flight.Mode.WALL ? Math.min(now - t0, (long) (flight.seconds() * 1e9))
                 : Math.min(ticks + 1, (long) Math.ceil(flight.seconds() * 20)) * 50_000_000L;
         double dt = Math.max(0, target - movedUntil) / 1e9;
+        double from = movedUntil / 1e9;
         movedUntil = Math.max(movedUntil, target);
+        if (route != null) {
+            routeTick(p, from, from + dt);
+            return;
+        }
         Flight.Step step = flight.advance(posX, posZ, dt, this::ready);
         stalledThisTick = step.stalled();
         if (step.stalled()) {
@@ -159,6 +187,30 @@ public final class FlightRecorder {
         posX = step.x();
         posZ = step.z();
         distance += step.moved();
+        place(p, posX, posZ);
+    }
+
+    /** 路线飞行的一 tick：按段切开，每截像客户端一样前进；停下的段不算卡住，被挡住的截里没走的那部分时间算卡住。 */
+    private void routeTick(ServerPlayer p, double from, double to) {
+        stalledThisTick = false;
+        for (Route.Piece piece : route.pieces(from, to)) {
+            Flight leg = legs[piece.index()];
+            if (leg == null) {
+                continue;   // 停在原地的一段
+            }
+            Flight.Step step = leg.advance(posX, posZ, piece.seconds(), this::ready);
+            if (step.stalled()) {
+                stalledThisTick = true;
+                double want = leg.blocksPerSecond() * piece.seconds();
+                stallNanos += want > 0 ? piece.seconds() * 1e9 * (1 - step.moved() / want) : 0;
+            }
+            posX = step.x();
+            posZ = step.z();
+            distance += step.moved();
+        }
+        if (stalledThisTick) {
+            stalledTicks++;
+        }
         place(p, posX, posZ);
     }
 
@@ -232,7 +284,8 @@ public final class FlightRecorder {
         done.addProperty("t0_nanotime", t0);
         // 像客户端一样前进（11-09）：实际距离、理想距离、卡在没就绪 chunk 前面的 tick 数和时长
         done.addProperty("distance", distance);
-        done.addProperty("ideal_distance", flight != null ? (Number) (flight.blocksPerSecond() * flight.seconds()) : null);
+        done.addProperty("ideal_distance", route != null ? (Number) route.idealDistance()
+                : flight != null ? (Number) (flight.blocksPerSecond() * flight.seconds()) : null);
         if (flight == null) {
             done.addProperty("seconds", endMs / 1000.0);   // 跟踪了多久（compose 当飞行时长用）
             done.addProperty("stopped_reason", stoppedReason);
@@ -283,7 +336,8 @@ public final class FlightRecorder {
         o.addProperty("run", run);
         o.addProperty("player", playerName);
         o.addProperty("uuid", playerId.toString());
-        o.addProperty("mode", flight != null ? flight.mode().name().toLowerCase(java.util.Locale.ROOT) : "record");
+        o.addProperty("mode", route != null ? "route" : flight != null ? flight.mode().name().toLowerCase(java.util.Locale.ROOT) : "record");
+        o.addProperty("route", route != null ? route.spec() : null);
         o.addProperty("speed", flight != null ? (Number) flight.blocksPerSecond() : null);
         o.addProperty("seconds", flight != null ? (Number) flight.seconds() : null);
         o.addProperty("y", startY);

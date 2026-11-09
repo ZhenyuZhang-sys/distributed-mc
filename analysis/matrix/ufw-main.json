@@ -1,0 +1,222 @@
+{
+ "name": "ufw-main",
+ "seed": 424242,
+ "repeats": 1,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  },
+  "1x4": {
+   "donors": 1,
+   "env": {}
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G"
+ },
+ "note": "调度 11-09，用户同款：服务器 2 核、容器 3G、-Xms512M -Xmx2G、视距 10 / 模拟距离 6（用户正式服；用户的容器没有 cpuset、在所有核上浮动，这里绑 2 个核）。烟花鞘翅 33.5 格/秒从缓存区（半径 16 个 chunk）飞出去，直线和转弯 × {原版、1 个 8 核 donor、1 个 4 核 donor}；速度扫描 10～40 格/秒（直线）。指标加前方已就绪距离、视距圈就绪率。开关照部署默认（deadline + throughput、提前量 16）。粗测，每轮 1 次。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "u-fw",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 90,
+    "cache_radius": [
+     16
+    ]
+   },
+   {
+    "group": "u-fw",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 90,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ]
+   },
+   {
+    "group": "u-fw",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 90,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x4"
+    ],
+    "lookahead": [
+     16
+    ]
+   },
+   {
+    "group": "u-fwt",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ]
+   },
+   {
+    "group": "u-fwt",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ]
+   },
+   {
+    "group": "u-fwt",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x4"
+    ],
+    "lookahead": [
+     16
+    ]
+   }
+  ]
+ }
+}
