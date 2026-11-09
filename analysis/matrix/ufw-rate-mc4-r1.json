@@ -1,0 +1,70 @@
+{
+ "name": "ufw-rate-mc4-r1",
+ "seed": 424242,
+ "repeats": 1,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09：fish-rate 0dfd6c9（速率按忙碌时间算、空名额时不剪、收到结果立刻补派）对 e7fed5f，maxConcurrency 4，第 1 轮。k2 同槽位按轮交替 e7fed5f mc4 / 0dfd6c9 mc4 / 0dfd6c9 mc8，每轮切 checkout 重新构建。1×8 donor，2 核，预算 2000，直线 33.5，L16 C6。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "rate-r1",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "max_concurrency": [
+     4
+    ]
+   }
+  ]
+ }
+}
