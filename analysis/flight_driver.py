@@ -83,7 +83,7 @@ def _status_counts(controller) -> dict:
 
 
 def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_START, seed=424242, donor_env=None,
-                       donor_profiles=None):
+                       donor_profiles=None, server_env=None):
     """donor_env：起 donor 时给 compose 的环境变量（演示矩阵里 worker3 提到 4 核）。
     donor_profiles：真实场景矩阵（调度 11-09）的 donor 配置，名字 → {donors: 个数, env: compose 环境变量}，比如 1x8（1 个 8 核的强 donor）、3x4。"""
     events = events or ab._docker_events
@@ -110,10 +110,13 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         t0 = time.time()
         name = f"mx{run_cell_id(cell)}"
         lookahead = p.get('lookahead')
-        world_env = {'MC_CPUS': str(cpus), 'MC_CPUSET': cpuset}
+        # server_env：服务器容器的其他设置（调度 11-09"用户同款"：容器 3G、-Xms512M -Xmx2G）
+        world_env = {**(server_env or {}), 'MC_CPUS': str(cpus), 'MC_CPUSET': cpuset}
         if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）
             world_env['MCD_JVM_EXTRA'] = f'-Dmcdonate.demandLookahead={lookahead}'
         runner.script('new_world.sh', name, str(seed), env=world_env, timeout=900)
+        if p.get('view_distance'):   # 按用户正式服的视距测（默认是 compose 里的 10）
+            runner.rcon(f"bench viewdistance {p['view_distance']}")
         cache = p.get('cache_radius') or 0
         cache_chunks = None
         if cache:   # 缓存区：以起点为中心、半径 cache 个 chunk 的方形先用 Chunky 生成好（用户 11-09：从缓存区飞出去）

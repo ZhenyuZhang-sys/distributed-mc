@@ -25,6 +25,7 @@ public final class Bench implements ModInitializer {
     public void onInitialize() {
         // 只给 OP 和控制台（RCON）用：
         //   /bench stats          计数，一行 JSON
+        //   /bench viewdistance <2～32>  改服务器视距（和 view-distance 一样；真实场景按用户正式服的视距测）
         //   /bench tick           做完的 tick 数和最近 20 个 tick 的 MSPT（START～END_SERVER_TICK 计时，演示面板用），一行 JSON
         //   /bench stages         各阶段计时，一行 JSON
         //   /bench timing on|off  阶段计时开关，默认关
@@ -66,6 +67,13 @@ public final class Bench implements ModInitializer {
                                                     ctx.getSource().sendSuccess(() -> Component.literal(s), false);
                                                     return 1;
                                                 }))))
+                        .then(Commands.literal("viewdistance")
+                                .then(Commands.argument("chunks", IntegerArgumentType.integer(2, 32)).executes(ctx -> {
+                                    int n = IntegerArgumentType.getInteger(ctx, "chunks");
+                                    ctx.getSource().getServer().getPlayerList().setViewDistance(n);
+                                    ctx.getSource().sendSuccess(() -> Component.literal("bench viewdistance " + n), false);
+                                    return n;
+                                })))
                         .then(Commands.literal("tick").executes(ctx -> {
                             String s = TickTimes.json(TickTimes.recent(), ctx.getSource().getServer().getAverageTickTimeNanos());
                             ctx.getSource().sendSuccess(() -> Component.literal(s), false);

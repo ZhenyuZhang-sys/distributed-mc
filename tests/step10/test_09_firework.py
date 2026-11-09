@@ -133,3 +133,32 @@ def test_driver_sets_view_distance(tmp_path):
     run_matrix._check_value('flight', 'view_distance', 16)
     with pytest.raises(ValueError):
         run_matrix._check_value('flight', 'view_distance', 40)
+
+
+# ---- 用户的"卡"多半是前方空白（调度 11-09）：前方已就绪距离、视距圈就绪率 ----
+
+
+def test_view_ready_from_void_rate():
+    rows = [dict(t_s=i + 1, x=30.0 * (i + 1), z=0.0, ticks=20, stalled_ticks=0, void_rate=v)
+            for i, v in enumerate([0, 0, 0, .1, .3, .2, .5])]
+    m = firework.view_ready(rows, start=(0, 0), radius=100)       # 第 4 秒（x=120）出缓存区，之后 .3 .2 .5
+    assert m['view_ready_mean'] == pytest.approx(1 - (.3 + .2 + .5) / 3)
+    assert m['view_ready_min'] == pytest.approx(.5)
+
+
+def test_forward_ready_distance():
+    # 沿 +x 飞，每秒 32 格（2 个 chunk）。chunk 就绪的记录：前方 x=0..5 的 3 列宽的带子（z = -1、0、1）都就绪，
+    # 第 2 秒时 x=4 那列中间缺一个 → 前方连续就绪到 x=3
+    ev = []
+    for cx in range(0, 8):
+        for cz in (-1, 0, 1):
+            ev.append(dict(t_ms=0, cx=cx, cz=cz, ev='enter'))
+            if not (cx == 4 and cz == 0) and cx < 6:
+                ev.append(dict(t_ms=0, cx=cx, cz=cz, ev='ready'))
+    ev.append(dict(t_ms=2500, cx=4, cz=0, ev='ready'))   # 2.5 秒补上
+    rows = [dict(t_s=1, x=8.0, z=8.0), dict(t_s=2, x=40.0, z=8.0), dict(t_s=3, x=72.0, z=8.0)]
+    per = firework.forward_ready(ev, rows, view=10)
+    # 第 2 秒：玩家在 chunk 2，往前 chunk 3 就绪、chunk 4 缺 → 前方连续就绪 1 个 chunk（16 格）
+    assert per[2] == 16
+    # 第 3 秒：玩家在 chunk 4，chunk 5 就绪、chunk 6 没就绪 → 16 格
+    assert per[3] == 16
