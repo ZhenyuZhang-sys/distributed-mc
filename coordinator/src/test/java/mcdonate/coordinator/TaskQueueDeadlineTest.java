@@ -359,4 +359,60 @@ class TaskQueueDeadlineTest {
         assertEquals(5, q.assign(1).orElseThrow().tx(), "走廊里的先派");
         assertEquals(0, q.assign(2).orElseThrow().tx(), "走廊里没有了再派两侧");
     }
+
+    // ---- 11-09 codex-audit A2～A4：任务生命周期 ----
+
+    @Test
+    void reenqueueGetsNewIdSoOldResultCannotTakeIt() {
+        // A3：撤回（hedge / 飞过）后同一个 tile 又需要了：新任务用新编号，旧编号的结果回来时作废，不能拿走新任务的导入权
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        long old = q.assign(1).orElseThrow().taskId();
+        q.hedgeToServer(old);
+        assertTrue(q.enqueue(0, 0));
+        long fresh = q.find(0, 0);
+        assertTrue(fresh != old, "重新需要的是新任务");
+        assertEquals(TaskQueue.Action.DISCARD, q.onResult(1, old, true).action(), "撤回过的旧任务的结果作废");
+        assertEquals(State.QUEUED, q.state(fresh));
+    }
+
+    @Test
+    void resetInvalidatesPendingImports() {
+        // A2：结果已经交给主线程排着导入，这时 /donor reset：导入前再查，代次变了就不导
+        TaskQueue q = queue("");
+        long epoch = q.epoch();
+        q.reset();
+        assertTrue(q.epoch() != epoch);
+    }
+
+    @Test
+    void repeatedLeaseExpiryFailsTheTask() {
+        // A4：卡死的 worker 心跳照发，租约总时长到了上限就收回；收回也算一次失败，连续几次就 FAILED，不能无限拿回
+        TaskQueue q = new TaskQueue(now::get, 30_000, 3, new Features(""));
+        q.enqueue(0, 0);
+        long id = q.find(0, 0);
+        List<TaskQueue.Cancelled> cancelled = new java.util.ArrayList<>();
+        for (int round = 0; round < 3; round++) {
+            q.assign(1);
+            for (long t = 0; t <= TaskQueue.MAX_LEASE_TOTAL_MS + 10_000; t += 5_000) {
+                now.addAndGet(5_000);
+                q.heartbeat(1, id);
+                cancelled.addAll(q.expireLeases());
+            }
+        }
+        assertEquals(State.FAILED, q.state(id), "连续 3 次租约到期：放弃");
+        assertEquals(3, cancelled.size(), "每次收回都要给原来的 worker 发 cancel");
+        assertEquals(1, cancelled.get(0).worker());
+    }
+
+    @Test
+    void firstLeaseClampedToTotalCap() {
+        // A4：没有心跳时第一个租约也不超过总上限
+        TaskQueue q = new TaskQueue(now::get, TaskQueue.MAX_LEASE_TOTAL_MS * 2, 3, new Features(""));
+        q.enqueue(0, 0);
+        long id = q.assign(1).orElseThrow().taskId();
+        now.addAndGet(TaskQueue.MAX_LEASE_TOTAL_MS + 1);
+        assertEquals(1, q.expireLeases().size());
+        assertEquals(State.QUEUED, q.state(id));
+    }
 }
