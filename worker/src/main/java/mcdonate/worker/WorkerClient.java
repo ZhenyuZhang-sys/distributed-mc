@@ -107,6 +107,7 @@ final class WorkerClient {
                 s.connect(new InetSocketAddress(host, port), 5000);
                 s.setSoTimeout(READ_TIMEOUT_MS);
                 socket = s;
+                generations.connected();
                 // 带上 donor 世界编号：coordinator 一连上就知道是哪个世界（11-09：原来要等第一个结果，认主的任务派不出去）
                 send(new Hello(Protocol.VERSION, hostName(), tokens.forHello(), WorldId.of(server)));
                 wait = 1000;
@@ -117,7 +118,9 @@ final class WorkerClient {
                 }
             } finally {
                 socket = null;
-                // 断线时手上的任务已被 coordinator 收回，做完也不发
+                // 断线时手上的任务已被 coordinator 收回，做完也不发。11-09（codex-audit A1）：这一代收到的全部作废，
+                // 不只是正在做的那一个（排着的不做；做完的不经新连接发回去）
+                cancelled.addAll(generations.disconnected());
                 long t = currentTask;
                 if (t >= 0) {
                     cancelled.add(t);
@@ -180,6 +183,7 @@ final class WorkerClient {
         }
         currentTask = t.taskId();
         received.put(t.taskId(), System.currentTimeMillis());
+        generations.received(t.taskId());
         // 11-09：收到就把它的 chunk 排上生成（加票、不等，很快），前一个 tile 还在导出时它已经在生成线程池里了。
         // 开 throughput 时 coordinator 一次给几个，这样几个 tile 同时做；导出（等、序列化）还是一个一个来
         TilePos tile = new TilePos(t.tx(), t.tz());
@@ -189,6 +193,8 @@ final class WorkerClient {
     }
 
     private final OneAtATime<Task> generating;
+    /** 每个任务是哪一次连接收到的（A1）。 */
+    private final ConnectionGenerations generations = new ConnectionGenerations();
     /** 任务 → 收到的时间（分段耗时，11-09）。 */
     private final java.util.Map<Long, Long> received = new ConcurrentHashMap<>();
     /** 控制通道 STATUS 的累计数（11-09 overlay）。 */
@@ -232,6 +238,12 @@ final class WorkerClient {
         currentTask = Heartbeat.NO_TASK;
         if (cancelled.remove(t.taskId())) {
             LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
+            return;
+        }
+        boolean current = generations.isCurrent(t.taskId());
+        generations.finished(t.taskId());
+        if (!current) {
+            LOG.info("任务 {} 是上一次连接收到的，结果不发", t.taskId());
             return;
         }
         deliver(r);
