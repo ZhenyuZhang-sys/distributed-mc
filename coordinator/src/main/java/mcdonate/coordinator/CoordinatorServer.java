@@ -262,20 +262,15 @@ final class CoordinatorServer {
                 if (!stale.dropped().isEmpty() || !stale.cancelled().isEmpty()) {
                     LOG.info("玩家已经飞过的 tile：删掉排队的 {} 个，撤回派出的 {} 个", stale.dropped().size(), stale.cancelled().size());
                 }
-                // 11-09：按在线 donor 的实测吞吐估每个排队任务什么时候做完，来不及的现在就丢掉，交给服务器
-                double rate = 0;
-                List<Long> latencies = new java.util.ArrayList<>();
-                int n = 0;
+                // 11-09：按每个在线、没暂停的 donor 的实测延迟、速率、在途数，估每个排队任务最早什么时候做完，来不及的现在就丢掉（G5）
+                List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
-                        rate += throughput.ratePerMs(c.workerId); // 11-09（A15）：按完成间隔，不按 1/延迟
-                        latencies.add(throughput.latencyMs(c.workerId));
-                        n++;
+                        est.add(new TaskQueue.DonorEstimate(throughput.latencyMs(c.workerId), throughput.ratePerMs(c.workerId),
+                                tasks.inFlight(c.workerId)));
                     }
                 }
-                // 一个 tile 从开始到做完：最快那个 donor 的延迟中位数（不能用 n/速率：并行时速率高、单个 tile 照样要那么久；
-                // 也不能用平均：慢 donor 会让快 donor 做得完的任务被剪掉，11-09 codex-audit）
-                List<Long> hopeless = tasks.pruneHopeless(rate, pruneTileMs(latencies.stream().mapToLong(Long::longValue).toArray()));
+                List<Long> hopeless = tasks.pruneHopeless(est);
                 if (!hopeless.isEmpty()) {
                     LOG.info("排队的 {} 个 tile 按现在的吞吐来不及，丢掉，交给服务器", hopeless.size());
                 }

@@ -55,6 +55,17 @@ final class Motion {
                 break;
             }
         }
+        if (a == b) {
+            // 窗口里只有最新一个样本（找需求约每秒记一次，短窗口 0.75 秒；codex-audit 审 3132230）：用前一个样本
+            Sample prev = null;
+            for (Sample s : samples) {
+                if (s == b) {
+                    break;
+                }
+                prev = s;
+            }
+            a = prev;
+        }
         if (a == null || a == b) {
             return new double[] {0, 0};
         }

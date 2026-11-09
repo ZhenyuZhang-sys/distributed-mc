@@ -543,12 +543,31 @@ public final class TaskQueue {
      * @param tileMs 一个 tile 从派出到交回的毫秒数（按实测）
      */
     public synchronized List<Long> pruneHopeless(double tilesPerMs, long tileMs) {
+        if (tilesPerMs <= 0) {
+            return new ArrayList<>();
+        }
+        int leased = (int) tasks.values().stream().filter(t -> t.state == State.LEASED).count();
+        return pruneHopeless(List.of(new DonorEstimate(tileMs, tilesPerMs, leased)));
+    }
+
+    /** 一个 donor 的估计：延迟（毫秒）、速率（个/毫秒）、手上在做几个。 */
+    public record DonorEstimate(long latencyMs, double ratePerMs, int inFlight) {}
+
+    /**
+     * 11-09（codex-audit G5）：按每个 donor 分别估。排队的任务按派活顺序，依次假设给能最早做完的那个 donor
+     * （DonorThroughput.predictFinish，前面的个数 = 它手上的 + 已经假设给它的）；最早也做不完的才剪。
+     * 原来把所有 donor 的在途加在一起、按总速率排队，慢 donor 手上的会让空着的快 donor 能做完的任务被剪掉。
+     */
+    public synchronized List<Long> pruneHopeless(List<DonorEstimate> donors) {
         List<Long> dropped = new ArrayList<>();
-        if (!features.on(Features.DEADLINE) || tilesPerMs <= 0) {
+        if (!features.on(Features.DEADLINE) || donors.isEmpty()) {
             return dropped;
         }
         long now = clock.getAsLong();
-        int leased = (int) tasks.values().stream().filter(t -> t.state == State.LEASED).count();
+        int[] ahead = new int[donors.size()];
+        for (int i = 0; i < ahead.length; i++) {
+            ahead[i] = donors.get(i).inFlight();
+        }
         List<Task> order = new ArrayList<>();
         for (long id : queue) {
             Task t = tasks.get(id);
@@ -557,10 +576,24 @@ public final class TaskQueue {
             }
         }
         order.sort(DISPATCH_ORDER);
-        int position = 0;
         for (Task t : order) {
-            // 和派发一样的预测（codex-audit F2）：前面有 在租的 + 排在前面的 个
-            double finish = DonorThroughput.predictFinish(now, tileMs, tilesPerMs, leased + position);
+            // 和派发一样的预测（codex-audit F2），取最早做完的 donor
+            int best = -1;
+            double finish = Double.POSITIVE_INFINITY;
+            for (int i = 0; i < ahead.length; i++) {
+                DonorEstimate d = donors.get(i);
+                if (d.ratePerMs() <= 0) {
+                    continue;
+                }
+                double f = DonorThroughput.predictFinish(now, d.latencyMs(), d.ratePerMs(), ahead[i]);
+                if (f < finish) {
+                    finish = f;
+                    best = i;
+                }
+            }
+            if (best < 0) {
+                break; // 估不了（没有速率），不剪
+            }
             long limit = t.importBy != Long.MAX_VALUE ? t.importBy - IMPORT_MARGIN_MS : t.due;
             if (finish > limit) {
                 queue.remove(t.id);
@@ -569,7 +602,7 @@ public final class TaskQueue {
                 dropped.add(t.id);
                 hopeless++;
             } else {
-                position++;
+                ahead[best]++;
             }
         }
         dropped.sort(null);

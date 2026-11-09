@@ -68,11 +68,12 @@ final class DonorThroughput {
 
     /** 速率（个/毫秒）：按完成间隔，不小于 1/延迟。 */
     synchronized double ratePerMs(int worker) {
-        double floor = 1.0 / Math.max(1, latencyMs(worker));
         Deque<long[]> d = samples.get(worker);
-        if (d == null) {
-            return floor;
+        if (d == null || d.isEmpty()) {
+            // 冷启动（codex-audit G4）：假设能同时做 MAX_CONCURRENCY 个，派出去探路的不被剪掉
+            return MAX_CONCURRENCY / (double) DEFAULT_MS;
         }
+        double floor = 1.0 / Math.max(1, latencyMs(worker));
         long[] at = d.stream().mapToLong(s -> s[1]).filter(t -> t != Long.MIN_VALUE).sorted().toArray();
         // 首尾间隔比一个 tile 的延迟还短（同一批几乎同时到）时测不准，按 1/延迟（codex-audit F4：同毫秒到的一批会估成几十个/秒）
         if (at.length < 2 || at[at.length - 1] - at[0] < latencyMs(worker)) {
