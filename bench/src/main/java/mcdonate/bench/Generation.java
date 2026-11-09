@@ -7,8 +7,8 @@ import mcdonate.common.Provenance;
  * chunk 变成完整状态时：计数（Counters）和来源事件（Provenance）一起发（docs/step4-plan.md 3.3、4.3）。
  *
  * <p>生成线程上报时拿读锁，计数加一和发事件在同一把读锁里；开始 / 停止监听时拿写锁并读计数快照。
- * 所以一个监听器在 listen 和 unlisten 之间收到的原版事件数，严格等于两个快照之间的计数增量。
- * 原版事件 = 这台服务器自己做完的（从头生成 GENERATED + 读盘的半成品做完 RESUMED）；读盘的成品（LOADED）单独一类。
+ * 所以一个监听器在 listen 和 unlisten 之间收到的每类事件数，严格等于两个快照之间对应计数的增量。
+ * 三类一一对应（fish 11-09）：GENERATED → VANILLA，RESUMED → RESUMED（导入的半成品被接着做完），LOADED → LOADED。
  */
 public final class Generation {
     /** 三个完整状态计数的快照。 */
@@ -22,7 +22,11 @@ public final class Generation {
         LOCK.readLock().lock();
         try {
             Counters.onFull(kind);
-            Provenance.report(cx, cz, kind == Counters.FullKind.LOADED ? Provenance.Kind.LOADED : Provenance.Kind.VANILLA, -1);
+            Provenance.report(cx, cz, switch (kind) {
+                case GENERATED -> Provenance.Kind.VANILLA;
+                case RESUMED -> Provenance.Kind.RESUMED;
+                case LOADED -> Provenance.Kind.LOADED;
+            }, -1);
         } finally {
             LOCK.readLock().unlock();
         }

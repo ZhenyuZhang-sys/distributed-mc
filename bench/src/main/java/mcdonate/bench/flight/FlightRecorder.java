@@ -187,7 +187,7 @@ public final class FlightRecorder {
         JsonObject sync = syncJson(0), world = syncJson(1);
         sync.add("world", world);
         done.add("sync_loads", sync);
-        // 监听期间收到的来源事件数，和同一段时间的计数增量（Generation 保证两者对得上：原版 = generated + resumed）
+        // 监听期间收到的来源事件数，和同一段时间的计数增量（Generation 保证两者对得上：vanilla = generated，resumed = resumed，loaded = loaded）
         JsonObject prov = new JsonObject();
         for (Provenance.Kind k : Provenance.Kind.values()) prov.addProperty(k.name().toLowerCase(java.util.Locale.ROOT), provenance.get(k.ordinal()));
         done.add("provenance", prov);

@@ -34,22 +34,39 @@ class GenerationTest {
         }
         try {
             for (int round = 0; round < 50; round++) {
-                AtomicLong vanilla = new AtomicLong(), loaded = new AtomicLong();
+                AtomicLong vanilla = new AtomicLong(), loaded = new AtomicLong(), resumed = new AtomicLong();
                 Provenance.Listener l = (cx, cz, kind, donor) -> {
                     if (kind == Provenance.Kind.VANILLA) vanilla.incrementAndGet();
                     if (kind == Provenance.Kind.LOADED) loaded.incrementAndGet();
+                    if (kind == Provenance.Kind.RESUMED) resumed.incrementAndGet();
                 };
                 Generation.Snapshot a = Generation.listen(l);
                 Thread.sleep(2);
                 Generation.Snapshot b = Generation.unlisten(l);
-                // 原版事件 = 这台服务器自己做完的（从头生成 + 读盘的半成品做完）；读盘的成品是 LOADED
-                assertEquals(b.generated() - a.generated() + b.resumed() - a.resumed(), vanilla.get(), "第 " + round + " 轮");
+                // 三类分开（fish 11-09）：VANILLA 只算从头生成；读盘的半成品被接着做完（导入的 tile 就是这种）是 RESUMED；读盘的成品是 LOADED
+                assertEquals(b.generated() - a.generated(), vanilla.get(), "第 " + round + " 轮");
+                assertEquals(b.resumed() - a.resumed(), resumed.get(), "第 " + round + " 轮");
                 assertEquals(b.loaded() - a.loaded(), loaded.get(), "第 " + round + " 轮");
             }
         } finally {
             stop.set(true);
             for (Thread th : workers) th.join();
         }
+    }
+
+    @Test
+    void resumedIsItsOwnKind() {
+        List<Provenance.Kind> got = new ArrayList<>();
+        Provenance.Listener l = (cx, cz, kind, donor) -> got.add(kind);
+        Generation.listen(l);
+        try {
+            Generation.onFull(Counters.FullKind.GENERATED, 0, 0);
+            Generation.onFull(Counters.FullKind.RESUMED, 0, 1);
+            Generation.onFull(Counters.FullKind.LOADED, 0, 2);
+        } finally {
+            Generation.unlisten(l);
+        }
+        assertEquals(List.of(Provenance.Kind.VANILLA, Provenance.Kind.RESUMED, Provenance.Kind.LOADED), got);
     }
 
     @Test

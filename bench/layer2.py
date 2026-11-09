@@ -22,7 +22,8 @@ from bench.server import TEST_DATA, wait_until
 RUNS = TEST_DATA / 'bench-runs'
 SECOND_COLUMNS = ('t_s', 'x', 'z', 'view_chunks', 'void_rate', 'void_rate_max', 'mspt_mean', 'mspt_max', 'ticks', 'stalled_ticks',
                   'cpu_cores')
-CHUNK_COLUMNS = ('cx', 'cz', 'enter_ms', 'latency_ms', 'censored')
+# source：谁做完的（vanilla / resumed / loaded，起飞前就完整的为空）；donor：导入它的 donor 编号，没有是 -1
+CHUNK_COLUMNS = ('cx', 'cz', 'enter_ms', 'latency_ms', 'censored', 'source', 'donor')
 # done.json 里原样带进 summary.json 的配置（第 7 步预留的两项没有 coordinator 时是 null）
 CONFIG_KEYS = ('run', 'player', 'mode', 'speed', 'y', 'start_x', 'start_z', 'view_distance', 'requested_view_distance',
                'available_processors', 'coordinator_features', 'demand_lookahead', 'scan_ms_total', 'scan_every_ticks')
@@ -49,10 +50,13 @@ def compose(run_dir, samples, out_dir, initial_load_s=None, tail_exclude_ms=10_0
     cpu = stats.cpu_per_second(samples, done['t0_nanotime'], len(seconds))
     visits = stats.visits(stats.load_jsonl(run_dir / 'chunks.jsonl'), done['end_ms'], tail_exclude_ms)
     summary = stats.run_summary(seconds, visits, cpu)
+    visits = stats.sources(visits, stats.load_jsonl(run_dir / 'provenance.jsonl'), done['end_ms'])
     summary.update({k: done[k] for k in CONFIG_KEYS})
     summary.update(flight_seconds=done['seconds'], ticks_total=done['ticks'], initial_load_s=initial_load_s,
                    initial_view=done['initial']['view'], initial_not_ready=done['initial']['not_ready'],
                    tail_exclude_ms=tail_exclude_ms)
+    # 飞行期间三类完整状态的计数增量（fish 11-09）：服务器从头生成 / 导入的半成品被接着做完 / 读盘
+    summary.update({k: done['counters'][k] for k in ('full_generated', 'full_resumed', 'full_loaded')})
     # 像客户端一样飞（11-09）：卡在没就绪 chunk 前面的时间是真实玩家最直接的感受；同步加载是守护计数，测量时必须是 0
     end_s = done['end_ms'] / 1000
     summary.update(stall_s=done['stall_ms'] / 1000, stalled_ticks_total=done['stalled_ticks'],

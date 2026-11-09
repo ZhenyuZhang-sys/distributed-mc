@@ -10,7 +10,7 @@ from bench import layer2
 T0 = 5_000_000_000_000  # 服务器里第一个 tick 的 System.nanoTime（和宿主机 monotonic 同一个时钟）
 
 
-def write_run(d, rows=3, done=None, events=None):
+def write_run(d, rows=3, done=None, events=None, provenance=()):
     d.mkdir(parents=True)
     with (d / 'seconds.jsonl').open('w') as f:
         for t in range(1, rows + 1):
@@ -20,13 +20,15 @@ def write_run(d, rows=3, done=None, events=None):
         for e in events if events is not None else [dict(t_ms=100, cx=7, cz=0, ev='enter'), dict(t_ms=200, cx=8, cz=0, ev='enter'),
                                                     dict(t_ms=600, cx=7, cz=0, ev='ready')]:
             f.write(json.dumps(e) + '\n')
+    (d / 'provenance.jsonl').write_text(''.join(json.dumps(e) + '\n' for e in provenance))
     base = dict(version=1, run=d.name, player='walkbot', mode='wall', speed=4.3, seconds=float(rows), y=200.0,
                 start_x=100.0, start_z=8.5, end_x=100 + 4.3 * rows, end_z=8.5, view_distance=10, requested_view_distance=2,
                 available_processors=2, ticks=20 * rows, rows=rows, end_ms=rows * 1000, t0_nanotime=T0,
                 events=dict(enter=2, ready=1, leave=0), initial=dict(view=453, not_ready=0), scan_ms_total=1.5, scan_every_ticks=1,
                 stopped=False, aborted=None, coordinator_features=None, demand_lookahead=None,
                 distance=4.3 * rows - 1.0, ideal_distance=4.3 * rows, stall_ms=250.0, stalled_ticks=5, unready_ticks=0,
-                sync_loads=dict(count=0, max_ms=0.0, total_ms=0.0, stack='', world=dict(count=3, max_ms=5.0, total_ms=9.0, stack='fluid')))
+                sync_loads=dict(count=0, max_ms=0.0, total_ms=0.0, stack='', world=dict(count=3, max_ms=5.0, total_ms=9.0, stack='fluid')),
+                counters=dict(full_generated=5, full_resumed=2, full_loaded=1))
     base.update(done or {})
     (d / 'done.json').write_text(json.dumps(base))
     return d
@@ -97,3 +99,24 @@ def test_compose_does_not_overwrite(tmp_path):
     layer2.compose(run, samples(), tmp_path / 'out')
     with pytest.raises(FileExistsError):
         layer2.compose(run, samples(), tmp_path / 'out')
+
+
+def test_chunks_carry_source_three_kinds(tmp_path):
+    # fish 11-09：每个 chunk 是谁做完的分三类——服务器从头生成 vanilla / donor 导入后服务器接着做完 resumed / 读盘 loaded；
+    # 起飞前就完整了的（飞行期间没有来源事件）记空。donor 列是这之前最后一次导入它的 donor 编号，没有是 -1
+    events = [dict(t_ms=100, cx=7, cz=0, ev='enter'), dict(t_ms=150, cx=8, cz=0, ev='enter'), dict(t_ms=160, cx=9, cz=0, ev='enter'),
+              dict(t_ms=170, cx=6, cz=0, ev='enter'), dict(t_ms=170, cx=6, cz=0, ev='ready'),
+              dict(t_ms=600, cx=7, cz=0, ev='ready'), dict(t_ms=700, cx=8, cz=0, ev='ready'), dict(t_ms=800, cx=9, cz=0, ev='ready')]
+    provenance = [dict(t_ms=550, cx=7, cz=0, kind='vanilla', donor=-1),
+                  dict(t_ms=300, cx=8, cz=0, kind='donor', donor=4), dict(t_ms=650, cx=8, cz=0, kind='resumed', donor=-1),
+                  dict(t_ms=790, cx=9, cz=0, kind='loaded', donor=-1),
+                  dict(t_ms=2500, cx=7, cz=0, kind='loaded', donor=-1)]  # 就绪以后的事件不算
+    run = write_run(tmp_path / 'run-s', events=events, provenance=provenance)  # 故意不按时间排：真实文件几个线程并发写
+    out = layer2.compose(run, samples(), tmp_path / 'out', tail_exclude_ms=0)
+    rows = read_csv(out / 'layer2-chunks.csv')
+    assert list(rows[0]) == list(layer2.CHUNK_COLUMNS) and {'source', 'donor'} <= set(layer2.CHUNK_COLUMNS)
+    got = {(int(r['cx']), int(r['cz'])): (r['source'], int(r['donor'])) for r in rows}
+    assert got == {(7, 0): ('vanilla', -1), (8, 0): ('resumed', 4), (9, 0): ('loaded', -1), (6, 0): ('', -1)}
+    summary = json.loads((out / 'summary.json').read_text())
+    # 飞行期间的计数增量原样带进汇总（第 10 步按三类算）
+    assert (summary['full_generated'], summary['full_resumed'], summary['full_loaded']) == (5, 2, 1)

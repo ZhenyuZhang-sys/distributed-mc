@@ -139,3 +139,48 @@ def test_metric_name_colliding_with_parameter_rejected(tmp_path):
     run(cfg, {'capacity': lambda cell, out: dict(max_bots=3)}, tmp_path)
     with pytest.raises(ValueError, match='max_bots'):
         collect(tmp_path / 'matrix-clash')
+
+
+# ---- 卡住和来源三类（11-09：报告里 X 旁边同时列卡住时长；来源按 fish 的三类算） ----
+
+
+def stall_rows(n=5):
+    rows = flight_rows([10.0], [4.0], n=n)
+    for r in rows:
+        zero = r['donors'] == 0
+        r.update(stall_s=40.0 if zero else 20.0, stall_fraction=1 / 3 if zero else 1 / 6,
+                 distance_ratio=0.67 if zero else 0.83,
+                 full_generated=1000 if zero else 600, full_resumed=0 if zero else 300, full_loaded=0 if zero else 100)
+    return rows
+
+
+def test_stall_listed_next_to_x():
+    h = {x['item']: x for x in hypotheses(stall_rows())}
+    s = h['stall']
+    # 描述性的一条，不是事先定的门槛：给出 2 donor 的卡住占比，注里有 0 donor 的对照和实际 / 理想距离
+    assert s['verdict'] == '记录' and s['value'] == pytest.approx(1 / 6)
+    assert '0 donor' in s['note'] and '33' in s['note'] and '17' in s['note'] and '距离' in s['note']
+    items = [x['item'] for x in hypotheses(stall_rows())]
+    assert items.index('stall') == items.index('X') + 1
+
+
+def test_donor_share_counts_resumed_not_generated():
+    # donor 分担的比例 = 导入后服务器接着做完的 ÷ 三类之和；resumed 不算成服务器自己生成的
+    h = {x['item']: x for x in hypotheses(stall_rows())}
+    d = h['donor_share']
+    assert d['verdict'] == '记录' and d['value'] == pytest.approx(300 / 1000)
+    assert '服务器自己生成' in d['note'] and '读盘' in d['note']
+
+
+def test_stall_and_share_without_data():
+    h = {x['item']: x for x in hypotheses(flight_rows([10.0], [4.0]))}
+    assert h['stall']['verdict'] == '数据不足' and h['stall']['value'] is None
+    assert h['donor_share']['verdict'] == '数据不足'
+
+
+def test_x_by_n_carries_stall():
+    from analysis.matrix_summary import x_by_n
+    row = x_by_n(stall_rows())[0]
+    assert row['donors'] == 2 and row['x'] == pytest.approx(2.5)
+    assert row['stall_fraction_base'] == pytest.approx(1 / 3) and row['stall_fraction_donor'] == pytest.approx(1 / 6)
+    assert row['distance_ratio_base'] == pytest.approx(0.67) and row['distance_ratio_donor'] == pytest.approx(0.83)

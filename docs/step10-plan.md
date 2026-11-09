@@ -73,6 +73,8 @@
 | 实验 | 驱动 | 用到的东西 |
 | --- | --- | --- |
 | `flight` | 第 4 步 `bench/layer2.py` 的单轮飞行 | 第 6 步的 donor（compose 里的 worker 服务，个数 = `donors`）、第 7 步的开关、网络延迟代理（2.5） |
+
+**chunk 来源按三类算（fish 11-09）**：服务器从头生成（`vanilla` / `full_generated`）、donor 导入后服务器接着做完（`resumed` / `full_resumed`）、读盘（`loaded` / `full_loaded`）。flight 驱动的结果里三类计数分开记，`layer2-chunks.csv` 的 `source` 列给每个进视野的 chunk 标是哪一类；图 1、2 和报告里的"donor 分担了多少"按 resumed 占三类之和算，不把 resumed 当成服务器自己生成的。报告里 X（就绪 p95 之比）旁边同时列卡住时长（第 4 步的 `stall_s`）。
 | `capacity` | 第 7 步的容量测试（fish `step7-plan.md` 第 2 节）：逐个加鞘翅假玩家，直到虚空率 > 5% | 第 4 步多架飞行（z 方向隔 1024 格） |
 | `verify` | 第 8 步：诚实 donor + 各种作弊 donor 跑一段时间 | 第 8 步作弊开关、验证器、回滚报告 |
 | `frametime` | 不跑，只**导入**第 9 步在真实电脑上采的 `frametimes.csv` | fish `step9-plan.md` 9.7（需要人和显卡） |
@@ -104,6 +106,10 @@
 | 检出率 ≥ 99%（每种作弊一行） | 默认强度下被抓到的比例 | Clopper–Pearson 95% | 同上 | 区间下限 ≥ 99% 为成立；上限 < 99% 为不成立；其余为数据不足（次数少时 99% 本来就证明不了，照实写）。少量塞矿的下限按第 8 步报告附在备注里 |
 | Y | 验证 CPU ÷ 本地生成 CPU | t 分布 | 已定 / 数据不足 | 有 ≥ 5 次 verify 数据即"已定"，给出数值（Y 是待定的数，不是事先的门槛） |
 | Z | 开 worker 后 p99 帧时间增加量 | t 分布 | 已定 / 数据不足 | 有真实电脑的 frametimes 数据即"已定"；这台机器上一定是"数据不足" |
+| 卡住（stall，11-09 加） | X 那组里 2 donor 的卡住占比（假玩家停在没就绪 chunk 前面的时间 ÷ 飞行时长），注里列 0 donor 的对照和实际 / 理想距离 | — | 记录 / 数据不足 | 描述性，不是门槛；紧跟在 X 后面 |
+| donor 分担（donor_share，11-09 加） | X 那组里 2 donor 的轮：导入后服务器接着做完（full_resumed）÷ 三类之和 | — | 记录 / 数据不足 | 描述性；resumed 不算成服务器自己生成的（fish 11-09 口径） |
+
+`x-by-n.csv` 每个 N 一行，除了 X 和区间，还列 0 donor / N donor 的卡住占比、实际 / 理想距离均值和 donor 分担比例。
 
 `plots.py` 只读这几张表。测试用合成的表就能跑通所有图，不需要真跑矩阵。
 
@@ -171,6 +177,83 @@
 - **实时地图回放**：第 4 步的地图已经能回放一轮的生成顺序。图 1 里 0 donor 和 2 donor 各挑一轮，自动导出回放截图序列（用地图服务器的回放接口 + 无头浏览器，或直接用 Python 按同样的上色规则画帧，二选一，后者不需要浏览器）。
 - **作弊被抓**：verify 单元里，地图上把被打回的 chunk（`rejected`）标红，配上拉黑那一刻的日志行。
 - **原版和有 donor 的并排视频**：需要真实客户端录屏，留给人做；这一步只准备好服务器端的场景脚本。
+
+### 7.1 演示面板（调度 11-09 安排，**计划已通过**）
+
+目的：给用户看"mod 起作用了"。是演示，不是测量：数字标"演示，粗测"，不进第 10 步的矩阵和假设表。
+
+**放在哪**：还是 `bench/map/server.py` 这个小服务器（标准库 `http.server`，只绑 127.0.0.1），加一个 `/demo` 页面。页面左边是实时地图（复用现在的画图代码，抽成 `map.js` 两页共用），右边是曲线和控制。后端新代码放 `bench/demo/`：
+
+| 模块 | 做什么 |
+| --- | --- |
+| `bench/demo/poll.py` | 每秒采一次样，存进内存里的环形缓冲（最近 30 分钟），给 `/api/live`、`/api/series?since=N` |
+| `bench/demo/control.py` | 控制动作的白名单，每个动作对应一串固定的命令；不接受任意命令 |
+| `bench/demo/ab.py` | 一键 A/B 的编排，跑在后台线程里，状态给 `/api/ab` |
+
+**1. 实时曲线（每秒刷新）**，每个量一张小图，不画双轴：
+
+| 曲线 | 从哪来 |
+| --- | --- |
+| MSPT 均值和最大值（最近 1 秒）、TPS | `/bench stats` 加三个字段：`tick`（`getTickCount()`）、最近 20 个 tick 的 MSPT 均值和最大值（`getTickTimesNanos()`）。TPS = 两次采样之间的 tick 数 ÷ 宿主机墙钟。现在的 `mspt` 是 100 tick 平均，太平滑，留着不动 |
+| 容器 CPU 核数 | 宿主机 cgroup，复用 `bench/metrics.py` 的 `Cgroup.sample()`，两次采样的差 ÷ 墙钟 |
+| 视野虚空率、卡住占比、实际 / 理想距离 | 正在飞时读这一轮的 `seconds.jsonl`（和地图一样增量读完整的行）：每秒的 `void_rate`、`stalled_ticks / ticks`，距离用 `x` 和起飞后的理想位置算。不在飞时这几张图空着 |
+| donor 在线数、导入数、丢弃数（按原因：来晚、别的 donor 世界、碰到服务器的 chunk） | `/donor status`：`workers` 的个数，`accepted` 和 `discarded.*` 每秒的增量 |
+| donor 写入时在玩家前方的比例 | 正在飞时读 `provenance.jsonl` 的 donor 事件，和同一时刻 `seconds.jsonl` 的玩家 x 比（和 fish 对比脚本的 `donor_lead` 同一算法，抽成共用函数）；每秒一个点，另给整轮累计 |
+
+每秒发 2 条 RCON（`bench stats`、`donor status`），在服务器主线程上各占几十微秒；页面上注明"面板自己也占一点服务器时间"。某一项拿不到（比如没起 coordinator，`/donor status` 报错）就那张图写"无数据"，其他照常。
+
+**2. 控制**：都是 `POST /api/control`，JSON 里一个 `action`；后端按白名单拼命令，走现有入口（`bench.server.Server.rcon` → `scripts/rcon.sh`，`bench.server.compose` → `lib.sh` 的 `tc`），不另开控制通道。
+
+| 动作 | 背后 |
+| --- | --- |
+| donor 开 | `compose up -d --wait worker worker2`，等两个都在 `/donor status` 里出现，再 `donor demand on` |
+| donor 关 | `donor demand off`，`compose stop worker worker2 worker3`，等 `/donor status` 的 workers 为空 |
+| 第 7 步开关 | `donor feature <名字> on|off`，名字只能是 territory、deadline、throughput、hedge、waitdonor |
+| 飞行开始 | 选速度（走路 / 骑马 / 鞘翅）和时长，后台线程调第 4 步的 `bench.layer2.fly`（放假玩家、等初始视野就绪、`/bench fly start`、归档）；航线每次换一条没生成过的（z 方向隔 8000 格，计数记在 artifacts 里） |
+| 飞行停止 | `bench fly stop <run>`；这一轮标"提前停下"，归档照留，不出汇总 |
+
+安全：只绑 127.0.0.1；控制接口只收 `POST`、`Content-Type: application/json`、带自定义头 `X-Demo: 1`（跨站表单发不出来），并检查 `Host` 是 `127.0.0.1` 或 `localhost`（防 DNS 重绑定）。同一时间只允许一个动作在跑，其他返回 409。页面上每个按钮先弹确认框。
+
+**3. 一键 A/B**：`POST /api/ab`（速度、时长，开关默认 `deadline`）。步骤：
+
+1. 记下开始时间（后面查 `docker events` 标"有并发"）。
+2. A：donor 关（上面的动作），`scripts/new_world.sh` 换新世界（同一个 seed 424242），飞一轮。
+3. B：再换一个新世界（同 seed），`donor reset`，donor 开，开 deadline，飞同一条航线、同样速度和时长。两组都用全新世界、同一条航线，地形一样；只用一个世界换 z 的话地形不同，不公平。
+4. 有效性：两轮玩家同步加载都是 0；B 飞行窗口内 donor 来源事件 > 0；B 起飞前后 `/donor status` 的 worker id 没变（中途没被看门狗杀掉）。不满足的在结果里标"无效"和原因，照样显示。
+5. 结果存 `artifacts/demo-ab-<时间>/`：`A/`、`B/`（`layer2.fly` 的归档）、`ab.json`（两轮汇总、有效性、并发、参数）、`README.md`（写明"演示，粗测"）。
+
+页面并排显示：表格（卡住时长和占比、实际 / 理想距离、虚空率、就绪 p95、MSPT 均值 / 最大、服务器 CPU、导入 / 丢弃、donor 写入在前方的比例、有效性），同一张小图里两条曲线（A、B 两条线，图例 + 直接标注），下面两个地图回放（用现有 `/replay`）。
+
+**审阅补充（调度 11-09，不用再审）**：
+
+- B 轮开始前调一次 `donor reset`，donor 默认开 deadline。worker 要关掉看门狗（fish 给 worker 设的 `MAX_TICK_TIME=-1`）：面板每次采样用 `docker inspect` 看 worker 容器的环境变量，没有这一项就在页面顶上标"worker 看门狗没关，可能中途被杀"。fish 的改动进 main 之前要演示的话，在本槽位用一个不进 git 的 compose 叠加文件临时加上（`lib.sh` 现在不支持额外的叠加文件，到时候和 fish 商量是加一个 `MCD_COMPOSE_EXTRA`，还是等 fish 的改动进 main），页面照样标出来。
+- "模拟网络"开关（可选，默认关）：复用 `scripts/netem.sh`，按 35ms 延迟、20mbit 带宽、1% 丢包。现在的 `netem.sh` 只管 `worker` 一个服务、没有带宽参数；要 fish 那边给它加上带宽和 `worker2`（公共脚本，不自己改），加上之前这个开关灰着。开着的时候页面顶上醒目地标"模拟网络：35ms / 20mbit / 1% 丢包"，A/B 结果里也记下来。
+
+**4. 怎么用**：`docs/demo.md` 写：在测试槽位上起测试服务器和 worker（`scripts/test_server.sh up`，用这个槽位的 `.env.local`）；起面板 `scripts/demo.sh`（`python -m bench.map.server` 加演示参数，端口默认 8765）；本地浏览器 `ssh -L 8765:127.0.0.1:8765 <这台机器>` 再开 `http://127.0.0.1:8765/demo`；每个按钮是什么意思；A/B 大约要多久（两次换世界 + 两次飞行，鞘翅 120 秒约 8～10 分钟）。
+
+**测试（先写）**，都放 `tests/step10/test_06_demo.py`，不起服务器：
+
+- 数据接口：假的 rcon 和 cgroup，造两次采样 → `/api/live` 的 TPS、MSPT、CPU、donor 增量算得对；`since` 增量正确；某个来源报错时那一项为空、其他照常。
+- 飞行中的曲线：合成 `seconds.jsonl` 和 `provenance.jsonl` → 虚空率、卡住占比、距离、前方比例对。
+- 控制接口：每个动作调到的命令序列对（假的 runner 记下来）；不认识的动作 / 开关名 400；没有 `X-Demo`、不是 JSON、`Host` 不对 403；GET 不能控制；忙的时候 409。
+- A/B：假的 fly、new_world、compose → 步骤顺序对（A 时 donor 关、B 时 deadline 开、两次都换了新世界、同一条航线）；B 没有 donor 事件或 worker id 变了标无效；artifacts 里有 `ab.json` 和"演示，粗测"。
+- 前端冒烟：`/demo` 返回的页面有各张图的 canvas、控制按钮和确认框代码。
+- Java：GameTest 查 `/bench stats` 新加的 `tick` 每次调用变大、最近 1 秒的 MSPT 字段存在。
+- 真机冒烟（long，第 10 步验收里跑一次）：在测试服务器上起面板，`/api/live` 的 MSPT > 0、`/donor status` 有数，跑一次很短的 A/B（30 秒）出结果。
+
+**顺序**：计划过审后，等手上的完整测试过了、第 4 步的 RESUMED 改动进 main，再动手；控制和 A/B 要用 fish 第 7 步的 `/donor feature`、`demand`、`reset`，等它们进 main 再接真机，之前先用假 runner 把接口和编排做完。
+
+### 7.2 跟踪真人玩家（调度 11-09 安排，排在面板 A/B 之后）
+
+用户用 fish 的客户端 mod 当 donor、自己进游戏玩时，地图和面板也要能看。bench 加"只记录、不移动玩家"的模式：
+
+- 命令：`/bench record start <玩家名> [run 名]`、`/bench record stop [run 名]`。和 `/bench fly` 共用 `FlightRecorder` 的记录部分（视野扫描、就绪事件、逐秒行、来源事件、守护计数、done.json），只是不调 `Flight.advance`、不 teleport；文件格式和飞行一样，地图回放、`layer2.compose`、面板直接能用。done.json 里 `mode` 写 `record`，没有速度和理想距离（写 null）。
+- 卡住：真人客户端自己会停在没收到的 chunk 边缘。一个 tick 算卡住 = 这个 tick 玩家位置几乎没动（< 0.01 格）**而且**朝向前方（按视线水平方向，没有视线就按上一次移动方向）挨着的那个 chunk 没就绪。站着不动看风景、前方 chunk 已就绪的不算。这是近似：玩家可能因为别的原因停下，报告里照写。
+- 实际距离：每 tick 位置差的累加，没有理想距离。
+- 玩家下线：自动结束这一轮，done.json 写 `stopped_reason: "left"`。
+- 面板加"跟踪真人玩家"入口：列在线玩家（`/bench stats` 的 players），选一个开始 / 停止；实时曲线和地图跟着这一轮的文件走。
+- **测试（先写）**：JUnit 测卡住判定（位置不动 + 前方未就绪 / 已就绪 / 在动，各一种）；GameTest 用 mock 玩家：record 期间不改玩家位置、文件齐全、来源事件进得来、玩家移除后自动结束；pytest 测面板的跟踪入口调对命令、`compose` 能读 record 的归档。
+- **接入 u1**：u1 上的服务器是 fish 起的，不重启它，只用 rcon 发命令。但新命令要新版 bench mod，u1 现在加载的是 fish 构建的 jar：要等 fish 下次重启 u1 时带上包含 `/bench record` 的 jar，或者由 fish / 用户决定什么时候重启。面板连 u1 用它的 rcon 和端口（25575 / 25585），不动它的 compose。
 
 ## 8. 依赖和接口
 
