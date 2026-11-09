@@ -9,7 +9,7 @@ import json
 import pytest
 
 from analysis.mca import read_chunk
-from analysis.mca.decor import VANILLA_DECOR_MAX, Diff, compare_chunks, relative_check
+from analysis.mca.decor import VANILLA_DECOR_MAX, Diff, compare_chunks, relative_check, terrain_clusters
 from analysis.seam import ratios, ring_density
 from mcd import SCRIPTS, compose, run, wait_until, worker_id
 
@@ -115,8 +115,12 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
                     and (d.strict or d.decor or d.terrain):
                 center_diff[f"{x},{z}"] = {"strict": d.strict, "decor": d.decor, "terrain": d.terrain}
     imported = Diff(examples=[]).add(acc["tile"]).add(acc["ring1"])
+    # 地形互换的每一处：大小、一个方块坐标、所在 chunk（只记录，排查用；11-09 一次失败时没有这些，查不了）
     summary = {k: {"strict": v.strict, "decor_rate": v.decor_rate, "terrain_rate": v.terrain_rate,
-                   "examples": v.examples} for k, v in acc.items()}
+                   "examples": v.examples,
+                   "terrain_clusters": [{"size": len(c), "at": list(min(c)), "chunk": [min(c)[0] >> 4, min(c)[2] >> 4]}
+                                        for c in terrain_clusters(v.terrain_positions or [])]}
+               for k, v in acc.items()}
     print(f"严格差异 / 装饰类差异率：{ {k: (v.strict, f'{v.decor_rate:.4%}') for k, v in acc.items()} }")
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
