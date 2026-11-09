@@ -52,8 +52,14 @@ public class BenchGameTest implements FabricGameTest {
         try {
             FlightGameTest.check(FlightGameTest.run(helper, "bench viewdistance 16") == 16, "bench viewdistance 失败");
             FlightGameTest.check(list.getViewDistance() == 16, "视距没改：" + list.getViewDistance());
-            FlightGameTest.check(FlightGameTest.run(helper, "bench viewdistance 99") != 16 && list.getViewDistance() == 16,
-                    "超出 2～32 应该拒绝");
+            // 超出 2～32：参数范围在命令语法里，原版直接报语法错误（FlightGameTest.run 抛 GameTestAssertException），视距不变
+            boolean rejected;
+            try {
+                rejected = FlightGameTest.run(helper, "bench viewdistance 99") != 16;
+            } catch (net.minecraft.gametest.framework.GameTestAssertException e) {
+                rejected = true;
+            }
+            FlightGameTest.check(rejected && list.getViewDistance() == 16, "超出 2～32 应该拒绝");
         } finally {
             list.setViewDistance(before);
         }
