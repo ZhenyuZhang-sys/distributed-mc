@@ -95,10 +95,14 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     # 把它们全编码，整机忙时用了 60 秒，看门狗把服务器杀了）。生成完停服再拷，和上面浸泡的存档一样一致；拷完再起来，后面的测试照常用
     server.rcon("save-off")
     server.chunky_list(sample)
+    # 停服前打开存盘：save-off 时停服不存（11-09 f3 重跑：对照的 chunk 一个都没写进存档）。停服时的存盘不在 tick 里，看门狗管不到
+    server.rcon("save-on")
     compose("stop", "minecraft", timeout=300)
     control = server._copy_world(base / "control")
     compose("up", "-d", "--wait", "--wait-timeout", "600", "minecraft", timeout=660)
     acc = {"imported": Diff(examples=[]), "server": Diff(examples=[])}
+    missing = [p for p in sample if read_chunk(control, *p) is None]
+    assert not missing, f"对照世界里缺 {len(missing)} 个抽样的 chunk（没存盘？），比不了：{missing[:10]}"
     for p in sample:
         acc["imported" if p in imported else "server"].add(compare_chunks(read_chunk(snap, *p), read_chunk(control, *p)))
     rate = {k: ({"decor": v.decor_rate, "terrain": v.terrain_rate} if v.blocks else None) for k, v in acc.items()}
