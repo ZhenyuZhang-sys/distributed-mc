@@ -11,6 +11,9 @@
     "mcdonate-client": "*"
   },
   "entrypoints": {
+    "client": [
+      "mcdonate.client.testhooks.OverlayTestHook"
+    ],
     "mcdonate:consent_driver": [
       "mcdonate.client.testhooks.TestConsentDriver"
     ]

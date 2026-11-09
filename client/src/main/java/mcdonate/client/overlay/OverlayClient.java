@@ -49,6 +49,8 @@ public final class OverlayClient {
     private static WorkerLink link;
     private static volatile String latestStatus;
     private static boolean subscribedThisConnection;
+    private static long receivedWhileOff;   // 两样都关着时还收到的包（端到端测试看服务器有没有停）
+    private static boolean incrementLogged;
     private static int ticks;
 
     private OverlayClient() {}
@@ -93,6 +95,9 @@ public final class OverlayClient {
         if (overlayWasOn && !s.overlay()) {
             SOURCES.clear();
         }
+        if (!s.overlay() && !s.hud()) {
+            receivedWhileOff = 0;
+        }
         subscribedThisConnection = false;   // 下一个 tick 重新发订阅
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
@@ -104,6 +109,16 @@ public final class OverlayClient {
 
     public static OverlaySettings settings() {
         return settings;
+    }
+
+    /** 算力面板现在的几行字（测试钩子记日志用）。 */
+    public static java.util.List<String> hudLines() {
+        return HudLines.of(latestStatus, SOURCES.summary());
+    }
+
+    /** 两样都关着时还收到的包数。 */
+    public static long receivedWhileOff() {
+        return receivedWhileOff;
     }
 
     public static ChunkSources sources() {
@@ -119,12 +134,17 @@ public final class OverlayClient {
 
     private static void onUpdate(ProvenanceUpdate u) {
         if (!settings.overlay() && !settings.hud()) {
+            receivedWhileOff++;
             return;   // 都关了还在路上的包：不算
         }
         boolean first = SOURCES.updates() == 0 || u.full();
         SOURCES.apply(u);
         if (first) {
+            incrementLogged = false;
             LOG.info("overlay 收到来源快照：{} 个 chunk，{} 个 donor", SOURCES.size(), SOURCES.donorNames().size());
+        } else if (!incrementLogged && !u.chunks().isEmpty()) {
+            incrementLogged = true;
+            LOG.info("overlay 收到来源增量：第一包 {} 个 chunk，现在一共 {} 个", u.chunks().size(), SOURCES.size());
         } else if (SOURCES.updates() % 30 == 0) {
             LOG.info("overlay 收到来源增量：累计 {} 包，现在 {} 个 chunk", SOURCES.updates(), SOURCES.size());
         }

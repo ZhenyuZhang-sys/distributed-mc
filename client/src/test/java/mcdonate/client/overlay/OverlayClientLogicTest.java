@@ -78,6 +78,22 @@ class OverlayClientLogicTest {
     }
 
     @Test
+    void everyBatchShowsUp() {
+        // 用户 11-09 报"地图更新一次之后就不会再重新着色"：游戏里的小地图每帧直接按来源表画（没有缓存贴图），
+        // 这里连续喂三批，第二、三批都要反映出来；version 每批都加一（以后要是改成缓存贴图，按它决定重画）
+        ChunkSources s = new ChunkSources();
+        s.apply(snap());
+        int v1 = s.version();
+        s.apply(new ProvenanceUpdate(false, 0, 0, List.of(), List.of(new Entry(4, 4, Source.SERVER, -1)), null));
+        assertEquals(DonorColors.of(Source.SERVER), s.color(4, 4));
+        int v2 = s.version();
+        s.apply(new ProvenanceUpdate(false, 0, 0, List.of(), List.of(new Entry(4, 4, Source.DONOR, 0), new Entry(5, 4, Source.REJECTED, -1)), null));
+        assertEquals(DonorColors.donor("player:a"), s.color(4, 4));     // 同一个 chunk 重新着色
+        assertEquals(DonorColors.of(Source.REJECTED), s.color(5, 4));
+        assertTrue(v1 < v2 && v2 < s.version());
+    }
+
+    @Test
     void summaryKeptForHud() {
         ChunkSources s = new ChunkSources();
         s.apply(new ProvenanceUpdate(false, 0, 0, List.of(), List.of(), new Summary(3, 200, 50)));

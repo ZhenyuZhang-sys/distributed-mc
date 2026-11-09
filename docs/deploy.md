@@ -120,6 +120,8 @@ docker compose exec -T minecraft rcon-cli donor imports              # 每个导
 
 找需求只在离玩家一段距离（视距 + 约 12 圈以外）派活，原地站着基本没有活，要有人在跑图、飞行时才看得到 done 涨。
 
+**游戏内来源上色（`/mcdonate show`）的来源记录**：coordinator 把每个 chunk 是谁做完的记在内存里（开服以来的，每个 chunk 约 12 字节；超过 100 万个时删掉离所有在线玩家都超过 64 个 chunk 的），没人打开 overlay 时也记、只是不发。**服务器重启后清空**：重启以前生成的 chunk、以及开服以前就有的 chunk，在小地图上没颜色（来源不明）。
+
 ## 8. 安全注意
 
 - **正版验证要开**（`ONLINE_MODE=TRUE`）。关掉时游戏连接不加密，邀请里的一次性 token 能被同一网络里的人抓到、抢先用掉。

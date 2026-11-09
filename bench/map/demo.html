@@ -95,6 +95,7 @@
     </div>
     <div class="controls">
       <label>A/B 服务器 <select id="server-cpus"><option value="1">1 核</option><option value="2" selected>2 核</option><option value="4">4 核</option></select></label>
+      <label>donor <select id="ab-donors"><option value="2">2 个</option><option value="3" selected>3 个</option></select></label>
       <button id="ab-btn">一键 A/B：donor 关 vs donor 开（deadline）</button>
       <span class="muted" id="ab-state"></span>
     </div>
@@ -289,8 +290,8 @@ for (const f of FEATURES) {
   b.addEventListener("click", () => { const on = b.dataset.on !== "true"; control({ action: "feature", name: f, on }, `第 7 步开关 ${f}：${on ? "打开" : "关掉"}？`); });
   $("features").appendChild(b);
 }
-$("ab-btn").addEventListener("click", () => control({ action: "A/B", path: "/api/ab", speed: $("speed").value, seconds: parseInt($("seconds").value, 10), server_cpus: parseInt($("server-cpus").value, 10) },
-  `开始一键 A/B？服务器 ${$("server-cpus").value} 核，两轮各换一个全新世界（会重启测试服务器），A 不开 donor、B 开 donor 和 deadline，鞘翅 120 秒大约 8～10 分钟。`));
+$("ab-btn").addEventListener("click", () => control({ action: "A/B", path: "/api/ab", speed: $("speed").value, seconds: parseInt($("seconds").value, 10), server_cpus: parseInt($("server-cpus").value, 10), donors: parseInt($("ab-donors").value, 10) },
+  `开始一键 A/B？服务器 ${$("server-cpus").value} 核，两轮各换一个全新世界（会重启测试服务器），A 不开 donor、B 开 ${$("ab-donors").value} 个 donor 和 deadline，鞘翅 120 秒大约 8～10 分钟。`));
 
 // ---- 实时 ----
 async function tick() {

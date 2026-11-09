@@ -39,11 +39,16 @@ class OverlayCoreTest {
     }
 
     @Test
-    void nothingWithoutSubscription() {
+    void nothingSentWithoutSubscriptionButHistoryKept() {
+        // 没人订阅时不发；但来源一直记着（每个 chunk 约 12 字节）：打开 overlay 时整片快照里有之前生成的 chunk
+        //（原来没人订阅时不记，打开以后只看得到之后变化的，11-09 端到端时发现）
         core.onEvent(0, 0, Provenance.Kind.VANILLA, -1);
+        core.onEvent(1, 0, Provenance.Kind.DONOR, 7);
         assertTrue(core.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2))).isEmpty());
-        assertFalse(core.active(), "没人订阅时不记事件");
-        assertEquals(0, core.stateSize());
+        assertFalse(core.active(), "没人订阅");
+        assertEquals(2, core.stateSize());
+        core.subscribe(ALICE, new OverlaySubscribe(true, false));
+        assertEquals(Set.of(key(0, 0), key(1, 0)), chunks(tick(ALICE, 0, 0)));
     }
 
     @Test
@@ -133,5 +138,20 @@ class OverlayCoreTest {
     void invalidSubscribeIgnored() {
         core.subscribe(ALICE, new OverlaySubscribe(9, 1));
         assertEquals(0, core.subscribers());
+    }
+
+    @Test
+    void historyIsCappedByDroppingChunksFarFromEveryone() {
+        // 一直记来源要有上限：超过 maxState 时，离所有在线玩家都超过 pruneRadius 的 chunk 删掉
+        OverlayCore c = new OverlayCore(id -> Optional.empty(), () -> 0, 3, 4);
+        c.onEvent(0, 0, Provenance.Kind.VANILLA, -1);
+        c.onEvent(1, 1, Provenance.Kind.VANILLA, -1);
+        c.onEvent(100, 100, Provenance.Kind.VANILLA, -1);
+        c.onEvent(-50, 7, Provenance.Kind.VANILLA, -1);
+        c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2)));
+        assertEquals(2, c.stateSize(), "超过上限 3：离玩家 4 圈以外的两个删掉");
+        c.onEvent(2, 2, Provenance.Kind.VANILLA, -1);
+        c.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2)));
+        assertEquals(3, c.stateSize(), "没超过上限不删");
     }
 }

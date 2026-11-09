@@ -368,8 +368,11 @@ def test_ab_runs_a_without_donors_then_b_with_deadline_on_fresh_worlds(tmp_path)
     res = demo_ab.run_ab(runner, ctl, flyer, tmp_path / 'artifacts', speed='elytra', seconds=120, events=lambda a, b: [])
     a, b = fly.calls
     assert a['workers'] == 0 and not a['demand'] and a['features'] == []
-    assert b['workers'] == 2 and b['demand'] and b['features'] == ['deadline']
+    # 演示默认（demo-v2 挑出来的，11-09）：2 核、3 个 donor（worker3 提到 4 核）、deadline、提前量 8（默认）
+    assert b['workers'] == 3 and b['demand'] and b['features'] == ['deadline']
     assert a['start'] == b['start'] and a['speed'] == b['speed'] == 30.0 and a['seconds'] == b['seconds'] == 120
+    up = [c for c in runner.calls if c[:2] == ('compose', 'up')][-1]
+    assert 'worker3' in up and ('WORKER3_CPUS', '4') in up
     seq = [c for c in runner.calls if c[0] == 'script' or c[:2] == ('rcon', 'donor reset') or c[:2] == ('compose', 'up')]
     kinds = [c[1] if c[0] != 'compose' else 'up' for c in seq]
     assert kinds == ['new_world.sh', 'new_world.sh', 'donor reset', 'up']   # 两轮各一个全新世界，B 开 donor 前 reset
@@ -385,6 +388,7 @@ def test_ab_runs_a_without_donors_then_b_with_deadline_on_fresh_worlds(tmp_path)
     assert saved['note'].startswith('演示，粗测') and '演示，粗测' in (root / 'README.md').read_text()
     assert saved['A']['summary']['stall_fraction'] == .33 and saved['B']['summary']['stall_fraction'] == .17
     assert saved['server_cpus'] == 2 and saved['server_cpuset'] == '16-17' and saved['seconds'] == 120 and saved['speed'] == 'elytra'
+    assert saved['donors'] == 3
 
 
 def test_ab_marks_b_invalid_without_donor_events(tmp_path):
@@ -432,6 +436,8 @@ def test_ab_endpoint_runs_in_background_and_reports(tmp_path):
         code, _ = post(base, '/api/ab', dict(speed='rocket', seconds=60))
         assert code == 400
         code, _ = post(base, '/api/ab', dict(speed='elytra', seconds=60, server_cpus=3))
+        assert code == 400
+        code, _ = post(base, '/api/ab', dict(speed='elytra', seconds=60, donors=5))
         assert code == 400
     finally:
         server.shutdown()
@@ -508,3 +514,10 @@ def test_page_defaults(web):
         page = r.read().decode()
     assert '<option value="elytra" selected>' in page and 'id="seconds" type="number" min="10" max="600" value="120"' in page
     assert 'id="server-cpus"' in page and '<option value="2" selected>' in page
+    assert 'id="ab-donors"' in page and '<option value="3" selected>' in page
+
+
+def test_ab_with_two_donors_still_possible(tmp_path):
+    runner, ctl, flyer, fly = ab_rig(tmp_path)
+    demo_ab.run_ab(runner, ctl, flyer, tmp_path / 'artifacts', donors=2, events=lambda a, b: [])
+    assert fly.calls[-1]['workers'] == 2
