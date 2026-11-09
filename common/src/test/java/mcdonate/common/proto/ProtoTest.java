@@ -208,6 +208,52 @@ class ProtoTest {
         assertEquals(List.of(new Task(1, 2, 3, 4)), d.feed(f, f.length - 1, 1));
     }
 
+    // ---- 2b. 每条消息在线上的字节数（调度 11-09：fish 第 7 步按线上字节数算传输时间） ----
+
+    @Test
+    void feedFramesReportsWireBytesPerMessage() {
+        // 线上字节数 = 长度前缀里的 N + 4 字节头 = Frame.encode 出来的长度
+        for (Message m : all()) {
+            byte[] f = Frame.encode(m);
+            assertEquals(List.of(new FrameDecoder.Decoded(m, f.length)), new FrameDecoder().feedFrames(f, 0, f.length));
+        }
+        byte[] tile = Frame.encode(Result.success(1, TILE));
+        FrameDecoder.Decoded d = new FrameDecoder().feedFrames(tile, 0, tile.length).get(0);
+        assertEquals(ByteBuffer.wrap(tile).getInt() + 4, d.wireBytes());
+    }
+
+    @Test
+    void feedFramesSeparatesFramesInOneFeedAndAcrossFeeds() {
+        byte[] a = Frame.encode(new Cancel(1)), b = Frame.encode(Result.success(2, TILE)), c = Frame.encode(new Heartbeat(5, 1));
+        byte[] stream = concat(List.of(a, b, c));
+        List<FrameDecoder.Decoded> want = List.of(new FrameDecoder.Decoded(new Cancel(1), a.length),
+                new FrameDecoder.Decoded(Result.success(2, TILE), b.length), new FrameDecoder.Decoded(new Heartbeat(5, 1), c.length));
+        assertEquals(want, new FrameDecoder().feedFrames(stream, 0, stream.length));
+        // 任意拆块：每条的字节数照样对，和怎么到达无关
+        Random rng = new Random(7);
+        FrameDecoder d = new FrameDecoder();
+        List<FrameDecoder.Decoded> got = new ArrayList<>();
+        for (int pos = 0; pos < stream.length; ) {
+            int n = Math.min(stream.length - pos, 1 + rng.nextInt(50_000));
+            got.addAll(d.feedFrames(stream, pos, n));
+            pos += n;
+        }
+        assertEquals(want, got);
+    }
+
+    @Test
+    void feedAndFeedFramesShareStateAndFailure() {
+        // feed 照旧只返回消息；两个入口可以混用（同一个缓冲）；出错后两个都不能再用
+        byte[] f = Frame.encode(new Task(1, 2, 3, 4));
+        FrameDecoder d = new FrameDecoder();
+        assertEquals(List.of(), d.feed(f, 0, 5));
+        assertEquals(List.of(new FrameDecoder.Decoded(new Task(1, 2, 3, 4), f.length)), d.feedFrames(f, 5, f.length - 5));
+        FrameDecoder bad = new FrameDecoder();
+        byte[] junk = ByteBuffer.allocate(4).putInt(-1).array();
+        assertThrows(ProtocolException.class, () -> bad.feedFrames(junk, 0, 4));
+        assertThrows(ProtocolException.class, () -> bad.feed(f, 0, f.length));
+    }
+
     // ---- 3. 长度超限：只看 4 字节前缀就抛，不等数据、不分配 ----
 
     @Test
