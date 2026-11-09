@@ -12,7 +12,8 @@ from .models import atomic_json, digest
 
 def require_managed():
     try:
-        lock=Path('/tmp/mc-donate-heavy.lock').stat()
+        # 锁文件和 scripts/lib.sh 一样定：环境变量、.env.local（用户 11-09：两个目录可以各用各的锁文件），都没有用共用的
+        lock=Path(os.environ.get('MCD_HEAVY_LOCK') or limits().get('MCD_HEAVY_LOCK') or '/tmp/mc-donate-heavy.lock').stat()
         fd=os.fstat(9)
         if (lock.st_dev,lock.st_ino)!=(fd.st_dev,fd.st_ino): raise RuntimeError('锁文件身份不符')
         # benchmark（bench.sh、test.sh --slow）持独占锁，普通测试持共享锁（scripts/lib.sh）。
