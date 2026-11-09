@@ -162,3 +162,43 @@ def test_forward_ready_distance():
     assert per[2] == 16
     # 第 3 秒：玩家在 chunk 4，chunk 5 就绪、chunk 6 没就绪 → 16 格
     assert per[3] == 16
+
+
+def test_front_sector_ready():
+    # 调度 11-09：前方 90 度扇形（左右各 45 度、视距以内）里就绪的比例。沿 +x 飞，视距 2：
+    # 按 chunk 中心相对玩家的角度和距离算，正好 45 度的算在内，玩家脚下那个不算
+    rows = [dict(t_s=1, x=8.0, z=8.0), dict(t_s=2, x=24.0, z=8.0)]   # 第 2 秒在 chunk (1,0)，方向 +x
+    ev = [dict(t_ms=0, cx=cx, cz=cz, ev='enter') for cx in range(-3, 6) for cz in range(-3, 4)]
+    ev += [dict(t_ms=0, cx=cx, cz=cz, ev='ready') for cx in range(-3, 6) for cz in range(-3, 4) if cx <= 2]
+    per = firework.front_sector_ready(ev, rows, view=2)
+    # 第 2 秒，玩家 (24, 8)：前方扇形 = 中心在 x 方向 ±45 度、距离 ≤ 32 的 chunk：(2,0) (3,0) (2,1) (2,-1)；
+    # (3,±1) 距离 √(32²+16²) > 32 不算。x ≤ 2 的就绪 → 3/4
+    assert per[2] == pytest.approx(3 / 4)
+    m = firework.sector_summary(per, rows, start=(0, 0), radius=0)
+    assert m['front_sector_ready_mean'] == pytest.approx(per[2]) and m['front_sector_ready_min'] == pytest.approx(per[2])
+
+
+def test_report_has_front_sector_column():
+    rows = [dict(experiment='flight', scenario='firework', speed_bps=33.5, donors=0, stall_after_exit=.1,
+                 front_sector_ready_mean=.5, front_sector_ready_min=.25)]
+    assert '前方 90 度扇形就绪（平均 / 最低）' in firework.report(rows) and '50% / 25%' in firework.report(rows)
+
+
+def test_report_compares_code_versions():
+    # 调度 11-09 三臂：原版 / 637c2de + donor / 30a7c22 + donor，每套代码各带自己的原版。行带 code，配置名后面标上代码版本
+    rows = []
+    for code in ('637c2de', '30a7c22'):
+        for prof in ('', '1x8'):
+            for scen in ('firework', 'firework_turning'):
+                rows.append(dict(experiment='flight', scenario=scen, speed_bps=33.5, donors=1 if prof else 0, donor_profile=prof or None,
+                                 code=code, stall_after_exit=.1 if prof else .3))
+    md = firework.report(rows)
+    for code in ('637c2de', '30a7c22'):
+        assert f'原版（0 个 donor） · {code}' in md and f'1 个 donor，8 核 · {code}' in md
+    real = [l for l in md.splitlines() if l.startswith('| 直线')]
+    assert len(real) == 4 and real[0].split('|')[2].strip().startswith('原版')   # 原版排前面
+
+
+def test_cli_label_per_campaign():
+    assert firework.parse_campaign_arg('runs/matrix-x=30a7c22') == ('runs/matrix-x', '30a7c22')
+    assert firework.parse_campaign_arg('runs/matrix-x') == ('runs/matrix-x', None)

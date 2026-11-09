@@ -40,16 +40,14 @@ def view_ready(rows, start, radius):
     return dict(view_ready_mean=sum(vals) / len(vals) if vals else None, view_ready_min=min(vals) if vals else None)
 
 
-def forward_ready(events, rows, view=10, band=1):
-    """前方已就绪距离（调度 11-09）：每秒末，从玩家所在的 chunk 沿飞行方向往前，3 列宽（左右各 band 列）的带子连续就绪了多少格。
-    就绪按 chunks.jsonl 的 enter / ready / leave 重放（不在视野里的算没就绪），最多看视距那么远。返回 {t_s: 格}。"""
+def _replay(events, rows):
+    """按 chunks.jsonl 的 enter / ready / leave 重放：每秒末给出 (行, 飞行方向, 就绪表)。不在视野里的不在表里（算没就绪）。"""
     import bisect
     evs = sorted(events, key=lambda e: e['t_ms'])
     times = [e['t_ms'] for e in evs]
-    state, j, out, prev, d = {}, 0, {}, None, (1.0, 0.0)
+    state, j, prev, d = {}, 0, None, (1.0, 0.0)
     for r in rows:
-        t = r['t_s'] * 1000
-        k = bisect.bisect_right(times, t)
+        k = bisect.bisect_right(times, r['t_s'] * 1000)
         for e in evs[j:k]:
             key = (e['cx'], e['cz'])
             if e['ev'] == 'enter':
@@ -66,6 +64,14 @@ def forward_ready(events, rows, view=10, band=1):
             if n > 1e-6:
                 d = (dx / n, dz / n)
         prev = r
+        yield r, d, state
+
+
+def forward_ready(events, rows, view=10, band=1):
+    """前方已就绪距离（调度 11-09）：每秒末，从玩家所在的 chunk 沿飞行方向往前，3 列宽（左右各 band 列）的带子连续就绪了多少格。
+    最多看视距那么远。返回 {t_s: 格}。"""
+    out = {}
+    for r, d, state in _replay(events, rows):
         px, pz = -d[1], d[0]
         ok = 0
         for step in range(1, view + 1):
@@ -77,6 +83,35 @@ def forward_ready(events, rows, view=10, band=1):
                 break
         out[r['t_s']] = ok * 16
     return out
+
+
+def front_sector_ready(events, rows, view=10, half_angle=45):
+    """前方 90 度扇形就绪率（调度 11-09）：每秒末，chunk 中心在飞行方向左右各 half_angle 度以内、离玩家不超过视距（view × 16 格）的
+    chunk 里，就绪的比例。玩家脚下那个不算。返回 {t_s: 比例}。"""
+    cos_a = math.cos(math.radians(half_angle))
+    out = {}
+    for r, d, state in _replay(events, rows):
+        x, z, reach = r['x'], r['z'], view * 16
+        cx0, cz0 = math.floor(x / 16), math.floor(z / 16)
+        n = ok = 0
+        for cx in range(cx0 - view - 1, cx0 + view + 2):
+            for cz in range(cz0 - view - 1, cz0 + view + 2):
+                if (cx, cz) == (cx0, cz0):
+                    continue
+                rx, rz = cx * 16 + 8 - x, cz * 16 + 8 - z
+                dist = math.hypot(rx, rz)
+                if dist == 0 or dist > reach + 1e-9 or rx * d[0] + rz * d[1] < cos_a * dist - 1e-9:
+                    continue
+                n += 1
+                ok += bool(state.get((cx, cz)))
+        out[r['t_s']] = ok / n if n else None
+    return out
+
+
+def sector_summary(per, rows, start, radius):
+    i = _exit_index(rows, start, radius)
+    vals = [per[r['t_s']] for r in (rows[i + 1:] if i is not None else []) if per.get(r['t_s']) is not None]
+    return dict(front_sector_ready_mean=sum(vals) / len(vals) if vals else None, front_sector_ready_min=min(vals) if vals else None)
 
 
 def forward_summary(per, rows, start, radius):
@@ -119,7 +154,9 @@ def recompute(attempt_dir, params) -> dict:
     out.update(view_ready(rows, DEFAULT_START, radius))
     if (raw / 'chunks.jsonl').exists():
         ev = [json.loads(l) for l in (raw / 'chunks.jsonl').read_text().splitlines() if l.strip()]
-        out.update(forward_summary(forward_ready(ev, rows, view=params.get('view_distance') or 10), rows, DEFAULT_START, radius))
+        view = params.get('view_distance') or 10
+        out.update(forward_summary(forward_ready(ev, rows, view=view), rows, DEFAULT_START, radius))
+        out.update(sector_summary(front_sector_ready(ev, rows, view=view), rows, DEFAULT_START, radius))
     return out
 
 
@@ -147,8 +184,27 @@ PROFILE_NAME = {None: '原版（0 个 donor）', '': '原版（0 个 donor）', 
 SCEN_NAME = {'firework': '直线', 'firework_turning': '转弯'}
 
 
+ORDER = [PROFILE_NAME[None], PROFILE_NAME['1x8'], PROFILE_NAME['1x4'], PROFILE_NAME['2x4'], PROFILE_NAME['3x4']]
+
+
 def _cfg(r):
-    return PROFILE_NAME.get(r.get('donor_profile'), r.get('donor_profile')) if r.get('donors') else PROFILE_NAME[None]
+    """配置名；行带 code（哪套代码，三臂对比用）时后面标上。"""
+    base = PROFILE_NAME.get(r.get('donor_profile'), r.get('donor_profile')) if r.get('donors') else PROFILE_NAME[None]
+    return f"{base} · {r['code']}" if r.get('code') else base
+
+
+def _order(names):
+    """原版在前，再按 donor 配置、代码版本。"""
+    def k(n):
+        base, _, code = n.partition(' · ')
+        return (ORDER.index(base) if base in ORDER else len(ORDER), base, code)
+    return sorted(set(names), key=k)
+
+
+def parse_campaign_arg(a):
+    """命令行的 campaign 参数：目录，或 目录=代码版本。"""
+    path, eq, label = a.rpartition('=')
+    return (path, label) if eq and label and '/' not in label else (a, None)
 
 
 def _f(v, pct=False, digits=1):
@@ -170,8 +226,8 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
     fw = [r for r in rows if r.get('experiment', 'flight') == 'flight' and r.get('scenario') in SCEN_NAME]
     sweep = [dict(r, config=_cfg(r)) for r in fw if r.get('scenario') == 'firework' and r.get('speed_bps') is not None]
     best = max_sustainable(sweep, limit=0.05)
-    order = [PROFILE_NAME[None], PROFILE_NAME['1x8'], PROFILE_NAME['1x4'], PROFILE_NAME['2x4'], PROFILE_NAME['3x4']]
-    names = [n for n in order if n in best] + [n for n in best if n not in order]
+    names = _order(best)
+    order = _order(_cfg(r) for r in fw)
     out = [f'> {note}', '',
            '| 配置 | 能扛住的最高速度（格/秒，出缓存区后卡住 < 5%） | 各速度下出缓存区后的卡住占比 |', '| --- | --- | --- |']
     for n in names:
@@ -179,8 +235,8 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
         out.append(f"| {n} | **{_f(best[n])}** | " + '，'.join(f'{_f(v, digits=1) if isinstance(v, float) else v}: {_f(s, True)}' for v, s in per) + ' |')
     real = [r for r in fw if r.get('speed_bps') in (None, 33.5)]
     out += ['', '真实烟花速度（33.5 格/秒）下，出了缓存区以后：', '',
-            '| 场景 | 配置 | 卡住占比 | 前方已就绪（中位 / 最低，格） | 视距圈就绪（平均 / 最低） | 实际 / 理想速度 | 第一次卡住（出去后几秒） | MSPT p95 / max | Can\'t keep up | moved too quickly | 接着做完的占比（donor 导入或缓存区边上的半成品） | 丢弃：来晚 / 碰到服务器 / 过时 | 导入主线程（ms） | worker 核数 | tile/s |',
-            '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+            '| 场景 | 配置 | 卡住占比 | 前方已就绪（中位 / 最低，格） | 视距圈就绪（平均 / 最低） | 前方 90 度扇形就绪（平均 / 最低） | 实际 / 理想速度 | 第一次卡住（出去后几秒） | MSPT p95 / max | Can\'t keep up | moved too quickly | 接着做完的占比（donor 导入或缓存区边上的半成品） | 丢弃：来晚 / 碰到服务器 / 过时 | 导入主线程（ms） | worker 核数 | tile/s |',
+            '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for scen in ('firework', 'firework_turning'):
         for n in order:
             rs = [r for r in real if r.get('scenario') == scen and _cfg(r) == n]
@@ -189,6 +245,7 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
             out.append(f"| {SCEN_NAME[scen]} | {n} | {_f(_mean(rs, 'stall_after_exit'), True)} "
                        f"| {_f(_mean(rs, 'forward_ready_median'), digits=0)} / {_f(_mean(rs, 'forward_ready_min'), digits=0)} "
                        f"| {_f(_mean(rs, 'view_ready_mean'), True)} / {_f(_mean(rs, 'view_ready_min'), True)} "
+                       f"| {_f(_mean(rs, 'front_sector_ready_mean'), True)} / {_f(_mean(rs, 'front_sector_ready_min'), True)} "
                        f"| {_f(_mean(rs, 'speed_ratio_after_exit'), True)} "
                        f"| {_f(_mean(rs, 'first_stall_after_exit_s'), digits=0)} | {_f(_mean(rs, 'mspt_p95'))} / {_f(_mean(rs, 'mspt_max'), digits=0)} "
                        f"| {_f(_mean(rs, 'cant_keep_up'), digits=0)} | {_f(_mean(rs, 'moved_too_quickly'), digits=0)} | {_f(_mean(rs, 'resumed_share'), True)} "
@@ -206,7 +263,10 @@ if __name__ == '__main__':
     ap.add_argument('campaigns', nargs='+')
     ap.add_argument('--out')
     a = ap.parse_args()
-    rows = [r for c in a.campaigns for r in rows_recomputed(Path(c))]
+    rows = []
+    for c in a.campaigns:
+        path, code = parse_campaign_arg(c)
+        rows += [dict(r, code=code) if code else r for r in rows_recomputed(Path(path))]
     md = report(rows)
     if a.out:
         Path(a.out).write_text(md)
