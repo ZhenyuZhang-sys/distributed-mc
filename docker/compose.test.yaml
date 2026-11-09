@@ -34,6 +34,9 @@ services:
       JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580 ${MCD_JVM_EXTRA:-}"
       # 故意和 MC_SEED 不一样：证明 worker 用的是 coordinator 给的 seed
       SEED: "1"
+      # worker 关掉看门狗：上面没有玩家，一个 tile 在一个 tick 里生成是设计如此，慢的时候（并行跑抢磁盘）看门狗会误杀它（11-09）。
+      # 服务器（minecraft）不改。worker2、worker3 继承这里
+      MAX_TICK_TIME: "-1"
     volumes: !override
       - ./test-data-worker:/data
       - ../build/mods-worker:/mods:ro
