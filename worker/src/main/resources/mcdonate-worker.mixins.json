@@ -5,7 +5,8 @@
   "mixins": [
     "DedicatedServerPropertiesMixin",
     "ServerChunkCacheInvoker",
-    "ServerChunkCacheAccessor"
+    "ServerChunkCacheAccessor",
+    "ChunkMapInvoker"
   ],
   "injectors": {
     "defaultRequire": 1

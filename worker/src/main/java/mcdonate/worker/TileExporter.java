@@ -135,6 +135,34 @@ final class TileExporter {
         }
     }
 
+    /** 等区域里的 chunk 都没有进行中的生成任务的最长时间；超过就让这个任务失败（重新排队），不冒险序列化。 */
+    static final long QUIET_TIMEOUT_MS = 60_000;
+
+    /** 区域（tile ± 外圈）里每个 chunk 的生成引用数都是 0（没有生成任务在用它）。在主线程上调。 */
+    static void waitNoGeneration(ServerLevel level, TilePos tile, ServerChunkCache cache) {
+        mcdonate.worker.mixin.ChunkMapInvoker map = (mcdonate.worker.mixin.ChunkMapInvoker) cache.chunkMap;
+        int r = TileFile.MAX_RING;
+        long deadline = System.currentTimeMillis() + QUIET_TIMEOUT_MS;
+        while (true) {
+            boolean busy = false;
+            for (int x = tile.minChunkX() - r; x <= tile.maxChunkX() + r && !busy; x++) {
+                for (int z = tile.minChunkZ() - r; z <= tile.maxChunkZ() + r && !busy; z++) {
+                    net.minecraft.server.level.ChunkHolder h = map.mcdonate$holder(net.minecraft.world.level.ChunkPos.asLong(x, z));
+                    busy = h != null && h.getGenerationRefCount() > 0;
+                }
+            }
+            if (!busy) {
+                return;
+            }
+            if (System.currentTimeMillis() > deadline) {
+                throw new IllegalStateException("tile " + tile + " 的区域 " + QUIET_TIMEOUT_MS / 1000 + " 秒内一直有生成任务在用，不导出");
+            }
+            if (!cache.pollTask()) {
+                java.util.concurrent.locks.LockSupport.parkNanos(200_000);
+            }
+        }
+    }
+
     /** 上一次 generate 的两段（毫秒）：等生成、序列化（/donor export 的 JSON 里报，排查用）。只在主线程上读写。 */
     static final long[] LAST_SPLIT = new long[2];
 
@@ -163,6 +191,10 @@ final class TileExporter {
             }
         }
 
+        // 11-09（用户真机，9008deb："Accessing PalettedContainer from multiple threads"）：几个 tile 同时生成时，
+        // 相邻 tile 的生成任务可能还在写这个 tile 外圈的 chunk（地物写进邻居），主线程这时序列化就撞上。
+        // 序列化之前等整个区域（tile ± 外圈）里每个 chunk 都没有进行中的生成任务；等的时候照常处理 chunk 的主线程任务，不会卡死。
+        waitNoGeneration(level, tile, cache);
         long waited = System.nanoTime();
         int r = TileFile.MAX_RING;
         List<ExportedChunk> chunks = new ArrayList<>();
