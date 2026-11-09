@@ -238,4 +238,70 @@ class TaskQueueDeadlineTest {
         assertEquals(now.get() - 700, q.enqueuedAt(id));
         assertEquals(-1, q.enqueuedAt(999));
     }
+
+    // ---- 11-09 调度：排队排太久（f2 实测入队→派出 p50 4～10 秒、p90 22～43 秒，派出→交回只要约 1.4 秒）----
+    // 按 importBy（不知道时按 due）从早到晚排，第 i 个大约在 now + (i + 在租的一半) / 总吞吐 开始、再过一个 tile 的耗时做完；
+    // 做完晚于 importBy − 余量的，现在就丢掉交给服务器，不占队列（排在它后面的往前挪）。
+
+    private static final double ONE_PER_2S = 1.0 / 2_000; // 总吞吐：每 2 秒 1 个 tile
+
+    @Test
+    void hopelessTasksPruned() {
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 5; i++) {
+            q.enqueue(i, 0);
+            q.setDue(i, 0, now.get() + 5_000 + i, now.get() + 3_000 + i); // 都是 3 秒后进前沿
+        }
+        // 第 0 个：0 秒开始、1 秒做完 ≤ 3 − 1 秒，留着；第 1 个：2 秒开始、3 秒做完 > 2 秒，丢；后面的也一样
+        List<Long> dropped = q.pruneHopeless(ONE_PER_2S, 1_000);
+        assertEquals(4, dropped.size(), dropped.toString());
+        assertEquals(State.QUEUED, q.state(q.find(0, 0)), "最急的那个来得及，留着");
+        assertTrue(q.staleJson().contains("\"hopeless\":4"), q.staleJson());
+    }
+
+    @Test
+    void droppedOnesDoNotTakeAPlace() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(1, 0);
+        q.enqueue(2, 0);
+        q.setDue(0, 0, now.get() + 3_000, now.get() + 2_000);   // 第 0 位：1 秒做完 ≤ 1 秒，留
+        q.setDue(1, 0, now.get() + 3_500, now.get() + 2_500);   // 第 1 位：3 秒做完 > 1.5 秒，丢
+        q.setDue(2, 0, now.get() + 6_000, now.get() + 5_000);   // 丢掉的不占位置：仍是第 1 位，3 秒做完 ≤ 4 秒，留
+        assertEquals(List.of(q.find(1, 0)), q.pruneHopeless(ONE_PER_2S, 1_000));
+    }
+
+    @Test
+    void leasedTasksDelayTheQueue() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(9, 9);
+        q.assign(1);            // 在租 1 个：排队的要等它做完一半
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 3_000, now.get() + 2_500);   // 1 秒后才开始、2 秒做完 > 1.5 秒
+        assertEquals(List.of(q.find(0, 0)), q.pruneHopeless(ONE_PER_2S, 1_000));
+    }
+
+    @Test
+    void unknownDeadlinesKeptAtTheEnd() {
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 4; i++) {
+            q.enqueue(i, 0);   // 没有 due（玩家不朝那边走）：永远不丢，也不挤占有 deadline 的位置
+        }
+        q.enqueue(9, 0);
+        q.setDue(9, 0, now.get() + 3_000, now.get() + 2_500);
+        assertEquals(List.of(), q.pruneHopeless(ONE_PER_2S, 1_000));
+    }
+
+    @Test
+    void noPruningWithoutDeadlineOrDonors() {
+        TaskQueue off = queue("");
+        off.enqueue(0, 0);
+        off.enqueue(1, 0);
+        off.setDue(1, 0, now.get() + 2_000, now.get() + 1_000);
+        assertEquals(List.of(), off.pruneHopeless(ONE_PER_2S, 1_000), "开关关着（v0 对照组）不动");
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 2_000, now.get() + 1_000);
+        assertEquals(List.of(), q.pruneHopeless(0, 1_000), "没有 donor（吞吐 0）时估不了，不丢");
+    }
 }
