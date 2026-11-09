@@ -10,6 +10,7 @@ CAMPAIGNS = [('k2-637c2de-ufw-main-8', '637c2de'), ('k3-30a7c22-ufw-main-8', '30
              ('k2-03b2981w-ufw-mw-straight', '03b2981 · 新 worker'), ('k3-03b2981w-ufw-mw-turn', '03b2981 · 新 worker'),
              ('u1-03b2981w-ufw-turn-first', '03b2981 · 新 worker'),
              ('k3-f19d087sb-ufw-scan-straight', 'f19d087'), ('u1-f19d087sb-ufw-scan-turn', 'f19d087')]
+SWEEP = [('k3-e7fed5fsw-ufw-sweep-c6', 'e7fed5f'), ('u1-e7fed5fsw-ufw-sweep-c10', 'e7fed5f'), ('k2-e7fed5fsw-ufw-sweep-mc', 'e7fed5f')]
 NOTE = ('用户同款服务器：2 核、3G、-Xmx2G、视距 10/6；donor 8 核。几个槽位并行跑，粗测。代码：637c2de = fish-opt+kexu，'
         '30a7c22 / 2359f7d / 3132230 = fish-perf 各版本 + kexu。前方已就绪距离、扇形按 codex-audit K1～K3 修好的算法从归档重算'
         '（初始视野补上、route 按航段取方向、DDA 逐 chunk），单位格。多轮的格子写中位数（最低～最高，几轮）')
@@ -27,6 +28,13 @@ WARN = ('> **注意（11-09 11:00 ET 发现）**：下面这些批次里，donor
 def _crashes(name):
     """这批里 donor 任务失败的次数（PalettedContainer 多线程那种）：数服务器（coordinator）日志里的"任务 N 在 worker M 上失败"。"""
     return sum(len(re.findall(r'任务 \d+ 在 worker \d+ 上失败', p.read_text(errors='replace'))) for p in (HERE / name).rglob('server-log.txt'))
+
+
+def _hopeless(name, cell):
+    """这一格（通过的那次尝试）起飞后服务器日志里"排队的 N 个 tile 按现在的吞吐来不及"的 N 之和。"""
+    tries = sorted((HERE / name / cell).glob('attempt-*'))
+    p = tries[-1] / 'server-log.txt' if tries else None
+    return sum(int(x) for x in re.findall(r'排队的 (\d+) 个 tile 按现在的吞吐来不及', p.read_text(errors='replace'))) if p and p.exists() else None
 
 
 def _pick(name, donors):
@@ -106,15 +114,15 @@ def scan_budget():
     st_ = lambda rs, k, pct=False, d=1: f._stat(rs, k, pct, d)
     L = ['**扫描预算（部署包里唯一的参数改动）**：-Dmcdonate.demandScanBudgetMicros 500（代码默认）对 2000（部署 .env）。main f19d087，'
          '1 个 8 核 donor，开关和提前量同部署；同槽位 500、2000 交替各 3 轮，原版 1 轮作参照；每轮跑完核对过服务器用的就是这个值。', '',
-         '| 场景（槽位） | 预算 | 卡住占比 | 前方已就绪（中位，格） | 实际 / 理想速度 | tile/s | worker 核数 | MSPT p95 / max | 任务失败 |',
-         '| --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+         '| 场景（槽位） | 预算 | 卡住占比 | 前方空白时长 中位 / p90（秒） | 前方已就绪（中位，格） | 实际 / 理想速度 | tile/s | worker 核数 | MSPT p95 / max | 任务失败 |',
+         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for scen, name in (('直线（k3）', st), ('转弯（k4）', tn)):
         fails = _crashes(name)
-        L.append(f'| {scen} | 原版 | {st_(van(name), "stall_after_exit", True)} | {st_(van(name), "forward_ready_median", d=0)} '
+        L.append(f'| {scen} | 原版 | {st_(van(name), "stall_after_exit", True)} | {st_(van(name), "blank_median_s")} / {st_(van(name), "blank_p90_s")} | {st_(van(name), "forward_ready_median", d=0)} '
                  f'| {st_(van(name), "speed_ratio_after_exit", True)} | — | — | {st_(van(name), "mspt_p95")} / {st_(van(name), "mspt_max", d=0)} | — |')
         for b in (500, 2000):
             rs = arm(name, b)
-            L.append(f'| {scen} | {b} µs | {st_(rs, "stall_after_exit", True)} | {st_(rs, "forward_ready_median", d=0)} '
+            L.append(f'| {scen} | {b} µs | {st_(rs, "stall_after_exit", True)} | {st_(rs, "blank_median_s")} / {st_(rs, "blank_p90_s")} | {st_(rs, "forward_ready_median", d=0)} '
                      f'| {st_(rs, "speed_ratio_after_exit", True)} | {st_(rs, "tile_s", d=2)} | {st_(rs, "worker_cores")} '
                      f'| {st_(rs, "mspt_p95")} / {st_(rs, "mspt_max", d=0)} | {"全批 " + str(fails) + " 次" if b == 500 else "（同上）"} |')
     m = lambda rs, k='stall_after_exit': f._median([r[k] for r in rs if isinstance(r.get(k), (int, float))])
@@ -138,6 +146,44 @@ def _same_cell(name, old, cell):
     return bool(a) and len(a) == len(b) and all(x.read_bytes() == y.read_bytes() for x, y in zip(a, b))
 
 
-md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
+def sweep():
+    """直线参数扫描（调度 11-09 傍晚，用户定的目标：直线往前飞时前方空白 chunk 的加载速度）。主指标前方空白时长、前方已就绪距离，按空白时长排序。"""
+    have = [(n, code) for n, code in SWEEP if (HERE / n).exists()]
+    if not have:
+        return []
+    by = {}
+    for name, code in have:
+        slot = name.split('-')[0].replace('u1', 'k4')
+        for r in f.rows_recomputed(HERE / name):
+            r['hopeless'] = _hopeless(name, r['cell_id']) if r.get('donors') else None
+            key = ('原版',) if not r.get('donors') else (r.get('lookahead'), r.get('corridor_chunks') or 6, r.get('max_concurrency') or 4)
+            by.setdefault((slot, key), []).append(r)
+    m = lambda rs, k: f._median([r[k] for r in rs if isinstance(r.get(k), (int, float))])
+    order = sorted(by.items(), key=lambda kv: (m(kv[1], 'blank_median_s') is None, m(kv[1], 'blank_median_s') or 0))
+    L = ['## 直线参数扫描：前方空白 chunk 加载多快', '',
+         '用户定的目标（11-09 傍晚）：直线往前飞时，前方空白 chunk 的加载速度；转弯、多人、尖峰不管。main e7fed5f，扫描预算 2000，'
+         '用户同款 2 核，1 个 8 核 donor，烟花直线 33.5 格/秒。同槽位交替，每格 2 轮，原版 1 轮。按前方空白时长（中位）从短到长排。', '',
+         '> **前方空白时长**：进视野那一刻在飞行方向 ±45° 以内、又在缓存区外的 chunk，从进视野到服务器可发送（getChunkToSend 就绪）的秒数。'
+         '没等到就绪就离开视野、或到结束也没就绪的，记到那一刻为止（截尾，实际只会更长），所以中位数、p90 都是下限；'
+         '"视野里等到就绪"是没被截尾的比例。多轮写中位数（最低～最高）。不同槽位之间只能参考，同一槽位里的才算数。', '',
+         '| 排名 | 槽位 | lookahead | corridorChunks | maxConcurrency | 前方空白时长 中位（秒） | p90（秒） | 视野里等到就绪 | 前方已就绪距离（中位，格） | 卡住（参考） | donor 交回被接受 | hopeless 丢弃 | 飞过丢弃 | tile/s | MSPT p95 |',
+         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+    for i, ((slot, key), rs) in enumerate(order, 1):
+        cols = ['原版', '—', '—'] if key == ('原版',) else [str(k) for k in key]
+        L.append(f'| {i} | {slot} | ' + ' | '.join(cols) + f' | {f._stat(rs, "blank_median_s")} | {f._stat(rs, "blank_p90_s")} '
+                 f'| {f._stat(rs, "blank_ready_share", True)} | {f._stat(rs, "forward_ready_median", digits=0)} '
+                 f'| {f._stat(rs, "stall_after_exit", True)} | {f._stat(rs, "imports_accepted", digits=0)} | {f._stat(rs, "hopeless", digits=0)} '
+                 f'| {f._stat(rs, "stale_dropped", digits=0)} | {f._stat(rs, "tile_s", digits=2)} | {f._stat(rs, "mspt_p95")} |')
+    fails = sum(_crashes(n) for n, _ in have)
+    L += ['', '- 同一槽位里 lookahead 16/24/32 的差别都在轮间波动以内（调度：lookahead 保持 16）。corridor 6（k3）和 10（k4）在不同槽位，'
+          '还定不了，要同槽位交替补跑。k2 上 maxConcurrency 6 比 4 差（交回的少、空白长）；两臂 hopeless 丢弃都约 420～440 个每轮，'
+          'donor 8 核只用 2 核多，没被喂饱（fish 认为是"速率低估循环"，fish-rate 0dfd6c9 在修，k2 在测）。',
+          '- hopeless 丢弃：起飞后服务器日志"排队的 N 个 tile 按现在的吞吐来不及，丢掉，交给服务器"的 N 之和；飞过丢弃：status 的 stale.dropped；'
+          '交回被接受：status 的 accepted。']
+    L += ['', f'任务失败（coordinator 日志"任务 N 在 worker M 上失败"）：这几批共 {fails} 次。', '']
+    return L
+
+
+md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
 (Path(__file__).parent / 'firework-3arm.md').write_text(md)
 print(md)
