@@ -116,9 +116,16 @@ def slow_donor(server, up: bool):
                    interval=1, what="worker3 停了")
 
 
-def donors(server, up: bool):
-    """vanilla 轮停掉全部 donor 并确认不在跑；其他轮把 worker、worker2 起来并连上。"""
-    if up:
+def donors(server, up: bool, solo: bool = False):
+    """vanilla 轮停掉全部 donor 并确认不在跑；其他轮把 worker、worker2 起来并连上。
+    solo（"one-" 开头的轮，11-09 用户定先 1 个 donor）：只要 worker，worker2 停掉。"""
+    if up and solo:
+        compose("stop", "worker2", timeout=300)
+        wait_until(lambda: "worker2" not in compose("ps", "--format", "{{.Service}}").split(), timeout=60, interval=1,
+                   what="worker2 停了")
+        compose("up", "-d", "--wait", "--wait-timeout", "600", "worker", timeout=660)
+        worker_id(server, "worker")
+    elif up:
         compose("up", "-d", "--wait", "--wait-timeout", "600", "worker", "worker2", timeout=660)
         worker_id(server, "worker")
         worker_id(server, "worker2")
@@ -135,7 +142,7 @@ NET_SERVER = ("35ms", "0%")
 
 
 def base_name(name: str) -> str:
-    return name.removesuffix("+net")
+    return name.removesuffix("+net").removeprefix("one-")
 
 
 def netem(svc: str, *args: str):
@@ -217,7 +224,8 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             slow = name.startswith("slow-")
             vanilla = name == "vanilla"
             net = name.endswith("+net")
-            donors(server, not vanilla)
+            solo = name.startswith("one-")
+            donors(server, not vanilla, solo)
             slow_donor(server, slow)
             set_features(server, ROUNDS[base_name(name)])
             before_imports = len(donor_imports(server))
@@ -272,7 +280,7 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "wire_ms_at_20mbps": spread([r["wire_bytes"] * 8 / 20_000 for r in imports if r.get("wire_bytes", -1) >= 0]),
                 "donors": [{"name": s, "cpuset": lim.get(f"{s.upper()}_CPUSET"),
                             "cpus": float(lim.get("WORKER3_CPUS", 0.5)) if s == "worker3" else None}
-                           for s in ([] if vanilla else ["worker", "worker2", *(["worker3"] if slow else [])])],
+                           for s in ([] if vanilla else ["worker", *([] if solo else ["worker2"]), *(["worker3"] if slow else [])])],
                 "server_cpus": lim.get("MC_CPUS"), "server_cpuset": lim.get("MC_CPUSET"),
                 "bots": 1, "speed": "elytra",
                 "imports_accepted": sum(1 for r in imports if r["accepted"]),
