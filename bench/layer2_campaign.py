@@ -262,18 +262,22 @@ def workers_running() -> list[str]:
 
 
 def without_workers():
-    """原版基线不带 donor：先停掉本项目的 worker，再把 COMPOSE_PROFILES 清空，新世界就不会把它们带起来。结束后恢复。"""
+    """原版基线不带 donor：先停掉本项目的 worker，再把 COMPOSE_PROFILES 清空，新世界就不会把它们带起来。结束后恢复。
+
+    按 docker 标签找本项目所有 worker 开头的服务（worker、worker2、fish 后来加的 worker3……），不依赖 compose 里列了哪些。
+    """
     import os
     from contextlib import contextmanager
 
-    from bench.server import compose
+    from bench.server import run
 
     @contextmanager
     def ctx():
         saved = os.environ.get('COMPOSE_PROFILES')
         try:
-            os.environ['COMPOSE_PROFILES'] = 'worker,worker2'
-            compose('stop', 'worker', 'worker2', timeout=300)
+            running = workers_running()
+            if running:
+                run('docker', 'stop', '-t', '60', *running, timeout=300)
             os.environ['COMPOSE_PROFILES'] = ''
             yield
         finally:
@@ -353,7 +357,7 @@ def real_fly_slot(p: dict):
 SUMMARY_KEYS = ('void_mean', 'void_p95', 'latency_p50_ms', 'latency_p95_ms', 'latency_p99_ms', 'censored_fraction',
                 'stall_s', 'stall_fraction', 'distance_ratio', 'mspt_mean', 'mspt_max', 'cpu_cores_mean', 'initial_load_s')
 RUN_COLUMNS = ('slot', 'kind', 'name', 'speed_name', 'speed', 'cpus', 'repeat', 'order', 'attempt', *SUMMARY_KEYS,
-               'distance', 'sync_loads', 'available_processors', 'scan_ms_total', 'scan_every_ticks', 'concurrent')
+               'distance', 'sync_loads', 'sync_loads_world', 'sync_load_world_max_ms', 'available_processors', 'scan_ms_total', 'scan_every_ticks', 'concurrent')
 ARTIFACTS = ('layer2-runs.csv', 'layer2-summary.csv', 'layer2.csv', 'layer2-chunks.csv', 'selfcheck.json', 'baseline-layer2.md')
 STATUS = {'passed': '通过', 'failed': '没过', 'reference': '参考（有并发，不算通过）'}
 
@@ -448,7 +452,9 @@ def report(p, result, ordered, summary, verdict) -> str:
               '所以飞行按速度积分前进，前面的 chunk 没就绪就停在边缘等。**卡住**的时长（玩家停在边缘的时间）是真实玩家最直接的感受，'
               '和实际距离对比理想距离一起列出；第 10 步的 X 仍按就绪 p95 算。原来按"起点 + 速度 × 时间"直接放玩家，假玩家会跑到生成前面，'
               '实体 tick 查脚下流体（`Entity.updateFluidHeightAndDoFluidPushing` → `Level.getFluidState`）时在主线程上同步生成，2 核鞘翅一个 tick 卡满 60 秒被看门狗杀掉（fish 6.6）。',
-              '- **同步加载**是守护计数：飞行期间主线程上 `ServerChunkCache.getChunk(load=true)` 耗时 ≥ 1 毫秒的次数。真实玩家不会造成它，不为 0 的一轮判无效重跑。',
+              '- **同步加载**是守护计数：飞行期间主线程上 `ServerChunkCache.getChunk(load=true)` 耗时 ≥ 1 毫秒的次数。'
+              '玩家实体 tick 里的（上表"同步加载"列）真实玩家不会造成，不为 0 的一轮判无效重跑。'
+              '其余的是原版自己的（流体 tick 或 chunk 变成可 tick 时的后处理读到还没做完的邻居），真实玩家的服务器上也有，只记录在 layer2-runs.csv 的 sync_loads_world。',
               f"- 扫视野的间隔 scan_every_ticks = {every}。扫描耗时不计进 MSPT，但占服务器时间："
               + (f"每 tick 平均扫描耗时是 MSPT 均值的 {min(share):.1%}～{max(share):.1%}。" if share else "这批结果没有 tick 数，算不出占比。")
               + "计划 5.1 要求 < 2%，超过就改成每 2 tick 扫一次再测。",

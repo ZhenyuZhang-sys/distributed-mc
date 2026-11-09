@@ -60,7 +60,9 @@ def compose(run_dir, samples, out_dir, initial_load_s=None, tail_exclude_ms=10_0
                    distance=done['distance'], ideal_distance=done['ideal_distance'],
                    distance_ratio=done['distance'] / done['ideal_distance'] if done['ideal_distance'] else None,
                    unready_ticks=done['unready_ticks'], sync_loads=done['sync_loads']['count'],
-                   sync_load_max_ms=done['sync_loads']['max_ms'])
+                   sync_load_max_ms=done['sync_loads']['max_ms'], sync_loads_world=done['sync_loads']['world']['count'],
+                   sync_load_world_max_ms=done['sync_loads']['world']['max_ms'],
+                   sync_load_world_total_ms=done['sync_loads']['world']['total_ms'])
 
     out_dir.mkdir(parents=True, exist_ok=True)
     if (out_dir / 'layer2.csv').exists():

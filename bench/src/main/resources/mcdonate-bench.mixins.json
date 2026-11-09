@@ -10,7 +10,8 @@
     "ProtoChunkMixin",
     "ChunkSerializerMixin",
     "ChunkMapAccess",
-    "ServerChunkCacheSyncLoadMixin"
+    "ServerChunkCacheSyncLoadMixin",
+    "ServerPlayerTickMixin"
   ],
   "injectors": {
     "defaultRequire": 1

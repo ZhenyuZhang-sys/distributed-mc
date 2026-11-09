@@ -53,14 +53,16 @@ public final class FlightRecorder {
     private double stallNanos;
     private boolean stalledThisTick;
     /** 守护计数：这次飞行期间主线程同步取 chunk ≥ 1 ms 的次数、总耗时、最长一次和它的栈（主线程上更新）。 */
-    private long syncCount, syncTotalNanos, syncMaxNanos;
-    private String syncMaxStack = "";
-    private final SyncLoads.Listener syncListener = (cx, cz, nanos, stack) -> {
-        syncCount++;
-        syncTotalNanos += nanos;
-        if (nanos > syncMaxNanos) {
-            syncMaxNanos = nanos;
-            syncMaxStack = "chunk " + cx + "," + cz + "\n" + stack;
+    /** 玩家实体 tick 里的（[0]，必须是 0）和其余的（[1]，原版流体 tick 等，只记录）。 */
+    private final long[] syncCount = new long[2], syncTotalNanos = new long[2], syncMaxNanos = new long[2];
+    private final String[] syncMaxStack = {"", ""};
+    private final SyncLoads.Listener syncListener = (cx, cz, nanos, stack, playerTick) -> {
+        int i = playerTick ? 0 : 1;
+        syncCount[i]++;
+        syncTotalNanos[i] += nanos;
+        if (nanos > syncMaxNanos[i]) {
+            syncMaxNanos[i] = nanos;
+            syncMaxStack[i] = "chunk " + cx + "," + cz + "\n" + stack;
         }
     };
     private int enters, readies, leaves;
@@ -182,11 +184,8 @@ public final class FlightRecorder {
         done.addProperty("stalled_ticks", stalledTicks);
         done.addProperty("stall_ms", stallNanos / 1e6);
         done.addProperty("unready_ticks", unreadyTicks);
-        JsonObject sync = new JsonObject();
-        sync.addProperty("count", syncCount);
-        sync.addProperty("total_ms", syncTotalNanos / 1e6);
-        sync.addProperty("max_ms", syncMaxNanos / 1e6);
-        sync.addProperty("stack", syncMaxStack);
+        JsonObject sync = syncJson(0), world = syncJson(1);
+        sync.add("world", world);
         done.add("sync_loads", sync);
         // 监听期间收到的来源事件数，和同一段时间的计数增量（Generation 保证两者对得上：原版 = generated + resumed）
         JsonObject prov = new JsonObject();
@@ -257,6 +256,15 @@ public final class FlightRecorder {
             case LEAVE -> leaves++;
         }
         out.chunk("{\"t_ms\":" + tMs + ",\"cx\":" + cx + ",\"cz\":" + cz + ",\"ev\":\"" + kind.name().toLowerCase(java.util.Locale.ROOT) + "\"}");
+    }
+
+    private JsonObject syncJson(int i) {
+        JsonObject o = new JsonObject();
+        o.addProperty("count", syncCount[i]);
+        o.addProperty("total_ms", syncTotalNanos[i] / 1e6);
+        o.addProperty("max_ms", syncMaxNanos[i] / 1e6);
+        o.addProperty("stack", syncMaxStack[i]);
+        return o;
     }
 
     /** 来源事件（任何线程）：写进 provenance.jsonl，t_ms 从起飞命令算。地图按它上色和回放。 */
