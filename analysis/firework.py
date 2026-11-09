@@ -112,7 +112,7 @@ def report(rows, note='演示，粗测：这台机器上按 N100 限核，每种
         out.append(f"| {n} | **{_f(best[n])}** | " + '，'.join(f'{_f(v, digits=1) if isinstance(v, float) else v}: {_f(s, True)}' for v, s in per) + ' |')
     real = [r for r in fw if r.get('speed_bps') in (None, 33.5)]
     out += ['', '真实烟花速度（33.5 格/秒）下，出了缓存区以后：', '',
-            '| 场景 | 配置 | 卡住占比 | 实际 / 理想速度 | 第一次卡住（出去后几秒） | MSPT p95 / max | Can\'t keep up | moved too quickly | donor 分担 | 丢弃：来晚 / 碰到服务器 / 过时 | 导入主线程（ms） | worker 核数 | tile/s |',
+            '| 场景 | 配置 | 卡住占比 | 实际 / 理想速度 | 第一次卡住（出去后几秒） | MSPT p95 / max | Can\'t keep up | moved too quickly | 接着做完的占比（donor 导入或缓存区边上的半成品） | 丢弃：来晚 / 碰到服务器 / 过时 | 导入主线程（ms） | worker 核数 | tile/s |',
             '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for scen in ('firework', 'firework_turning'):
         for n in order:
