@@ -265,9 +265,10 @@ class TaskQueueDeadlineTest {
         q.enqueue(0, 0);
         q.enqueue(1, 0);
         q.enqueue(2, 0);
-        q.setDue(0, 0, now.get() + 3_000, now.get() + 2_000);   // 第 0 位：1 秒做完 ≤ 1 秒，留
-        q.setDue(1, 0, now.get() + 3_500, now.get() + 2_500);   // 第 1 位：3 秒做完 > 1.5 秒，丢
-        q.setDue(2, 0, now.get() + 6_000, now.get() + 5_000);   // 丢掉的不占位置：仍是第 1 位，3 秒做完 ≤ 4 秒，留
+        // 11-09 起派发和剪枝共用一个预测：now + max(延迟, (前面的个数 + 1) / 速率)（codex-audit F2）
+        q.setDue(0, 0, now.get() + 4_000, now.get() + 3_000);   // 第 0 位：max(1, 2) = 2 秒 ≤ 2 秒，留
+        q.setDue(1, 0, now.get() + 4_500, now.get() + 3_500);   // 第 1 位：max(1, 4) = 4 秒 > 2.5 秒，丢
+        q.setDue(2, 0, now.get() + 6_000, now.get() + 5_000);   // 丢掉的不占位置：仍是第 1 位，4 秒 ≤ 4 秒，留
         assertEquals(List.of(q.find(1, 0)), q.pruneHopeless(ONE_PER_2S, 1_000));
     }
 
@@ -429,6 +430,40 @@ class TaskQueueDeadlineTest {
         q.setDue(0, 0, now.get() + 9_000, now.get() + 7_000, 1);
         q.enqueue(1, 0);                                                         // 刚入队，还没算过：算一个
         assertEquals(2, q.queuedCountingTowardCap());
+    }
+
+    @Test
+    void dispatchAndPruneAgree() {
+        // codex-audit F2：同一组数据，canMeet 说做得完的，剪枝不能剪掉。速率 1 个/秒、延迟 4 秒、手上 3 个在做
+        DonorThroughput t = new DonorThroughput();
+        for (int i = 0; i < 10; i++) {
+            t.record(1, 4_000, 10_000 + i * 1_000L);
+        }
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 3; i++) {
+            q.enqueue(9, i);
+            q.assign(1, 4, d -> true);
+        }
+        q.enqueue(0, 0);
+        long by = now.get() + 5_000 + TaskQueue.IMPORT_MARGIN_MS;     // 4 + 1 = 5 秒能做完
+        q.setDue(0, 0, by + 1_000, by, 0);
+        assertTrue(t.canMeet(1, q.inFlight(1), now.get(), by - TaskQueue.IMPORT_MARGIN_MS));
+        assertEquals(List.of(), q.pruneHopeless(t.ratePerMs(1), t.latencyMs(1)), "派发说做得完的，剪枝不剪");
+    }
+
+    @Test
+    void droppedTileCanComeBackAfterCooldown() {
+        // codex-audit F6：飞过被删、或被剪掉的 tile，玩家转回来、需求重新成立时要能重新入队（冷却 5 秒，免得剪了又放、放了又剪）
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.setDue(0, 0, now.get() + 2_000, now.get() + 1_000, 0);
+        now.addAndGet(1_500);
+        q.dropLate();
+        assertFalse(q.canEnqueueAgain(0, 0), "刚丢掉：先不放回去");
+        now.addAndGet(TaskQueue.REQUEUE_COOLDOWN_MS);
+        assertTrue(q.canEnqueueAgain(0, 0));
+        assertTrue(q.enqueue(0, 0));
+        assertFalse(q.canEnqueueAgain(0, 0), "已经在排队");
     }
 
     @Test

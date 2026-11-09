@@ -86,4 +86,23 @@ class DonorThroughputTest {
         assertEquals(0.5, t.ratePerMs(1) * 1000, 1e-9);
         assertFalse(t.canMeet(1, 2, 100_000, 105_000), "手上 2 个、一个一个做：6 秒");
     }
+
+    @Test
+    void coldStartAssumesParallel() {
+        // codex-audit F5：还没有样本时按默认延迟估一个，但不乘在途数（原来 3/6/9/12 秒，少派就永远测不出并行）
+        DonorThroughput t = new DonorThroughput();
+        long now = 100_000;
+        assertTrue(t.canMeet(1, 3, now, now + DonorThroughput.DEFAULT_MS));
+        assertFalse(t.canMeet(1, 0, now, now + DonorThroughput.DEFAULT_MS - 1));
+    }
+
+    @Test
+    void sameMillisecondBatchDoesNotExplodeRate() {
+        // codex-audit F4：同一批几乎同时到（间隔 0～几毫秒），速率不能估成几十个/秒：间隔太短时按 1/延迟（保守）
+        DonorThroughput t = new DonorThroughput();
+        for (int i = 0; i < 4; i++) {
+            t.record(1, 4_000, 50_000 + i);
+        }
+        assertEquals(0.25, t.ratePerMs(1) * 1000, 1e-9);
+    }
 }
