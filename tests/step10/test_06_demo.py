@@ -406,3 +406,38 @@ def test_ab_endpoint_runs_in_background_and_reports(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+# ---- 跟踪真人玩家（7.2） ----
+
+
+def test_track_real_player(web):
+    runner = web['runner']
+    real = runner.rcon
+
+    def rcon(cmd):
+        if cmd == 'bench view':
+            runner.calls.append(('rcon', cmd))
+            return json.dumps(dict(view=10, players=[dict(name='Alice_1', total=441, ready=441)]))
+        return real(cmd)
+    runner.rcon = rcon
+    with urllib.request.urlopen(web['base'] + '/api/players', timeout=5) as r:
+        assert json.loads(r.read())['players'] == ['Alice_1']
+    code, r = post(web['base'], '/api/control', dict(action='record_start', player='Alice_1'))
+    assert code == 200 and r['run'].startswith('rec-Alice_1-')
+    assert f"bench record start Alice_1 {r['run']}" in rcons(runner)
+    assert web['poller'].flight == dict(run=r['run'], start_x=None, speed=None)   # 面板曲线跟着这一轮的文件走
+    code, _ = post(web['base'], '/api/control', dict(action='record_stop'))
+    assert code == 200 and f"bench record stop {r['run']}" in rcons(runner) and web['poller'].flight is None
+
+
+@pytest.mark.parametrize('name', ['', 'a b', 'x' * 17, 'Alice;stop', '@a'])
+def test_track_rejects_bad_player_names(web, name):
+    code, _ = post(web['base'], '/api/control', dict(action='record_start', player=name))
+    assert code == 400 and not any(c.startswith('bench record') for c in rcons(web['runner']))
+
+
+def test_page_has_track_entry(web):
+    with urllib.request.urlopen(web['base'] + '/demo', timeout=5) as r:
+        page = r.read().decode()
+    assert 'data-action="record_start"' in page and 'data-action="record_stop"' in page and '/api/players' in page
