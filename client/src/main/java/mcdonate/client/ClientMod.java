@@ -256,7 +256,8 @@ public final class ClientMod implements ClientModInitializer {
                 f.syncMods(name -> ClientMod.class.getResourceAsStream("/mcdonate/worker-mods/" + name));
                 String exe = System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows") ? "java.exe" : "java";
                 WorkerLaunch.Options o = new WorkerLaunch.Options(Path.of(System.getProperty("java.home"), "bin", exe),
-                        s.memoryMb(), s.threads(), ProcessHandle.current().pid(), invite.host() + ":" + invite.port(), invite.seed());
+                        s.memoryMb(), s.threads(), ProcessHandle.current().pid(), invite.host() + ":" + invite.port(), invite.seed(),
+                        s.boost());
                 worker = WorkerProcess.start(WorkerLaunch.command(o, System.getProperty("os.name")),
                         WorkerLaunch.environment(invite.token()), f.root(),
                         line -> {

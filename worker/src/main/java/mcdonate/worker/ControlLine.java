@@ -8,14 +8,15 @@ import java.util.regex.Pattern;
  *
  * <ul>
  *   <li>游戏 → worker（worker 的标准输入，一行一条）：{@code PAUSE}、{@code RESUME}（帧率限速）、{@code STOP}（退出世界）、
- *       {@code STATUS}、{@code TOKEN <token>}（再要来的一次性 token，worker 拿它重连）。
+ *       {@code STATUS}、{@code TOKEN <token>}（再要来的一次性 token，worker 拿它重连）、
+ *       {@code BOOST on|off}（11-09 加速模式：空闲时做后台 tile）。
  *   <li>worker → 游戏（worker 的标准输出）：标准输出里还有 Minecraft 自己的日志，所以给游戏看的行都以 {@code MCDONATE } 开头：
  *       {@code MCDONATE NEED_TOKEN}（token 用过了或被拒，要一个新的）、{@code MCDONATE STATUS {...}}、{@code MCDONATE CONNECTED <编号>}。
  *   <li>token 不进日志：记日志用 {@link #redact}。
  * </ul>
  */
 final class ControlLine {
-    enum Kind { PAUSE, RESUME, STOP, STATUS, TOKEN }
+    enum Kind { PAUSE, RESUME, STOP, STATUS, TOKEN, BOOST }
 
     record Command(Kind kind, String arg) {}
 
@@ -35,6 +36,13 @@ final class ControlLine {
             k = Kind.valueOf(p[0].toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
+        }
+        if (k == Kind.BOOST) {
+            if (p.length != 2) {
+                return null;
+            }
+            String v = p[1].toLowerCase(Locale.ROOT);
+            return v.equals("on") || v.equals("off") ? new Command(k, v) : null;
         }
         if (k == Kind.TOKEN) {
             return p.length == 2 && TOKEN.matcher(p[1]).matches() ? new Command(k, p[1]) : null;

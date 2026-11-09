@@ -44,7 +44,10 @@ public final class SettingsScreen extends Screen {
         addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " ms（恢复线 " + Math.round(v * 0.8) + " ms）"))
                 .withValues(ClientSettings.FRAME_TARGETS).withInitialValue(nearest(settings().frameTargetMs()))
                 .create(x, y + 78, 200, 20, Component.literal("帧时间目标"), (b, v) -> save(settings().withFrameTargetMs(v))));
-        addRenderableWidget(Button.builder(Component.literal("完成"), b -> onClose()).bounds(x, y + 130, 200, 20).build());
+        // 11-09 加速模式：空闲时也一直算（coordinator 派后台 tile，优先级最低）。改了马上告诉 worker
+        addRenderableWidget(CycleButton.onOffBuilder(settings().boost())
+                .create(x, y + 104, 200, 20, Component.literal("加速：空闲时一直算"), (b, v) -> save(settings().withBoost(v))));
+        addRenderableWidget(Button.builder(Component.literal("完成"), b -> onClose()).bounds(x, y + 156, 200, 20).build());
     }
 
     /** 手改过设置文件、不在选项里的值：显示最近的选项。 */
@@ -81,7 +84,7 @@ public final class SettingsScreen extends Screen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         super.render(g, mouseX, mouseY, delta);
         g.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
-        g.drawCenteredString(font, Component.literal(ClientMod.statusLine()), width / 2, height / 4 + 114, 0xAAAAAA);
+        g.drawCenteredString(font, Component.literal(ClientMod.statusLine()), width / 2, height / 4 + 140, 0xAAAAAA);
     }
 
     @Override

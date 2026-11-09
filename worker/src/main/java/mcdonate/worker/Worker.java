@@ -40,6 +40,10 @@ public final class Worker implements ModInitializer {
                             ctx.getSource().sendSuccess(() -> Component.literal(Integer.toString(n)), false);
                             return 1;
                         }))
+                        // 11-09 加速模式：测试里的 worker 没有游戏，用命令代替 BOOST 控制行
+                        .then(Commands.literal("boost")
+                                .then(Commands.literal("on").executes(ctx -> boost(ctx.getSource(), true)))
+                                .then(Commands.literal("off").executes(ctx -> boost(ctx.getSource(), false))))
                         .then(Commands.literal("sleep")
                                 .requires(source -> source.hasPermission(4))
                                 .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 60))
@@ -113,6 +117,17 @@ public final class Worker implements ModInitializer {
     }
 
     private static volatile WorkerClient client;
+
+    private static int boost(net.minecraft.commands.CommandSourceStack source, boolean on) {
+        WorkerClient c = client;
+        if (c == null) {
+            source.sendFailure(Component.literal("没连 coordinator"));
+            return 0;
+        }
+        c.setBoost(on);
+        source.sendSuccess(() -> Component.literal("boost " + (on ? "on" : "off")), false);
+        return 1;
+    }
 
     /**
      * 第 9 步：客户端 mod 起的 worker（系统属性 mcdonate.parentPid）：游戏没了（PID 不在、标准输入 EOF）就停服务器退出；

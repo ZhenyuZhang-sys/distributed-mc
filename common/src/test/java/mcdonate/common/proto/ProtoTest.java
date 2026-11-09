@@ -326,7 +326,7 @@ class ProtoTest {
     }
 
     /** 可以缺的字段（缺了有默认值）。 */
-    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token", "kind", "paused", "worldId");
+    static final java.util.Set<String> OPTIONAL = java.util.Set.of("token", "kind", "paused", "worldId", "boost", "threads");
 
     // ---- 第 9 步：hello.token、welcome.workerId = -2 ----
 

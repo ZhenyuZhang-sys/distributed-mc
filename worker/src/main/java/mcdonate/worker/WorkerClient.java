@@ -48,6 +48,8 @@ final class WorkerClient {
     final TokenState tokens = new TokenState(System.getenv(WORKER_TOKEN_ENV));
     /** 第 9 步：玩家那边帧率低，暂停：心跳里报 paused，coordinator 不再派新任务；手上的照常做完。 */
     private volatile boolean paused;
+    /** 11-09 加速模式：愿意空闲时做后台 tile（心跳里报给 coordinator）。启动时取 -Dmcdonate.boost，游戏经 BOOST 控制行改。 */
+    private volatile boolean boost = Boolean.parseBoolean(mcdonate.common.Config.get("boost", "false"));
     /** 第 9 步：给客户端看的行（标准输出，带 MCDONATE 前缀）。 */
     private final java.util.function.Consumer<String> controlOut;
 
@@ -265,14 +267,15 @@ final class WorkerClient {
         switch (c.kind()) {
             case PAUSE -> {
                 paused = true;
-                send(new Heartbeat(System.currentTimeMillis(), currentTask, true)); // 马上告诉 coordinator
+                send(heartbeat(true)); // 马上告诉 coordinator
                 LOG.info("暂停（玩家那边帧率低）：手上的做完，不领新的");
             }
             case RESUME -> {
                 paused = false;
-                send(new Heartbeat(System.currentTimeMillis(), currentTask, false));
+                send(heartbeat(false));
                 LOG.info("恢复");
             }
+            case BOOST -> setBoost(c.arg().equals("on"));
             case TOKEN -> {
                 if (tokens.offer(c.arg())) {
                     LOG.info("收到新 token");
@@ -283,6 +286,22 @@ final class WorkerClient {
                     currentTask, socket != null, tokens.needsNew(), WorkerStatus.Load.current())));
             case STOP -> { }
         }
+    }
+
+    /** 加速开关（BOOST 控制行、测试用的 /donor boost）：马上发一条心跳告诉 coordinator。 */
+    void setBoost(boolean on) {
+        boost = on;
+        send(heartbeat(paused));
+        LOG.info("加速模式{}", on ? "打开：空闲时做后台 tile" : "关闭");
+    }
+
+    boolean boost() {
+        return boost;
+    }
+
+    /** 心跳：手上的任务、暂停、加速、生成线程数。 */
+    private Heartbeat heartbeat(boolean paused) {
+        return new Heartbeat(System.currentTimeMillis(), currentTask, paused, boost, WorkerStatus.Load.current().threads());
     }
 
     boolean paused() {
@@ -345,7 +364,7 @@ final class WorkerClient {
     private void heartbeatLoop() {
         while (running) {
             sleep(HEARTBEAT_MS);
-            send(new Heartbeat(System.currentTimeMillis(), currentTask, paused));
+            send(heartbeat(paused));
         }
     }
 
