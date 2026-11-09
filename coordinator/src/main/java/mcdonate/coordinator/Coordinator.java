@@ -41,7 +41,8 @@ public final class Coordinator implements ModInitializer {
         //   /donor rules strict|legacy        测试用：导入规则（默认 strict；legacy 是第 3 步的旧规则）
         //   /donor demand on|off    自动找需求的开关（正式默认开；测试服务器默认关）
         //   /donor feature <名字> on|off  第 7 步的开关（territory、deadline、throughput、hedge、waitdonor）
-        //   /donor provenance       测试用：最近 64 条来源事件（coordinator 报给 common.Provenance 的 DONOR/REJECTED）
+        //   /donor provenance       测试用：最近 64 条来源事件（coordinator 报给 common.Provenance 的 DONOR/REJECTED），[cx, cz, 种类, worker, 毫秒]
+        //   /donor provenance stats 每种来源事件累计几个、第一个和最后一个的时间
         //   /donor syncload <x> <z>  测试用：在主线程上同步要这个 chunk（FULL），回复用了多少毫秒（7.6a）
         //   /donor waitimport chunkcache|server  测试用：等 donor 的导入走哪个队列（7.6a，正确的是 chunkcache）
         //   /donor waitsync abandon|wait  变异检查用：主线程同步要 chunk 时放弃闸门（正确）还是照样等
@@ -76,7 +77,8 @@ public final class Coordinator implements ModInitializer {
                                                 StringArgumentType.getString(ctx, "name"), true)))
                                         .then(Commands.literal("off").executes(ctx -> setFeature(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name"), false)))))
-                        .then(Commands.literal("provenance").executes(ctx -> reply(ctx.getSource(), recentProvenance())))
+                        .then(Commands.literal("provenance").executes(ctx -> reply(ctx.getSource(), recentProvenance()))
+                                .then(Commands.literal("stats").executes(ctx -> reply(ctx.getSource(), provenanceStats()))))
                         .then(Commands.literal("syncload")
                                 .then(Commands.argument("x", IntegerArgumentType.integer())
                                         .then(Commands.argument("z", IntegerArgumentType.integer())
@@ -227,14 +229,30 @@ public final class Coordinator implements ModInitializer {
 
     /** 最近的来源事件（测试用；实时地图的正式记录在 bench 的 provenance.jsonl，第 4 步 4.3）。 */
     private static final java.util.Deque<String> PROVENANCE = new java.util.concurrent.ConcurrentLinkedDeque<>();
+    /** 每种来源事件累计报了几个、第一个和最后一个的时间（毫秒）：[次数, 第一个, 最后一个]。 */
+    private static final java.util.Map<String, long[]> PROVENANCE_STATS = new java.util.concurrent.ConcurrentHashMap<>();
 
     static {
         mcdonate.common.Provenance.addListener((cx, cz, kind, donor) -> {
-            PROVENANCE.addLast("[" + cx + "," + cz + ",\"" + kind.name().toLowerCase() + "\"," + donor + "]");
+            long now = System.currentTimeMillis();
+            // 第 5 个元素是时间戳（毫秒），对照飞行窗口用（11-09：有几轮 donor 事件没进飞行记录，查是没报还是报在了窗口外）
+            PROVENANCE.addLast("[" + cx + "," + cz + ",\"" + kind.name().toLowerCase() + "\"," + donor + "," + now + "]");
+            PROVENANCE_STATS.compute(kind.name().toLowerCase(),
+                    (k, v) -> v == null ? new long[] {1, now, now} : new long[] {v[0] + 1, v[1], now});
             while (PROVENANCE.size() > 64) {
                 PROVENANCE.pollFirst();
             }
         });
+    }
+
+    private static String provenanceStats() {
+        StringBuilder sb = new StringBuilder("{\"nowMs\":").append(System.currentTimeMillis());
+        for (var e : new java.util.TreeMap<>(PROVENANCE_STATS).entrySet()) {
+            long[] v = e.getValue();
+            sb.append(",\"").append(e.getKey()).append("\":{\"count\":").append(v[0])
+                    .append(",\"firstMs\":").append(v[1]).append(",\"lastMs\":").append(v[2]).append('}');
+        }
+        return sb.append('}').toString();
     }
 
     private static String recentProvenance() {

@@ -17,6 +17,7 @@
 import bisect
 import json
 import os
+import time
 
 import pytest
 
@@ -150,11 +151,20 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             before_imports = len(donor_imports(server))
             before = counters(status(server))
             running = sorted(compose("ps", "--format", "{{.Service}}").split())
+            # 来源事件的记录（11-09：几轮有导入、飞行记录里没有 donor 事件，查是没报还是报在了飞行窗口外）：
+            # 飞前飞后各抓一次 coordinator 的累计计数和最近 64 条（带时间戳），连同飞行窗口的墙钟时间存进这一轮的目录
+            prov_before = json.loads(server.rcon("donor provenance stats"))
+            fly_start_ms = int(time.time() * 1000)
             if not vanilla:
                 server.rcon("donor demand on")
             out = layer2.fly(server, run=f"abl-{label}-{i}", player=f"abl{i}", start=start, speed=SPEED,
                              seconds=SECONDS, out_dir=base / f"ablation-{label}-{i}-{name}")
+            fly_end_ms = int(time.time() * 1000)
             server.rcon("donor demand off")
+            prov_after = json.loads(server.rcon("donor provenance stats"))
+            (out / "provenance-coordinator.json").write_text(json.dumps({
+                "fly_start_ms": fly_start_ms, "fly_end_ms": fly_end_ms, "before": prov_before, "after": prov_after,
+                "recent": json.loads(server.rcon("donor provenance"))}, indent=1) + "\n")
             summary = json.loads((out / "summary.json").read_text())
             d = delta(before, counters(status(server)))
             imports = donor_imports(server)[before_imports:]
@@ -176,6 +186,9 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                                      "waitdonor_abandoned", "donor_tiles", "import_ms", "imports_timed",
                                      "stale_dropped", "stale_cancelled")},
                 "main": main_metrics(summary), "sync_loads": flight_guard(out), "lead": donor_lead(out),
+                # coordinator 这一轮报出的 donor / rejected 事件数（和飞行记录里的对照）
+                "coordinator_reports": {k: prov_after.get(k, {}).get("count", 0) - prov_before.get(k, {}).get("count", 0)
+                                        for k in ("donor", "rejected")},
                 "summary": summary,
             }
             # 假玩家 tick 里同步加载过：这一轮无效，记下来接着跑别的轮（最后判失败），不浪费整批
