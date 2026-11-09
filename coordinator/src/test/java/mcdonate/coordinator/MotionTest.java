@@ -61,4 +61,26 @@ class MotionTest {
         m.record(1000, 0, 0);
         assertEquals(Double.POSITIVE_INFINITY, m.deadlineSeconds(new TilePos(8, 0), 10));
     }
+
+    @Test
+    void fastMatchesStepwise() {
+        // 解析解和逐步模拟（步长 0.25 秒）比：随机位置、速度、tile，差不超过一步
+        java.util.Random rng = new java.util.Random(424242);
+        for (int k = 0; k < 2000; k++) {
+            Motion m = new Motion();
+            double x = rng.nextInt(4000) - 2000, z = rng.nextInt(4000) - 2000;
+            double vx = rng.nextInt(61) - 30, vz = rng.nextInt(61) - 30;
+            m.record(0, x, z);
+            m.record(1000, x + vx, z + vz);
+            mcdonate.common.TilePos tile = new mcdonate.common.TilePos(rng.nextInt(200) - 100, rng.nextInt(200) - 100);
+            double slow = m.deadlineSeconds(tile, 10), fast = m.deadlineSecondsFast(tile, 10);
+            if (Double.isInfinite(slow)) {
+                // 逐步模拟只看到 HORIZON_S；解析解在边上可能刚好进得去
+                org.junit.jupiter.api.Assertions.assertTrue(Double.isInfinite(fast) || fast > Motion.HORIZON_S - 0.25,
+                        k + ": " + slow + " vs " + fast);
+            } else {
+                org.junit.jupiter.api.Assertions.assertEquals(slow, fast, 0.26, k + ": tile " + tile);
+            }
+        }
+    }
 }

@@ -26,6 +26,7 @@ abstract class ChunkMapSaveMixin {
             Ownership.forget(chunk.getPos().toLong());
             // 存档里的状态可能变了，找需求时重新查
             DemandScanner.diskUnknown(chunk.getPos().toLong());
+            mcdonate.coordinator.WaitDonor.forgetStarted(chunk.getPos().toLong());
         }
     }
 }

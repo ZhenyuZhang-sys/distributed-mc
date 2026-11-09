@@ -1,0 +1,171 @@
+package mcdonate.coordinator;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import mcdonate.coordinator.TaskQueue.State;
+import org.junit.jupiter.api.Test;
+
+/** 第 7 步 7.2（due 排序、丢掉来不及的）、7.3（一个 worker 同时租几个、慢的只派来得及的）、7.4 用的租约列表。 */
+class TaskQueueDeadlineTest {
+    private final AtomicLong now = new AtomicLong(1_000_000);
+
+    private TaskQueue queue(String features) {
+        return new TaskQueue(now::get, 30_000, 3, new Features(features));
+    }
+
+    @Test
+    void fifoWhenDeadlineOff() {
+        TaskQueue q = queue("");
+        q.enqueue(0, 0);
+        q.enqueue(5, 5);
+        q.setDue(5, 5, now.get() + 1_000);
+        assertEquals(0, q.assign(1).orElseThrow().tx(), "开关关着：先进先出，不看 due");
+    }
+
+    @Test
+    void earliestDueFirst() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 5);
+        q.enqueue(9, 9);
+        q.setDue(0, 0, now.get() + 20_000);
+        q.setDue(9, 9, now.get() + 3_000);
+        // (5,5) 不知道 due：排在知道的后面
+        assertEquals(9, q.assign(1).orElseThrow().tx());
+        assertEquals(0, q.assign(2).orElseThrow().tx());
+        assertEquals(5, q.assign(3).orElseThrow().tx());
+    }
+
+    @Test
+    void lateQueuedTasksDropped() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(5, 5);
+        long a = q.find(0, 0);
+        q.setDue(0, 0, now.get() + 1_000);
+        q.setDue(5, 5, now.get() + 10_000);
+        now.addAndGet(2_000);
+        assertEquals(List.of(a), q.dropLate());
+        assertEquals(State.DROPPED, q.state(a));
+        assertEquals(5, q.assign(1).orElseThrow().tx());
+    }
+
+    // ---- 7.2 的漏洞（11-09 f3 实测：几轮里 donor 写入的 chunk 几乎全在玩家身后）----
+    // 计划写了"玩家已经到了的任务直接丢掉"，实现只丢了 due 已过的；飞过的 tile 没有将来的到达时间（due 是无穷大），
+    // 一直留在队列里，别的做完了照样派。开 deadline 时：飞过了（due 无穷大）、又不在任何玩家当前需求范围里的，删掉；派出去的撤回。
+
+    @Test
+    void passedTilesOutsideDemandAreDroppedAndLeasedOnesCancelled() {
+        TaskQueue q = queue("deadline");
+        // 玩家沿 +x 飞，tile 0..4 在身后，10 在前面
+        for (int x : new int[] {0, 2, 4, 10}) {
+            q.enqueue(x, 0);
+        }
+        q.enqueue(30, 30); // 从来没被找需求算过 due（比如手动派的）：不动
+        TaskQueue.Assignment leased = q.assign(7).orElseThrow(); // 派出去一个（tile 0）
+        for (int x : new int[] {0, 2, 4}) {
+            q.setDue(x, 0, Long.MAX_VALUE); // 飞过了：将来不会再看到
+        }
+        q.setDue(10, 0, now.get() + 5_000);
+        // 当前需求范围：只有 x >= 3 的（tile 4 还在范围里，即使飞过了也留着）
+        TaskQueue.Stale stale = q.dropPassed((tx, tz) -> tx >= 3);
+        assertEquals(List.of(q.find(2, 0)), stale.dropped(), "排队中、飞过了、不在范围里的删掉");
+        assertEquals(List.of(new TaskQueue.Cancelled(leased.taskId(), 7)), stale.cancelled(), "派出去的撤回、发 cancel");
+        assertEquals(State.DROPPED, q.state(leased.taskId()));
+        assertEquals(State.QUEUED, q.state(q.find(4, 0)), "还在范围里的留着");
+        assertEquals(State.QUEUED, q.state(q.find(10, 0)), "前面的留着");
+        assertEquals(State.QUEUED, q.state(q.find(30, 30)), "没算过 due 的不动");
+        assertEquals(0, q.inFlight(7));
+    }
+
+    @Test
+    void inDemandAreaIsChebyshevAroundAnyPlayer() {
+        long p = ((long) 0 << 32) | (100 & 0xffffffffL); // 玩家在 chunk (100, 0)
+        // tile 大小 4、outer 12：tile 28 覆盖 chunk 112..115，离 100 是 12 圈，在；tile 29 是 16 圈，不在
+        assertTrue(DemandScanner.inArea(28, 0, new long[] {p}, 12, 4));
+        assertTrue(!DemandScanner.inArea(29, 0, new long[] {p}, 12, 4));
+        assertTrue(DemandScanner.inArea(22, -3, new long[] {p}, 12, 4), "负坐标：tile -3 覆盖 chunk -12..-9");
+        assertTrue(!DemandScanner.inArea(0, 0, new long[0], 12, 4), "没有玩家：都不在范围里");
+    }
+
+    @Test
+    void passedTilesKeptWhenDeadlineOff() {
+        TaskQueue q = queue(""); // v0（先来先服务）是对照组，保持原样
+        q.enqueue(0, 0);
+        q.setDue(0, 0, Long.MAX_VALUE);
+        TaskQueue.Stale stale = q.dropPassed((tx, tz) -> false);
+        assertTrue(stale.dropped().isEmpty() && stale.cancelled().isEmpty());
+    }
+
+    @Test
+    void severalLeasesPerWorker() {
+        TaskQueue q = queue("throughput");
+        for (int i = 0; i < 5; i++) {
+            q.enqueue(10 * i, 0); // 互不相邻，不触发"包一片"
+        }
+        int n = 0;
+        while (q.assign(1, 3, due -> true).isPresent()) {
+            n++;
+        }
+        assertEquals(3, n, "最多同时 3 个");
+        assertEquals(3, q.inFlight(1));
+        // 默认的 assign(worker) 仍然一次一个
+        assertTrue(q.assign(2).isPresent());
+        assertTrue(q.assign(2).isEmpty());
+    }
+
+    @Test
+    void workerGoneReturnsAllItsLeases() {
+        TaskQueue q = queue("throughput");
+        q.enqueue(0, 0);
+        q.enqueue(10, 0);
+        q.assign(1, 2, due -> true);
+        q.assign(1, 2, due -> true);
+        assertEquals(2, q.workerGone(1).size());
+        assertEquals(0, q.inFlight(1));
+        assertEquals(2, q.count(State.QUEUED));
+    }
+
+    @Test
+    void slowWorkerOnlyGetsTasksItCanMeet() {
+        TaskQueue q = queue("deadline,throughput");
+        q.enqueue(0, 0);
+        q.enqueue(10, 0);
+        q.setDue(0, 0, now.get() + 2_000);
+        q.setDue(10, 0, now.get() + 60_000);
+        long t = now.get();
+        // 这个 worker 做一个要 5 秒：2 秒后就要的派不了，只派 60 秒后的
+        var a = q.assign(1, 1, due -> t + 5_000 <= due).orElseThrow();
+        assertEquals(10, a.tx());
+    }
+
+    @Test
+    void resultFreesOnlyThatLease() {
+        TaskQueue q = queue("throughput");
+        q.enqueue(0, 0);
+        q.enqueue(10, 0);
+        long a = q.assign(1, 2, due -> true).orElseThrow().taskId();
+        q.assign(1, 2, due -> true).orElseThrow();
+        q.onResult(1, a, true);
+        assertEquals(1, q.inFlight(1));
+    }
+
+    @Test
+    void leasesWithDueForHedging() {
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(10, 0);
+        q.setDue(0, 0, now.get() + 4_000);
+        long a = q.assign(1).orElseThrow().taskId();
+        q.assign(2).orElseThrow();
+        List<TaskQueue.Lease> l = q.leasesWithDue();
+        assertEquals(1, l.size(), "不知道 due 的不列");
+        assertEquals(a, l.get(0).taskId());
+        assertEquals(1, q.hedgeToServer(a));
+        assertEquals(0, q.inFlight(1));
+        assertTrue(q.leasesWithDue().isEmpty());
+    }
+}

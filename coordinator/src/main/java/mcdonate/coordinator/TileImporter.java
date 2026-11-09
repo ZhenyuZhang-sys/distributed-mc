@@ -5,10 +5,13 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import mcdonate.common.TileFile;
+import mcdonate.common.Provenance;
 import mcdonate.common.TilePos;
 import mcdonate.common.TileFile.ExportedChunk;
 import mcdonate.coordinator.mixin.ChunkMapAccessor;
@@ -89,6 +92,7 @@ final class TileImporter {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         int written = 0, loaded = 0, exists = 0;
+        List<Long> recorded = new ArrayList<>();
         for (ExportedChunk c : file.chunks()) {
             ChunkPos pos = new ChunkPos(c.x(), c.z());
             if (access.mcdonate$getUpdatingChunkIfPresent(pos.toLong()) != null
@@ -105,10 +109,11 @@ final class TileImporter {
             }
             chunkMap.write(pos, c.data());
             access.mcdonate$markPosition(pos, incoming.getChunkType());
-            Ownership.record(pos.toLong(), file.worldId());
+            recorded.add(pos.toLong());
             DemandScanner.diskChanged(pos.toLong(), incoming.getIndex());
             written++;
         }
+        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), -1, "", recorded, System.currentTimeMillis());
         return new Result(label, file.chunks().size(), written, loaded, exists);
     }
 
@@ -134,6 +139,15 @@ final class TileImporter {
     }
 
     static StrictResult importStrict(ServerLevel level, TileFile file) {
+        return importStrict(level, file, -1);
+    }
+
+    static StrictResult importStrict(ServerLevel level, TileFile file, int workerId) {
+        return importStrict(level, file, workerId, "");
+    }
+
+    /** workerId：交这个结果的 worker（账本、来源事件用），不知道是 -1。player：donor 的玩家 UUID（第 9 步），本地 worker 是空串。 */
+    static StrictResult importStrict(ServerLevel level, TileFile file, int workerId, String player) {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         Map<Long, RegionRules.ChunkInfo> current = new HashMap<>();
@@ -148,9 +162,17 @@ final class TileImporter {
         }
         RegionRules.ImportPlan<Long> plan = RegionRules.importPlan(current, file.worldId(), incoming);
         if (!plan.accepted()) {
+            // 实时地图：这个 tile 的结果被整个丢弃（只报 tile 里的 chunk，外圈是借来的）
+            TilePos t = file.tile();
+            for (int x = t.minChunkX(); x <= t.maxChunkX(); x++) {
+                for (int z = t.minChunkZ(); z <= t.maxChunkZ(); z++) {
+                    Provenance.report(x, z, Provenance.Kind.REJECTED, workerId);
+                }
+            }
             return new StrictResult(false, plan.reason(), 0, 0, 0, plan.discard());
         }
         int written = 0, overwritten = 0, skipped = 0;
+        List<Long> recorded = new ArrayList<>();
         for (Map.Entry<Long, RegionRules.Action> e : plan.actions().entrySet()) {
             ExportedChunk c = byPos.get(e.getKey());
             ChunkPos pos = new ChunkPos(c.x(), c.z());
@@ -164,15 +186,28 @@ final class TileImporter {
             }
             chunkMap.write(pos, c.data());
             access.mcdonate$markPosition(pos, ChunkStatus.byName(c.status()).getChunkType());
-            Ownership.record(e.getKey(), file.worldId());
+            recorded.add(e.getKey());
             DemandScanner.diskChanged(e.getKey(), ChunkStatus.byName(c.status()).getIndex());
+        }
+        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), workerId, player, recorded, System.currentTimeMillis());
+        // 实时地图：这些 chunk 是 donor 生成的（第 4 步 4.3 的来源事件）
+        for (long k : recorded) {
+            Provenance.report((int) k, (int) (k >>> 32), Provenance.Kind.DONOR, workerId);
         }
         return new StrictResult(true, "", written, overwritten, skipped, RegionRules.Discard.NONE);
     }
 
     /** 一个 chunk 现在的情况：在内存里、空、归属某个 donor 世界、服务器的。在主线程上调用。 */
     static RegionRules.ChunkInfo chunkInfo(ChunkMap chunkMap, ChunkMapAccessor access, long key) {
-        if (access.mcdonate$getUpdatingChunkIfPresent(key) != null || access.mcdonate$pendingUnloads().containsKey(key)) {
+        // 7.6（开关开着时）：有 holder 但还没开始读存档的（包括正在等 donor 的）不算在内存里——
+        // 之后读存档时读请求排在这次写后面，读到的就是导入的数据。开关关着照旧：有 holder 就算。
+        // holder 里已经有 chunk 对象的一律算（开关打开之前就加载的 chunk 不在 STARTED 里）。
+        net.minecraft.server.level.ChunkHolder holder = access.mcdonate$getUpdatingChunkIfPresent(key);
+        boolean inMemory = WaitDonor.on()
+                ? access.mcdonate$pendingUnloads().containsKey(key)
+                        || (holder != null && (holder.getLatestChunk() != null || WaitDonor.loadStarted(key)))
+                : holder != null || access.mcdonate$pendingUnloads().containsKey(key);
+        if (inMemory) {
             return RegionRules.ChunkInfo.loaded();
         }
         // 主线程上等读取结果；第 6.3 步找需求时换成只看 region 文件头

@@ -4,7 +4,10 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "ChunkMapAccessor",
-    "ChunkMapSaveMixin"
+    "ChunkMapSaveMixin",
+    "ChunkMapWaitDonorMixin",
+    "ServerChunkCacheSyncMixin",
+    "ChunkStatusTasksFullMixin"
   ],
   "injectors": {
     "defaultRequire": 1

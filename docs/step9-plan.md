@@ -66,6 +66,17 @@
 - 玩家进服时（Fabric `ServerPlayConnectionEvents.JOIN`）发包；退出时作废没用过的 token，并断开这个玩家的 worker。
 - Docker 里的测试 worker 没有玩家：coordinator 加一个"本地 worker 不要 token"的开关（系统属性 `mcdonate.allowTokenless=true`，只在测试 compose 里设）。正式默认关。
 
+### 3.2b 再要一次邀请（kexu 11-09 审阅后加）
+
+- token 60 秒过期，邀请只在进服时发一次：玩家晚同意、worker 晚起，或者 coordinator 重启后 worker 要重连，都会过期、没法再要。
+- 客户端发 `mcdonate:invite_request`（游戏内频道，不改 coordinator 的 TCP 协议），服务器作废这个玩家的旧 token、重发邀请。每个玩家 10 秒最多一次（`inviteRequestMinMs`），超了忽略并记 WARN。
+- 已做（11-09）：payload、频率限制、服务器处理，单元测试。等客户端 mod 能跑（9.3）再做的端到端：过期后再要能拿到新 token、旧 token 失效、刷请求被限流、coordinator 重启后 worker 靠再要邀请重连。
+- 还要接的：worker 握手被拒（-2）时经本地控制通道告诉客户端（`NEED_TOKEN`），客户端再要邀请，把新 token 发给 worker（`TOKEN <t>`）。
+- **seed 怎么拿（调度 11-09 定）**：客户端起的 worker 建世界前不再为了 seed 单独握手，直接用邀请里的 seed（客户端 mod 用 `-Dmcdonate.inviteSeed` 传）；
+  正式连接 coordinator 时照常带 token 握手，token 只换这一次连接。Welcome 里的 seed 和建世界用的再核对一遍，不一致就不领任务、记 ERROR（和 Docker worker 一样）。
+  Docker 里的本地 worker 没有邀请，照旧走 allowTokenless 和建世界前握手。理由：一个 token 只换一次连接，语义清楚；握手不用"只检查、不用掉"的特殊模式。
+  单元测试：有邀请 seed 时跳过取 seed 的握手、Docker worker 照旧握手、Welcome 的 seed 不一致时不工作（SeedHandshakeTest）。
+
 ### 3.3 协议改动（要转给 kexu 确认）
 
 - `hello` 加字段 `token: String`（没有 token 时是空串）。
@@ -82,7 +93,8 @@
 
 ### 9.1 原版客户端照常进服
 
-- [ ] 用协议层的无头客户端 mineflayer 连测试服务器：
+- [x] 用协议层的无头客户端 mineflayer 连测试服务器（11-09 通过：tests/step9/test_01_vanilla_join.py；镜像在 docker/mineflayer，
+  mineflayer 4.23.0 + minecraft-data 3.119.0，lock 已提交；测试服务器离线模式只在 compose.test.yaml，配了 publicHost 时原版客户端收不到邀请）：
     - **版本固定**：`package.json` 里写死 `"mineflayer": "4.23.0"`（这一版的 minecraft-data 支持 1.21.1；开工时先确认，不支持就换到支持的最早一版并写死），`package-lock.json` 一起提交。
     - **在哪跑**：测试 compose 里加一个 `mineflayer` 服务（profile `client`），镜像 `node:20.18.1-bookworm-slim`（固定版本），脚本挂进去，`npm ci` 装依赖。
     - **退路**：mineflayer 不支持 1.21.1 时，用 Python 写一个最小协议客户端（握手 + 登录 + 收第一批区块），只判断"能进服、不被踢"。
@@ -140,6 +152,7 @@ donor 只算地形阶段、矿和结构由服务器自己算，会改变导出�
 
 ## 7. 已知限制（写进报告）
 
+- **离线模式的游戏连接不加密**（kexu 11-09 审阅）：邀请走游戏连接，服务器 `online-mode=false` 时局域网里能抓到 token。正式部署开 `online-mode=true`，离线模式只用于可信网络。写在 docs/config.md 的"部署时的安全注意"。
 - **token 走明文 TCP**：coordinator 和 worker 之间没有加密，抓到包的人可以抢在玩家的 worker 之前用掉 token（一次性，被抢用后玩家的 worker 会被拒）。原型阶段接受。以后的工作：coordinator 和 worker 之间加 TLS。
 - **Z 没在这台机器上测**：见第 0 节和 9.7。
 

@@ -24,6 +24,7 @@ public final class Worker implements ModInitializer {
         //   /donor sleep <秒>        测试用：让主线程卡住，验证网络线程照常发心跳
         //   /donor loaded            测试用：内存里的 chunk 数
         //   /donor worldid           这个 donor 世界的编号（第 6 步）
+        //   /donor hold on|off       测试用：做完的结果先扣着不发，off 时一起发（7.6a）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
@@ -52,6 +53,10 @@ public final class Worker implements ModInitializer {
                                             ctx.getSource().sendSuccess(() -> Component.literal("slept " + sec), false);
                                             return 1;
                                         })))
+                        .then(Commands.literal("hold")
+                                .requires(source -> source.hasPermission(4))
+                                .then(Commands.literal("on").executes(ctx -> hold(ctx.getSource(), true)))
+                                .then(Commands.literal("off").executes(ctx -> hold(ctx.getSource(), false))))
                         .then(Commands.literal("export")
                                 .then(Commands.argument("tx", IntegerArgumentType.integer())
                                         .then(Commands.argument("tz", IntegerArgumentType.integer())
@@ -75,6 +80,18 @@ public final class Worker implements ModInitializer {
     }
 
     private static volatile WorkerClient client;
+
+    private static int hold(CommandSourceStack source, boolean on) {
+        WorkerClient c = client;
+        if (c == null) {
+            source.sendFailure(Component.literal("没连 coordinator"));
+            return 0;
+        }
+        int sent = c.setHold(on);
+        LOG.info("扣结果：{}（测试用）", on ? "开" : "关，发出 " + sent + " 个");
+        source.sendSuccess(() -> Component.literal(on ? "holding" : "released " + sent), false);
+        return 1;
+    }
 
     private static int export(CommandSourceStack source, TilePos tile) {
         try {

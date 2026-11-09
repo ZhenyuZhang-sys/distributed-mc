@@ -117,10 +117,16 @@ public final class Bench implements ModInitializer {
             if (i++ > 0) {
                 sb.append(',');
             }
+            // tracked：ChunkMap 记录的玩家位置（chunk 坐标）。原版 tp 不更新它，要等 ServerChunkCache.move
+            // （真玩家靠客户端回包，Carpet 假玩家每 10 tick 调一次）；它决定哪些 chunk 被加载、发给玩家。
+            net.minecraft.core.SectionPos tracked = p.getLastSectionPos();
             sb.append("{\"name\":\"").append(p.getGameProfile().getName()).append("\",\"total\":").append(total)
-                    .append(",\"ready\":").append(ready).append('}');
+                    .append(",\"ready\":").append(ready)
+                    .append(",\"chunk\":[").append(c.x).append(',').append(c.z).append(']')
+                    .append(",\"tracked\":[").append(tracked.x()).append(',').append(tracked.z()).append("]}");
         }
-        return sb.append("],\"mspt\":").append(server.getAverageTickTimeNanos() / 1_000_000.0).append('}').toString();
+        return sb.append("],\"mspt\":").append(server.getAverageTickTimeNanos() / 1_000_000.0)
+                .append(",\"tick\":").append(server.getTickCount()).append('}').toString();
     }
 
     private static int mark(CommandSourceStack source, int cx, int cz, Provenance.Kind kind, int donorId) {

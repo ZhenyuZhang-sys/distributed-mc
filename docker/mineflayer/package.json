@@ -1,0 +1,8 @@
+{
+  "name": "mcdonate-mineflayer",
+  "private": true,
+  "description": "第 9 步 9.1：协议层的原版客户端，确认没装 mod 的客户端照常进服",
+  "dependencies": {
+    "mineflayer": "4.23.0"
+  }
+}

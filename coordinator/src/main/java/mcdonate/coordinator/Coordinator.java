@@ -9,6 +9,11 @@ import java.io.IOException;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import mcdonate.common.net.DonorInvite;
+import mcdonate.common.net.InviteRequest;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -35,6 +40,13 @@ public final class Coordinator implements ModInitializer {
         //   /donor assign <tx> <tz> <worker>  测试用：放任务并指定给某个 worker
         //   /donor rules strict|legacy        测试用：导入规则（默认 strict；legacy 是第 3 步的旧规则）
         //   /donor demand on|off    自动找需求的开关（正式默认开；测试服务器默认关）
+        //   /donor feature <名字> on|off  第 7 步的开关（territory、deadline、throughput、hedge、waitdonor）
+        //   /donor provenance       测试用：最近 64 条来源事件（coordinator 报给 common.Provenance 的 DONOR/REJECTED），[cx, cz, 种类, worker, 毫秒]
+        //   /donor provenance stats 每种来源事件累计几个、第一个和最后一个的时间
+        //   /donor syncload <x> <z>  测试用：在主线程上同步要这个 chunk（FULL），回复用了多少毫秒（7.6a）
+        //   /donor waitimport chunkcache|server  测试用：等 donor 的导入走哪个队列（7.6a，正确的是 chunkcache）
+        //   /donor reset            第 7 步对比用：清掉任务队列（排队、在租、做完的）、撤回在租的；导入账本不动
+        //   /donor waitsync abandon|wait  变异检查用：主线程同步要 chunk 时放弃闸门（正确）还是照样等
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("donor")
                         .requires(source -> source.hasPermission(2))
@@ -60,6 +72,31 @@ public final class Coordinator implements ModInitializer {
                         .then(Commands.literal("demand")
                                 .then(Commands.literal("on").executes(ctx -> setDemand(ctx.getSource(), true)))
                                 .then(Commands.literal("off").executes(ctx -> setDemand(ctx.getSource(), false))))
+                        .then(Commands.literal("feature")
+                                .then(Commands.argument("name", StringArgumentType.word())
+                                        .then(Commands.literal("on").executes(ctx -> setFeature(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "name"), true)))
+                                        .then(Commands.literal("off").executes(ctx -> setFeature(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "name"), false)))))
+                        .then(Commands.literal("provenance").executes(ctx -> reply(ctx.getSource(), recentProvenance()))
+                                .then(Commands.literal("stats").executes(ctx -> reply(ctx.getSource(), provenanceStats()))))
+                        .then(Commands.literal("syncload")
+                                .then(Commands.argument("x", IntegerArgumentType.integer())
+                                        .then(Commands.argument("z", IntegerArgumentType.integer())
+                                                .executes(ctx -> {
+                                                    long t0 = System.nanoTime();
+                                                    ctx.getSource().getServer().overworld().getChunk(
+                                                            IntegerArgumentType.getInteger(ctx, "x"), IntegerArgumentType.getInteger(ctx, "z"));
+                                                    return reply(ctx.getSource(), "syncload " + (System.nanoTime() - t0) / 1_000_000 + " ms");
+                                                }))))
+                        .then(Commands.literal("waitimport")
+                                .then(Commands.literal("chunkcache").executes(ctx -> setWaitImport(ctx.getSource(), true)))
+                                .then(Commands.literal("server").executes(ctx -> setWaitImport(ctx.getSource(), false))))
+                        .then(Commands.literal("reset").executes(ctx -> reply(ctx.getSource(),
+                                network == null ? "not running" : "reset cancelled=" + network.reset())))
+                        .then(Commands.literal("waitsync")
+                                .then(Commands.literal("abandon").executes(ctx -> setWaitSync(ctx.getSource(), true)))
+                                .then(Commands.literal("wait").executes(ctx -> setWaitSync(ctx.getSource(), false))))
                         .then(Commands.literal("rules")
                                 .then(Commands.literal("strict").executes(ctx -> setStrict(ctx.getSource(), true)))
                                 .then(Commands.literal("legacy").executes(ctx -> setStrict(ctx.getSource(), false))))
@@ -94,6 +131,47 @@ public final class Coordinator implements ModInitializer {
                                                     ctx.getSource().sendSuccess(() -> Component.literal(s), false);
                                                     return 1;
                                                 }))))));
+        // 导入账本（7.7）：启动时从世界目录读回来，每 5 秒把改过的 region 写盘，关服时（存完世界以后）再写一次
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            try {
+                int n = Ownership.LEDGER.load(ledgerDir(server));
+                LOG.info("导入账本：读回 {} 个 chunk", n);
+            } catch (IOException e) {
+                LOG.warn("导入账本读不了，按空的处理：{}", e.toString());
+            }
+        });
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (server.getTickCount() % 100 == 0) {
+                flushLedger(server);
+            }
+        });
+        ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
+        // 第 9 步：玩家进服时，装了客户端 mod 的（注册了 mcdonate:invite 频道）收到 coordinator 地址、一次性 token、seed；
+        // 原版客户端不注册这个频道，canSend 为假，不发。没配公开地址（mcdonate.publicHost）就不发。玩家退出：作废没用过的 token，断开他的 worker。
+        // 客户端可以再要一次（mcdonate:invite_request）：token 60 秒过期、邀请只在进服时发一次，玩家晚同意或 coordinator 重启后
+        // worker 要重连时用。每个玩家 inviteRequestMinMs（默认 10 秒）最多一次，超了忽略并记 WARN。
+        PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
+        PayloadTypeRegistry.playC2S().register(InviteRequest.TYPE, InviteRequest.CODEC);
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> sendInvite(server, handler.player));
+        ServerPlayNetworking.registerGlobalReceiver(InviteRequest.TYPE, (payload, context) -> {
+            net.minecraft.server.level.ServerPlayer p = context.player();
+            if (!payload.valid()) {
+                LOG.warn("{} 的 invite_request 读不懂（版本 {}），忽略", p.getGameProfile().getName(), payload.version());
+                return;
+            }
+            if (!INVITE_LIMITER.allow(p.getUUID(), System.currentTimeMillis())) {
+                LOG.warn("{} 再要邀请太频繁（{} ms 内最多一次），忽略", p.getGameProfile().getName(), INVITE_REQUEST_MIN_MS);
+                return;
+            }
+            sendInvite(context.server(), p);
+        });
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            INVITE_LIMITER.forget(handler.player.getUUID());
+            CoordinatorServer n = network;
+            if (n != null) {
+                n.playerLeft(handler.player.getUUID());
+            }
+        });
         // 网络：服务器起来后监听，关服时停。端口 0 表示不开（系统属性 mcdonate.port，默认 25580）
         int port = Config.getInt("port", 25580);
         if (port > 0) {
@@ -125,9 +203,107 @@ public final class Coordinator implements ModInitializer {
 
     private static volatile CoordinatorServer network;
 
+    static final long INVITE_REQUEST_MIN_MS = Config.getLong("inviteRequestMinMs", 10_000);
+    private static final InviteLimiter INVITE_LIMITER = new InviteLimiter(INVITE_REQUEST_MIN_MS);
+
+    /**
+     * 第 9 步：给装了 mod 的玩家发邀请（进服时、玩家再要时）。发新 token 时这个玩家的旧 token 作废（TokenRegistry.issue）。
+     * 原版客户端不注册频道（canSend 为假）、没配公开地址、coordinator 没开：不发。
+     */
+    static void sendInvite(net.minecraft.server.MinecraftServer server, net.minecraft.server.level.ServerPlayer player) {
+        CoordinatorServer n = network;
+        if (n == null || PUBLIC_HOST.isEmpty() || !ServerPlayNetworking.canSend(player, DonorInvite.TYPE)) {
+            return;
+        }
+        String token = n.tokens.issue(player.getUUID());
+        DonorInvite invite = new DonorInvite(PUBLIC_HOST, PUBLIC_PORT, token, server.overworld().getSeed());
+        if (!invite.valid()) {
+            LOG.warn("公开地址 {}:{} 不合法，不发 donor 邀请", PUBLIC_HOST, PUBLIC_PORT);
+            n.tokens.revoke(player.getUUID());
+            return;
+        }
+        ServerPlayNetworking.send(player, invite);
+        LOG.info("给 {} 发了 donor 邀请（token {}）", player.getGameProfile().getName(), TokenRegistry.redact(token));
+    }
+
+    /** 第 9 步：发给玩家的 coordinator 公开地址，空 = 不发邀请；端口默认和监听端口一样。 */
+    static final String PUBLIC_HOST = Config.get("publicHost", "");
+    static final int PUBLIC_PORT = Config.getInt("publicPort", Config.getInt("port", 25580));
+
+    /** 最近的来源事件（测试用；实时地图的正式记录在 bench 的 provenance.jsonl，第 4 步 4.3）。 */
+    private static final java.util.Deque<String> PROVENANCE = new java.util.concurrent.ConcurrentLinkedDeque<>();
+    /** 每种来源事件累计报了几个、第一个和最后一个的时间（毫秒）：[次数, 第一个, 最后一个]。 */
+    private static final java.util.Map<String, long[]> PROVENANCE_STATS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    static {
+        mcdonate.common.Provenance.addListener((cx, cz, kind, donor) -> {
+            long now = System.currentTimeMillis();
+            // 第 5 个元素是时间戳（毫秒），对照飞行窗口用（11-09：有几轮 donor 事件没进飞行记录，查是没报还是报在了窗口外）
+            PROVENANCE.addLast("[" + cx + "," + cz + ",\"" + kind.name().toLowerCase() + "\"," + donor + "," + now + "]");
+            PROVENANCE_STATS.compute(kind.name().toLowerCase(),
+                    (k, v) -> v == null ? new long[] {1, now, now} : new long[] {v[0] + 1, v[1], now});
+            while (PROVENANCE.size() > 64) {
+                PROVENANCE.pollFirst();
+            }
+        });
+    }
+
+    private static String provenanceStats() {
+        StringBuilder sb = new StringBuilder("{\"nowMs\":").append(System.currentTimeMillis());
+        for (var e : new java.util.TreeMap<>(PROVENANCE_STATS).entrySet()) {
+            long[] v = e.getValue();
+            sb.append(",\"").append(e.getKey()).append("\":{\"count\":").append(v[0])
+                    .append(",\"firstMs\":").append(v[1]).append(",\"lastMs\":").append(v[2]).append('}');
+        }
+        return sb.append('}').toString();
+    }
+
+    private static String recentProvenance() {
+        return "[" + String.join(",", PROVENANCE) + "]";
+    }
+
+    static java.nio.file.Path ledgerDir(net.minecraft.server.MinecraftServer server) {
+        return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("mcdonate").resolve("ledger");
+    }
+
+    private static void flushLedger(net.minecraft.server.MinecraftServer server) {
+        try {
+            Ownership.LEDGER.flush(ledgerDir(server));
+        } catch (IOException e) {
+            LOG.warn("导入账本写盘失败：{}", e.toString());
+        }
+    }
+
     private static int reply(CommandSourceStack source, String text) {
         source.sendSuccess(() -> Component.literal(text), false);
         return 1;
+    }
+
+    private static int setWaitImport(CommandSourceStack source, boolean chunkCache) {
+        if (network != null) {
+            network.waitDonor.importViaChunkCache = chunkCache;
+        }
+        return reply(source, "waitimport " + (chunkCache ? "chunkcache" : "server"));
+    }
+
+    private static int setWaitSync(CommandSourceStack source, boolean abandon) {
+        if (network != null) {
+            network.waitDonor.abandonOnSync = abandon;
+        }
+        return reply(source, "waitsync " + (abandon ? "abandon" : "wait"));
+    }
+
+    private static int setFeature(CommandSourceStack source, String name, boolean on) {
+        if (network == null) {
+            return reply(source, "not running");
+        }
+        try {
+            network.features.set(name, on);
+        } catch (IllegalArgumentException e) {
+            source.sendFailure(Component.literal(e.getMessage()));
+            return 0;
+        }
+        return reply(source, "features " + network.features.json());
     }
 
     private static int setDemand(CommandSourceStack source, boolean on) {

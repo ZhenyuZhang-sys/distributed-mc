@@ -47,6 +47,7 @@ final class WorkerClient {
 
     WorkerClient(MinecraftServer server, String address) {
         this.server = server;
+        this.generating = new OneAtATime<>(server::execute);
         String[] hp = address.split(":");
         this.host = hp[0];
         this.port = Integer.parseInt(hp[1]);
@@ -122,7 +123,7 @@ final class WorkerClient {
                     throw new IOException("coordinator 拒绝：协议版本 " + w.protocol() + "，本机 " + Protocol.VERSION);
                 }
                 long mine = server.overworld().getSeed();
-                seedMismatch = w.seed() != mine;
+                seedMismatch = !seedOk(w, mine);
                 if (seedMismatch) {
                     LOG.error("存档 seed {} 和 coordinator 的 {} 不一样，不领任务", mine, w.seed());
                 } else {
@@ -147,22 +148,67 @@ final class WorkerClient {
             return;
         }
         currentTask = t.taskId();
-        server.execute(() -> {
-            Result r;
-            try {
-                TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
-                r = Result.success(t.taskId(), g.file().toTag());
-            } catch (RuntimeException e) {
-                LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
-                r = Result.failure(t.taskId(), truncate(e.toString()));
-            }
-            currentTask = Heartbeat.NO_TASK;
-            if (cancelled.remove(t.taskId())) {
-                LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
+        // 一次只生成一个：主线程等 chunk 时会执行排着的任务，直接 server.execute 会让下一个 tile 嵌套在上一个里面跑（OneAtATime）
+        generating.submit(t, this::generate);
+    }
+
+    private final OneAtATime<Task> generating;
+
+    private void generate(Task t) {
+        if (cancelled.remove(t.taskId())) {
+            LOG.info("任务 {} 还没开始就被撤掉，不做", t.taskId());
+            return;
+        }
+        currentTask = t.taskId();
+        Result r;
+        try {
+            TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
+            r = Result.success(t.taskId(), g.file().toTag());
+        } catch (RuntimeException e) {
+            LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
+            r = Result.failure(t.taskId(), truncate(e.toString()));
+        }
+        currentTask = Heartbeat.NO_TASK;
+        if (cancelled.remove(t.taskId())) {
+            LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
+            return;
+        }
+        deliver(r);
+    }
+
+    /** Welcome 里的 seed 和自己建世界用的一样才领任务（第 5 步；第 9 步建世界的 seed 来自邀请，这里是唯一的核对）。 */
+    static boolean seedOk(Welcome w, long worldSeed) {
+        return w.seed() == worldSeed;
+    }
+
+    /** 测试用（/donor hold）：扣着做完的结果先不发，放开时一起发。7.6a 用它让服务器先碰到闸门、再收到结果。 */
+    private final java.util.List<Result> held = new java.util.ArrayList<>();
+    private boolean hold;
+
+    private void deliver(Result r) {
+        synchronized (held) {
+            if (hold) {
+                held.add(r);
+                LOG.info("任务 {} 做完了，按要求先扣着", r.taskId());
                 return;
             }
-            send(r);
-        });
+        }
+        send(r);
+    }
+
+    /** 打开或放开扣结果；放开时把扣着的发出去，返回发了几个。 */
+    int setHold(boolean on) {
+        java.util.List<Result> out;
+        synchronized (held) {
+            hold = on;
+            if (on) {
+                return 0;
+            }
+            out = new java.util.ArrayList<>(held);
+            held.clear();
+        }
+        out.forEach(this::send);
+        return out.size();
     }
 
     /** NBT 字符串最长 65535 字节，错误信息太长编码会失败：截到 4000 个字符。 */

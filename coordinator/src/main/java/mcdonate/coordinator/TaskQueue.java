@@ -69,6 +69,10 @@ public final class TaskQueue {
         long leasedAt;
         /** 对冲撤回过：之后回来的结果不导入，算浪费。 */
         boolean hedged;
+        /** 7.2：预计玩家什么时候看到这个 tile（毫秒时间戳）；不知道是 Long.MAX_VALUE。 */
+        long due = Long.MAX_VALUE;
+        /** 7.2：找需求算过 due 没有（没算过的，比如手动派的，不按"飞过了"删）。 */
+        boolean scored;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -83,8 +87,8 @@ public final class TaskQueue {
     private final Map<Long, Task> tasks = new HashMap<>();
     private final Map<Long, Long> byTile = new HashMap<>();
     private final Deque<Long> queue = new ArrayDeque<>();
-    /** worker → 它手上租着的任务。 */
-    private final Map<Integer, Long> leases = new HashMap<>();
+    /** worker → 它手上租着的任务（7.3 起一个 worker 可以同时租几个）。 */
+    private final Map<Integer, Set<Long>> leases = new HashMap<>();
     /** worker → 它的 donor 世界编号（从它交上来的结果里知道）。 */
     private final Map<Integer, String> workerWorlds = new HashMap<>();
     private long nextId = 1;
@@ -137,6 +141,23 @@ public final class TaskQueue {
         return owners;
     }
 
+    private void leaseAdd(int worker, long id) {
+        leases.computeIfAbsent(worker, k -> new java.util.LinkedHashSet<>()).add(id);
+    }
+
+    private void leaseRemove(int worker, long id) {
+        Set<Long> s = leases.get(worker);
+        if (s != null && s.remove(id) && s.isEmpty()) {
+            leases.remove(worker);
+        }
+    }
+
+    /** 这个 worker 手上租着几个任务。 */
+    public synchronized int inFlight(int worker) {
+        Set<Long> s = leases.get(worker);
+        return s == null ? 0 : s.size();
+    }
+
     private static long tileKey(int tx, int tz) {
         return ((long) tx << 32) ^ (tz & 0xffffffffL);
     }
@@ -165,6 +186,9 @@ public final class TaskQueue {
             byTile.put(tileKey(tx, tz), t.id);
         }
         t.state = State.QUEUED;
+        t.hedged = false; // 撤回过、又重新需要了：之后的结果照常收
+        t.scored = false;
+        t.due = Long.MAX_VALUE;
         t.hardWorld = hardWorld;
         t.softWorker = -1;
         t.orphanSince = clock.getAsLong();
@@ -194,7 +218,7 @@ public final class TaskQueue {
             return -1;
         }
         int worker = t.worker;
-        leases.remove(worker, taskId);
+        leaseRemove(worker, taskId);
         t.state = State.DROPPED;
         t.worker = -1;
         t.hedged = true;
@@ -239,9 +263,20 @@ public final class TaskQueue {
 
     /** 空闲的 worker 领队首的任务。手上已有任务或队列空了返回空。 */
     public synchronized Optional<Assignment> assign(int worker) {
-        if (leases.containsKey(worker) || queue.isEmpty()) {
+        return assign(worker, 1, due -> true);
+    }
+
+    /**
+     * worker 领一个任务。
+     *
+     * @param maxInFlight 这个 worker 最多同时租几个（7.3 按实测算力；关着时是 1）
+     * @param dueOk 这个 worker 能不能在 due 之前做完（7.3：慢的 donor 只派时间宽裕的）；due 不知道的任务不问
+     */
+    public synchronized Optional<Assignment> assign(int worker, int maxInFlight, java.util.function.LongPredicate dueOk) {
+        if (inFlight(worker) >= Math.max(1, maxInFlight) || queue.isEmpty()) {
             return Optional.empty();
         }
+        boolean byDue = features.on(Features.DEADLINE);
         Task t = null;
         for (var it = queue.iterator(); it.hasNext(); ) {
             Task c = tasks.get(it.next());
@@ -257,15 +292,21 @@ public final class TaskQueue {
                     continue;
                 }
             }
-            if (eligible(c, worker)) {
-                t = c;
-                it.remove();
+            if (!eligible(c, worker) || (c.due != Long.MAX_VALUE && !dueOk.test(c.due))) {
+                continue;
+            }
+            if (!byDue) {
+                t = c; // 先进先出：第一个合适的
                 break;
+            }
+            if (t == null || c.due < t.due) {
+                t = c; // 7.2：玩家最先看到的先派
             }
         }
         if (t == null) {
             return Optional.empty();
         }
+        queue.remove(t.id);
         if (t.hardWorld == null) {
             // 包一片：队列里相邻的不认主任务归这个 worker
             for (long id : queue) {
@@ -279,8 +320,125 @@ public final class TaskQueue {
         t.leasedAt = clock.getAsLong();
         t.worker = worker;
         t.deadline = clock.getAsLong() + leaseMs;
-        leases.put(worker, t.id);
+        leaseAdd(worker, t.id);
         return Optional.of(new Assignment(t.id, t.tx, t.tz, leaseMs));
+    }
+
+    /** 7.2：更新 tile 的预计"被玩家看到"时间（找需求每次扫描时算）。 */
+    public synchronized void setDue(int tx, int tz, long due) {
+        Long id = byTile.get(tileKey(tx, tz));
+        if (id == null) {
+            return;
+        }
+        Task t = tasks.get(id);
+        if (t.state == State.QUEUED || t.state == State.LEASED) {
+            t.due = due;
+            t.scored = true;
+        }
+    }
+
+    public record Cancelled(long taskId, int worker) {}
+
+    /** {@link #dropPassed} 的结果：删掉的排队任务、撤回的已派任务（要给 worker 发 cancel）。 */
+    public record Stale(List<Long> dropped, List<Cancelled> cancelled) {}
+
+    public interface TileFilter {
+        boolean test(int tx, int tz);
+    }
+
+    private int staleDropped;
+    private int staleCancelled;
+
+    /**
+     * 7.2（11-09 补的漏洞）：开 deadline 时，玩家已经飞过（找需求算过、没有将来的到达时间，due 是无穷大）、
+     * 又不在任何玩家当前需求范围里的 tile：排队的删掉，派出去的撤回（之后回来的结果作废）。
+     * 计划本来就写了"玩家已经到了的任务直接丢掉"，原来只丢了 due 已过的，飞过的一直留着，别的做完了照样派
+     * （f3 实测几轮 donor 写入的 chunk 几乎全在玩家身后）。开关关着（v0，先来先服务）不动，它是对照组。
+     */
+    public synchronized Stale dropPassed(TileFilter inDemand) {
+        List<Long> dropped = new ArrayList<>();
+        List<Cancelled> cancelled = new ArrayList<>();
+        if (!features.on(Features.DEADLINE)) {
+            return new Stale(dropped, cancelled);
+        }
+        for (Task t : tasks.values()) {
+            if (!t.scored || t.due != Long.MAX_VALUE || inDemand.test(t.tx, t.tz)) {
+                continue;
+            }
+            if (t.state == State.QUEUED) {
+                queue.remove(t.id);
+                t.state = State.DROPPED;
+                dropped.add(t.id);
+                staleDropped++;
+            } else if (t.state == State.LEASED) {
+                int w = t.worker;
+                leaseRemove(w, t.id);
+                t.state = State.DROPPED;
+                t.worker = -1;
+                t.hedged = true; // 之后回来的结果作废
+                cancelled.add(new Cancelled(t.id, w));
+                staleCancelled++;
+            }
+        }
+        dropped.sort(null);
+        return new Stale(dropped, cancelled);
+    }
+
+    /**
+     * 清空（第 7 步对比每轮开始前，/donor reset）：排队的、在租的、做完的都忘掉，领地和归属不带进下一轮。
+     * 返回在租的（要给 worker 发 cancel）；之后回来的结果不认识，丢掉。worker 认的 donor 世界和累计计数留着。
+     */
+    public synchronized List<Cancelled> reset() {
+        List<Cancelled> out = new ArrayList<>();
+        for (Task t : tasks.values()) {
+            if (t.state == State.LEASED) {
+                out.add(new Cancelled(t.id, t.worker));
+            }
+        }
+        out.sort(java.util.Comparator.comparingLong(Cancelled::taskId));
+        tasks.clear();
+        byTile.clear();
+        queue.clear();
+        leases.clear();
+        return out;
+    }
+
+    public synchronized String staleJson() {
+        return "{\"dropped\":" + staleDropped + ",\"cancelled\":" + staleCancelled + "}";
+    }
+
+    /** 7.2：还在排队、玩家已经看到了（due 已过）的任务丢掉，交给服务器。返回丢掉的。 */
+    public synchronized List<Long> dropLate() {
+        long now = clock.getAsLong();
+        List<Long> dropped = new ArrayList<>();
+        for (var it = queue.iterator(); it.hasNext(); ) {
+            Task t = tasks.get(it.next());
+            if (t.due < now) {
+                t.state = State.DROPPED;
+                it.remove();
+                dropped.add(t.id);
+            }
+        }
+        return dropped;
+    }
+
+    /** 一个租出去、知道 due 的任务（7.4 对冲判断用）。 */
+    public record Lease(long taskId, int worker, long leasedAt, long due) {}
+
+    /** 这个任务正租着的话，租给谁、什么时候派的（7.6 等 donor 用）。 */
+    public synchronized Optional<Lease> lease(long taskId) {
+        Task t = tasks.get(taskId);
+        return t != null && t.state == State.LEASED ? Optional.of(new Lease(t.id, t.worker, t.leasedAt, t.due)) : Optional.empty();
+    }
+
+    public synchronized List<Lease> leasesWithDue() {
+        List<Lease> out = new ArrayList<>();
+        for (Task t : tasks.values()) {
+            if (t.state == State.LEASED && t.due != Long.MAX_VALUE) {
+                out.add(new Lease(t.id, t.worker, t.leasedAt, t.due));
+            }
+        }
+        return out;
     }
 
     /** worker 的心跳带着正在做的任务：是租给它的就续租。 */
@@ -342,16 +500,15 @@ public final class TaskQueue {
     public synchronized List<Long> workerGone(int worker) {
         releaseSoft(worker);
         workerWorlds.remove(worker);
-        Long id = leases.get(worker);
-        if (id == null) {
-            return List.of();
+        List<Long> ids = new ArrayList<>(leases.getOrDefault(worker, Set.of()));
+        for (int i = ids.size() - 1; i >= 0; i--) {
+            backToHead(tasks.get(ids.get(i)));
         }
-        backToHead(tasks.get(id));
-        return List.of(id);
+        return ids;
     }
 
     private void backToHead(Task t) {
-        leases.remove(t.worker, t.id);
+        leaseRemove(t.worker, t.id);
         t.state = State.QUEUED;
         t.worker = -1;
         queue.addFirst(t.id);
@@ -363,8 +520,8 @@ public final class TaskQueue {
         if (t == null) {
             return discard("不认识的任务 " + taskId);
         }
-        // 这个 worker 交了结果，不管是不是它的，它都空出来了
-        leases.remove(worker, taskId);
+        // 这个 worker 交了结果，这个任务不再占它的名额
+        leaseRemove(worker, taskId);
         if (t.hedged) {
             // 对冲撤回后才回来：服务器已经接手，不导入，算浪费
             if (ok) {
@@ -383,7 +540,7 @@ public final class TaskQueue {
                     return discard("任务 " + taskId + " 已经重发给 worker " + t.worker + "，忽略旧的失败");
                 }
                 int other = t.worker;
-                leases.remove(other, taskId);
+                leaseRemove(other, taskId);
                 return done(t, Optional.of(other), "过期结果先到，撤掉 worker " + other);
             case QUEUED:
                 if (!ok) {

@@ -1,0 +1,102 @@
+{
+ "note": "7.0b 的位置：seed 424242，用 locate biome 从半径 2 万、3 万格的一圈出发点找，生成后从存档读生物群系，选出和 tile 网格对齐、树多生物群系（名字带 forest/jungle/taiga/grove）占比最高的 10×10 chunk 窗口。tile 是 4×4 chunk 的 tile 坐标；tree_biome_fraction 是窗口里树多生物群系的列占比（每 chunk 抽 16 列，Y=72）。11-08 fish。",
+ "min_distance_blocks": 8240,
+ "sites": [
+  {
+   "biome": "dark_forest",
+   "tile": [
+    414,
+    161
+   ],
+   "tree_biome_fraction": 0.994
+  },
+  {
+   "biome": "forest",
+   "tile": [
+    172,
+    430
+   ],
+   "tree_biome_fraction": 1.0
+  },
+  {
+   "biome": "dark_forest",
+   "tile": [
+    -177,
+    415
+   ],
+   "tree_biome_fraction": 0.94
+  },
+  {
+   "biome": "forest",
+   "tile": [
+    -432,
+    182
+   ],
+   "tree_biome_fraction": 0.892
+  },
+  {
+   "biome": "jungle",
+   "tile": [
+    -431,
+    -166
+   ],
+   "tree_biome_fraction": 1.0
+  },
+  {
+   "biome": "old_growth_pine_taiga",
+   "tile": [
+    -147,
+    -399
+   ],
+   "tree_biome_fraction": 0.991
+  },
+  {
+   "biome": "dark_forest",
+   "tile": [
+    172,
+    -441
+   ],
+   "tree_biome_fraction": 0.839
+  },
+  {
+   "biome": "forest",
+   "tile": [
+    433,
+    -179
+   ],
+   "tree_biome_fraction": 1.0
+  },
+  {
+   "biome": "forest",
+   "tile": [
+    272,
+    157
+   ],
+   "tree_biome_fraction": 1.0
+  },
+  {
+   "biome": "dark_forest",
+   "tile": [
+    150,
+    259
+   ],
+   "tree_biome_fraction": 0.884
+  },
+  {
+   "biome": "old_growth_pine_taiga",
+   "tile": [
+    -161,
+    -271
+   ],
+   "tree_biome_fraction": 0.779
+  },
+  {
+   "biome": "old_growth_spruce_taiga",
+   "tile": [
+    -262,
+    -165
+   ],
+   "tree_biome_fraction": 0.762
+  }
+ ]
+}

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 /** 第 9 步：worker 子进程的启动命令。 */
 class WorkerLaunchTest {
     private final WorkerLaunch.Options opts =
-            new WorkerLaunch.Options(Path.of("/jre/bin/java"), 2048, 2, 4242, "mc.example.org:25580");
+            new WorkerLaunch.Options(Path.of("/jre/bin/java"), 2048, 2, 4242, "mc.example.org:25580", -77);
 
     @Test
     void linuxUsesNice() {
@@ -21,6 +21,7 @@ class WorkerLaunchTest {
         assertTrue(c.contains("-XX:ActiveProcessorCount=3"), "2 个生成线程 = 3 个可见核");
         assertTrue(c.contains("-Dmcdonate.parentPid=4242"));
         assertTrue(c.contains("-Dmcdonate.coordinator=mc.example.org:25580"));
+        assertTrue(c.contains("-Dmcdonate.inviteSeed=-77"), "建世界用邀请里的 seed");
     }
 
     @Test

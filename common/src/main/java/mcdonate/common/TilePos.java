@@ -8,23 +8,41 @@ public record TilePos(int x, int z) {
     public static final int SIZE = Config.getInt("tileSize", 4);
 
     public static TilePos ofChunk(int chunkX, int chunkZ) {
-        return new TilePos(Math.floorDiv(chunkX, SIZE), Math.floorDiv(chunkZ, SIZE));
+        return ofChunk(chunkX, chunkZ, SIZE);
+    }
+
+    /** 7.5：tile 大小作参数的版本（单元测试按 1、2、4、8 测；运行时用配置的 SIZE）。 */
+    public static TilePos ofChunk(int chunkX, int chunkZ, int size) {
+        return new TilePos(Math.floorDiv(chunkX, size), Math.floorDiv(chunkZ, size));
+    }
+
+    public static int minChunk(int t, int size) {
+        return t * size;
+    }
+
+    public static int maxChunk(int t, int size) {
+        return t * size + size - 1;
+    }
+
+    /** tile 中心（chunk 坐标，可以是半格）。 */
+    public static double center(int t, int size) {
+        return t * size + (size - 1) / 2.0;
     }
 
     public int minChunkX() {
-        return x * SIZE;
+        return minChunk(x, SIZE);
     }
 
     public int maxChunkX() {
-        return x * SIZE + SIZE - 1;
+        return maxChunk(x, SIZE);
     }
 
     public int minChunkZ() {
-        return z * SIZE;
+        return minChunk(z, SIZE);
     }
 
     public int maxChunkZ() {
-        return z * SIZE + SIZE - 1;
+        return maxChunk(z, SIZE);
     }
 
     /** chunk 在第几圈：tile 内是 0，紧挨着的一圈是 1，依此类推（按切比雪夫距离）。 */

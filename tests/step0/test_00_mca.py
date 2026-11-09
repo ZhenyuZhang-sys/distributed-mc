@@ -42,6 +42,17 @@ def test_missing_is_not_corruption(tmp_path):
         read_chunk(root / "missing", 0, 0)
 
 
+def test_empty_region_file_has_no_chunks(tmp_path):
+    # 原版读一个还没有的 region 里的 chunk 时会留下 0 字节的 .mca（找需求查磁盘状态、结构查找都会），
+    # 原版的 RegionFile 读到 EOF 就当没有 chunk。11-09 浸泡测试把它当成"头部截断"，其实存档没坏。
+    root = world(tmp_path)
+    path = write_chunk(root)
+    empty = path.with_name("r.5.5.mca")
+    empty.write_bytes(b"")
+    assert read_chunk(root, 5 * 32, 5 * 32) is None
+    assert all(not (x >> 5 == 5 and z >> 5 == 5) for x, z in iter_chunk_positions(root))
+
+
 def test_incomplete_world_is_not_missing_chunk(tmp_path):
     root = world(tmp_path)
     (root / "region").rmdir()

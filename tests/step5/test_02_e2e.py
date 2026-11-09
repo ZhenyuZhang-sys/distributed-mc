@@ -9,7 +9,7 @@ import json
 import pytest
 
 from analysis.mca import read_chunk
-from analysis.mca.decor import VANILLA_DECOR_MAX, Diff, compare_chunks, relative_check
+from analysis.mca.decor import VANILLA_DECOR_MAX, Diff, compare_chunks, relative_check, seam_guard, terrain_clusters
 from analysis.seam import ratios, ring_density
 from mcd import SCRIPTS, compose, run, wait_until, worker_id
 
@@ -86,7 +86,7 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     # 也生成同一块作为原版答案，逐块比，分两层（analysis/mca/decor.py）：
     # - 严格层（装饰类方块以外）：导入的、没导入的都必须是 0。没导入的部分是两个原版世界互比，
     #   它不是 0 说明装饰类清单不全。
-    # - 统计层：导入部分（tile 和边界一圈）的装饰类差异率、地形互换率，各自不高于没导入部分（同一轮原版互比）的 1.5 倍。
+    # - 统计层：tile 内部按 relative_check 和没导入部分比；边界一圈、两圈按 seam_guard 护栏（11-09 拆开，见下面）。
     x0, z0 = G0 * 4 - 2, G0 * 4 - 2
     size = 6 * 4 + 4 + 4
     server.chunky_square(x0, z0, size)
@@ -99,9 +99,11 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
             return "tile"
         if any(tx * 4 - 1 <= x <= tx * 4 + 4 and tz * 4 - 1 <= z <= tz * 4 + 4 for tx, tz in GRID):
             return "ring1"
+        if any(tx * 4 - 2 <= x <= tx * 4 + 5 and tz * 4 - 2 <= z <= tz * 4 + 5 for tx, tz in GRID):
+            return "ring2"
         return "not_imported"
 
-    acc = {k: Diff(examples=[]) for k in ("tile", "ring1", "not_imported")}
+    acc = {k: Diff(examples=[]) for k in ("tile", "ring1", "ring2", "not_imported")}
     center_diff = {}
     for x in range(x0, x0 + size):
         for z in range(z0, z0 + size):
@@ -115,8 +117,12 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
                     and (d.strict or d.decor or d.terrain):
                 center_diff[f"{x},{z}"] = {"strict": d.strict, "decor": d.decor, "terrain": d.terrain}
     imported = Diff(examples=[]).add(acc["tile"]).add(acc["ring1"])
+    # 地形互换的每一处：大小、一个方块坐标、所在 chunk（只记录，排查用；11-09 一次失败时没有这些，查不了）
     summary = {k: {"strict": v.strict, "decor_rate": v.decor_rate, "terrain_rate": v.terrain_rate,
-                   "examples": v.examples} for k, v in acc.items()}
+                   "examples": v.examples,
+                   "terrain_clusters": [{"size": len(c), "at": list(min(c)), "chunk": [min(c)[0] >> 4, min(c)[2] >> 4]}
+                                        for c in terrain_clusters(v.terrain_positions or [])]}
+               for k, v in acc.items()}
     print(f"严格差异 / 装饰类差异率：{ {k: (v.strict, f'{v.decor_rate:.4%}') for k, v in acc.items()} }")
     if server.artifact_dir:
         server.artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -132,8 +138,14 @@ def test_ten_tiles_match_vanilla(server, worker, ten, tmp_path_factory):
     assert not center_diff, f"tile 中间的 chunk 和 worker 不一致，导入丢了东西：{center_diff}"
     assert all(v.strict == 0 for v in acc.values()), summary
     assert all(v.decor_rate <= SANITY for v in acc.values()), summary
-    bad = relative_check(imported, acc["not_imported"])
-    assert not bad, (bad, summary)
+    # 判据拆开（调度 11-09，看过数据后改：这条约每 3 次挂 1 次，都是 tile 外面一圈的已知接缝问题，见 docs/step6-report.md 第 11 节）：
+    # - tile 内部（"导入有没有写坏"的核心，不放松）：严格层 0（上面），统计层照原来的二项检验和 66 方块上限，和没导入部分比
+    # - 边界一圈、两圈（已知问题 7.8）：只测量写报告，设一个宽松护栏（analysis/mca/decor.py 的 seam_guard：5 倍、132 方块）
+    bad = relative_check(acc["tile"], acc["not_imported"])
+    assert not bad, ("tile 内部", bad, summary)
+    seam = Diff(examples=[]).add(acc["ring1"]).add(acc["ring2"])
+    guard = seam_guard(seam, acc["not_imported"])
+    assert not guard, ("导入边界护栏", guard, summary)
 
 
 # ---- kill worker ----

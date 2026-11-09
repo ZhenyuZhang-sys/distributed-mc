@@ -1,6 +1,9 @@
 """第 6 步（6.5）：30 分钟浸泡测试（slow）。
 
-- 打开找需求，2 个 donor；1 个旁观假玩家从 (0, 30000) 沿 +x 每 0.5 秒前进 7 格（14 格/秒，骑马的速度），走 30 分钟。
+- 打开找需求，2 个 donor；1 个旁观假玩家从 (0, 30000) 沿 +x 以 14 格/秒（骑马的速度）走 30 分钟。
+  移动用第 4 步的飞行场景（bench.layer2.fly）：像客户端一样每 tick 前进，不越过没就绪的 chunk（11-09 起；
+  原来用 rcon tp 每 0.5 秒跳 7 格，假玩家会跑到生成前面，在实体 tick 里同步生成，2 核时被看门狗杀掉）。
+  守护计数 sync_loads.count 必须为 0，否则这次测量无效；卡住时长、实际距离记录。
 - 跑完：存档里每个 chunk 都读得出来；抽 1% 的 chunk 在全新世界（同 seed）里单独生成作对照，
   按"导入的 tile / 服务器生成的"分开逐块比（analysis/mca/decor.py 两层）：严格层两边都是 0，
   导入的装饰类差异率、地形互换率各自不高于服务器生成的 1.5 倍（同 5.4）；记录指标。
@@ -10,18 +13,21 @@
 
 import json
 import random
+import shutil
 import time
+from pathlib import Path
 
 import pytest
 
 from analysis.mca import iter_chunk_positions, read_chunk
+from analysis.mca.errors import CorruptRegionError
 from analysis.mca.decor import Diff, compare_chunks, relative_check
-from mcd import SCRIPTS, donor_imports, run, worker_id
+from bench import layer2
+from mcd import SCRIPTS, compose, donor_imports, run, wait_until, worker_id
 
 START = (0, 30000)
 SPEED = 14          # 格/秒
 DURATION = 30 * 60  # 秒
-STEP_S = 0.5
 
 
 @pytest.mark.slow
@@ -29,31 +35,49 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
     worker_id(server, "worker")
     worker_id(server, "worker2")
     before = len(donor_imports(server))
+    base = tmp_path_factory.mktemp("soak")  # 存档快照（大），不放 artifacts
+    flight_dir = server.artifact_dir or base
     server.rcon("bench reset")
     server.rcon("donor demand on")
-    server.rcon(f"player soakbot spawn at {START[0]} 200 {START[1]} facing 0 0 in minecraft:overworld in spectator")
-    x = START[0]
     try:
-        t0 = time.monotonic()
-        while time.monotonic() - t0 < DURATION:
-            x += SPEED * STEP_S
-            server.rcon(f"tp soakbot {x:.1f} 200 {START[1]}")
-            time.sleep(STEP_S)  # 移动节奏，不是等条件
+        out = layer2.fly(server, run=f"soak-{time.time_ns()}", player="soakbot", start=START, speed=SPEED,
+                         seconds=DURATION, out_dir=flight_dir / "soak-flight")
         status = json.loads(server.rcon("donor status"))
         stats = json.loads(server.rcon("bench stats"))
     finally:
         server.rcon("donor demand off")
-        server.rcon("player soakbot kill")
     assert status["scan"]["count"] > 0, "找需求没开起来，测试在空跑"
-
-    base = tmp_path_factory.mktemp("soak")
-    snap = server.snapshot(base / "soak")
+    flight = json.loads((out / "summary.json").read_text())
+    sync_loads = json.loads((out / "raw" / "done.json").read_text()).get("sync_loads") or {}
+    assert "count" in sync_loads, "layer2 还是旧的（没有 sync_loads 守护计数）"
+    assert sync_loads["count"] == 0, f"假玩家 tick 里同步加载过 chunk，测量无效：{sync_loads}"
+    # 拍快照前先停掉 donor：找需求关了，但队列里排着的、donor 手上的任务还会陆续导入，
+    # 拍快照时正好写 region 文件就会拷到一半（11-09 f2 两次：航线末端的 region 头部截断）。停掉后它们手上的任务回队列，不再导入
+    compose("stop", "worker", "worker2", timeout=300)
+    wait_until(lambda: not json.loads(server.rcon("donor status"))["workers"], timeout=60, interval=1, what="donor 断开")
+    # 停服再拷（调度 11-09）：save-off 只停自动存盘，玩家（假玩家飞完被移走）周围的 chunk 卸载时照样写 region，
+    # 拍快照正好拷到写了一半的文件——两次截断都在航线末端，正是飞完以后卸载的地方。停服以后存档是一致的；
+    # 这时还读不出来，就是存档真坏了。后面要换新世界做对照，用不着这台服务器了。
+    imported_tiles = {tuple(r["tile"]) for r in donor_imports(server)[before:] if r["accepted"]}  # 停服前取
+    compose("stop", "minecraft", timeout=300)
+    snap = server._copy_world(base / "soak")
     # 1. 每个 chunk 都读得出来（读不出会抛异常）
-    positions = list(iter_chunk_positions(snap))
-    full = [p for p in positions if read_chunk(snap, *p).status == "minecraft:full"]
+    # 11-09 f2 停了 donor 再拍快照，航线末端的 region 头部照样截断过两次：读不出来时把快照里的和服务器存档里的同一个 region
+    # 都存进证据目录（pytest 的临时目录会被清掉），分清是拷到一半还是存档真坏了
+    try:
+        positions = list(iter_chunk_positions(snap))
+        full = [p for p in positions if read_chunk(snap, *p).status == "minecraft:full"]
+    except CorruptRegionError as e:
+        bad = Path(str(e).split(":")[0])
+        keep = (server.artifact_dir or base) / "corrupt-region"
+        keep.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bad, keep / f"snapshot-{bad.name}")
+        live = server.world_dir / "region" / bad.name
+        if live.exists():
+            shutil.copy2(live, keep / f"live-{bad.name}")
+        raise
 
     # 2. 抽 1%，在全新世界里单独生成作对照
-    imported_tiles = {tuple(r["tile"]) for r in donor_imports(server)[before:] if r["accepted"]}
     imported = {(tx * 4 + dx, tz * 4 + dz) for tx, tz in imported_tiles for dx in range(4) for dz in range(4)}
     rng = random.Random(424242)
     sample = rng.sample(full, max(1, len(full) // 100))
@@ -79,6 +103,9 @@ def test_soak_30_minutes(server, worker, worker2, tmp_path_factory):
         "late_ratio": status["discarded"]["late"] / max(1, status["accepted"] + sum(status["discarded"].values())),
         "discarded": status["discarded"],
         "imports_accepted": len(imported_tiles), "sample": len(sample), "decor_rate": rate, "strict": strict,
+        "sync_loads": sync_loads,
+        "flight": {k: v for k, v in flight.items() if "stall" in k or "stuck" in k or "distance" in k or k in
+                   ("void_mean", "void_p95", "latency_p95_ms", "cpu_cores_mean", "mspt_mean", "mspt_max", "ticks_per_s")},
         "strict_examples": acc["imported"].examples + acc["server"].examples,
     }
     print(json.dumps(report, ensure_ascii=False))

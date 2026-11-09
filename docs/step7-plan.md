@@ -128,6 +128,19 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 
 - `Features` 类：开关集合，系统属性设初值，`/donor feature` 切换，`/donor status` 列出。单元测试：默认全关，切换生效。
 
+### 7.0b 导入边界的树差异（正确性，最先做）
+
+第 6 步调查：第 5 步那块区域 5 组里 4 组边界一圈的树类差异是第 2 圈的 2 倍以上（3.8、4.7、15.8、5.0），但只有一个位置。同一位置每次都偏高，可能是固定会发生的边界效应，要换位置才能推广（调度 11-08）。
+
+- **位置**：12 个，都在树多的生物群系（forest、birch_forest、dark_forest、flower_forest、jungle、sparse_jungle、taiga、old_growth_spruce_taiga、old_growth_pine_taiga、windswept_forest 等），用 `locate biome` 从半径 2 万格的一圈出发点找，坐标写死进 `tests/step7/data/seam-sites.json`，彼此相隔几千格、远离其他测试。
+- **每个位置两组对照**，参照都是 worker 的世界（原版答案）：
+    - 导入组：服务器导入 worker 导出的 tile，服务器和 worker 都用 Chunky 把 tile 外 3 圈（10×10 chunk）做成成品，服务器 vs worker。
+    - 原版组：worker2（同 seed 另一个世界，不导入）也生成同一块，worker2 vs worker。
+- **统计**：按圈（tile 内部、边界一圈、第 2 圈、第 3 圈；区域最外一行不算）数树类方块（原木、树叶、藤蔓、可可、树干底下那格）的差异个数。每个位置算边界一圈的 导入组 − 原版组。
+- **判定（事先定死）**：配对符号检验，边界一圈导入组 > 原版组的位置数，单侧 p < 0.01 算真问题（12 个位置要 11 个以上；平局不算）。另外报告跨位置合计的比值（导入组 ÷ 原版组）和 bootstrap 95% 区间。
+- **真问题时**：看是哪种差异——导入那边少了树（参照是树、导入是空气，树被截断）、多了树、还是位置偏了（两边都有树但对不上）；据此在"待你决定"里提修法（外圈也让同一个 donor 做完、边界一圈交给服务器、导入外圈时不覆盖服务器后来放的树……），调度定。
+- 测试：`tests/step7/test_00_seam_trees.py`（`long`，共享锁），结论不过就是失败；明细写进证据目录 `seam-trees.json`。
+
 ### 7.1 按领地派任务（`territory`）
 
 第 6 步实测两个 donor 同时跑一片区域时约 40% 的结果被整个丢弃。
@@ -182,12 +195,25 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 
 **小步**：
 
-- [ ] 7.6a 原型（可行性）：只处理"一个 tile 正租给 donor、假玩家传送到 tile 中心"这一种情况。验证：tile 的 16 个 chunk 在服务器上没跑 noise、features（`/bench chunk`），读到的是 donor 的数据（和 donor 导出逐列一致），没有死锁，MSPT 不升。设计见 docs/step7-waitdonor-notes.md。
-- [ ] 7.6a 主线程同步等 chunk：有 gate 在等的任务，结果回来时导入提交到 chunk 缓存自己的任务队列（`ServerChunkCache` 的 `mainThreadProcessor`），不用 `server.execute`。原因：主线程同步等 chunk（`getChunk` 的 `managedBlock`）时只跑 chunk 缓存自己的队列，`server.execute` 的导入要等它结束才执行，gate 只能等到 2 秒超时，服务器卡 2 秒。测试：用测试命令在主线程上同步要一个卡在 gate 上的 chunk（`getChunk(x, z, FULL, true)`），donor 结果回来后同步等待在 1 秒内结束、最长 tick < 1 秒；把导入故意改回 `server.execute` 时这条测试要失败（证明它真的覆盖了这个坑）。
+- [x] 7.6a 原型（可行性）：只处理"一个 tile 正租给 donor、假玩家传送到 tile 中心"这一种情况。验证：tile 的 16 个 chunk 在服务器上没跑 noise、features（`/bench chunk`），读到的是 donor 的数据（和 donor 导出逐列一致），没有死锁，MSPT 不升。设计见 docs/step7-waitdonor-notes.md。
+  11-09 结果（tests/step7/test_04_waitdonor.py 3 条全过）：①接近时等 donor：闸门等到结果，36 个 chunk 全部写入，tile 的 16 个 chunk 服务器上 noise、features 都是 0，rcon 最慢 < 1 秒；②主线程同步要租着的 chunk 不等；③donor 卡住 2 秒超时，主线程不卡。
+  测试里的两个坑：donor 太快（约 1.5 秒）时常常在服务器排到 tile 之前就交了，直接导入、不经过闸门——用 worker 的测试命令 /donor hold 扣住结果，等 coordinator 报有 chunk 在等再放；
+  等的位置离 tile 中心 24 圈时 tile 外圈已经在依赖范围里、派任务前就开始加载，导入被整个丢弃——改成 27 圈。移动守新规矩：每步 ≤ 8 个 chunk、等视野就绪再走。
+- [x] 7.6a 主线程同步等 chunk（11-09 变异检查：改回 server.execute 3 条照样过——同步要 chunk 时已经放弃闸门，主线程不会等在闸门上，这条要求的前提不成立了，见 docs/step7-report.md）：有 gate 在等的任务，结果回来时导入提交到 chunk 缓存自己的任务队列（`ServerChunkCache` 的 `mainThreadProcessor`），不用 `server.execute`。原因：主线程同步等 chunk（`getChunk` 的 `managedBlock`）时只跑 chunk 缓存自己的队列，`server.execute` 的导入要等它结束才执行，gate 只能等到 2 秒超时，服务器卡 2 秒。测试：用测试命令在主线程上同步要一个卡在 gate 上的 chunk（`getChunk(x, z, FULL, true)`），donor 结果回来后同步等待在 1 秒内结束、最长 tick < 1 秒；把导入故意改回 `server.execute` 时这条测试要失败（证明它真的覆盖了这个坑）。
 - [ ] 7.6b 完整版：区域里部分 chunk 在等、部分不在的情况；超时；donor 掉线。
 - [ ] 7.6c 消融。
 
 **做不出来时**：7.6a 不通过（死锁、读不到新数据、或要改的原版逻辑太多），就停在 7.6a，开关不进消融，报告里写明原因和原型的结果，作为已知限制。
+
+### 7.8 边界地物差异的原因（11-09 加，调度定）
+
+第 5 步 e2e 4 次合计：导入 tile 外面那一圈（ring1）的地形互换密度约是没导入部分的 2～3 倍（p = 0.0001），都是同类的跨 chunk 小地物
+（水下沙子沙砾圆盘、泥土/沙砾矿团），tile 里没有。见 docs/step6-report.md 第 11 节。
+
+- [ ] 查原因：ring1 是 donor 导出的什么状态（carvers？features 之前？），服务器接着做地物时周围 chunk 的先后和 donor 世界里有什么不同；
+  用第 5 步的固定布局多跑几次，按状态、按 y、按地物种类分开数。
+- [ ] 查清后再定要不要改导入方式（比如外圈不写、只写 tile；或者外圈只写到更早的状态）。改的话要重跑第 3、5 步的两层比较和 7.0b。
+- 对第 8 步的影响：验证在边界附近会多一些噪声。
 
 ### 7.7 归属持久化（不进消融）
 
@@ -208,7 +234,11 @@ coordinator 这边提供（场景结束时从 `/donor status` 读，写进同一
 - [ ] 第一批消融：v0 + 7.1 + 7.2，正确性检查
 - [ ] 7.3、7.4、7.5，第二批消融，正确性检查
 - [ ] 7.6a 原型 → 7.6b → 第三批消融
-- [ ] 7.7 归属持久化
+- [x] 7.7 归属持久化
+- 收尾 F（给第 8 步的黑名单、删 chunk、重算任务）：11-09 用户决定先跳过第 8 步，F 不做。写到一半的代码在分支 `fish-step8-f`（没编译测试）。
+- [ ] 快速对比的驱动：`scripts/ablation.sh` → `tests/step7/test_90_ablation.py`（每组一次 test.sh --slow，字段见 0.3）。
+  7.3 的"慢 donor"：第三个 donor worker3（只在 compose.test.yaml，单独的 profile，0.5 核，fish 目录绑 56 号核，存档 test-data-worker3），
+  只有 slow-v0、slow-throughput 两轮起它，看加了慢 donor 后开 throughput 整体有没有变差（降级后各 1 次）。平时不起（test_06_worker3）。
 - [ ] 4 核记录、可持续探索容量（降级：留到部署机器上，进"已跳过"）
 - [ ] 报告：每项的结果（含没过的）、选出的 tile 大小、容量 v0 vs 全开
 

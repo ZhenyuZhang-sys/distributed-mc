@@ -116,21 +116,23 @@ def test_export_is_superset(worker):
 # ---- 服务器重启后归属丢失：按服务器的处理 ----
 
 @pytest.mark.long
-def test_restart_forgets_ownership(server, worker):
+def test_restart_keeps_ownership(server, worker):
+    # 7.7 起归属存在导入账本里（世界目录 mcdonate/ledger），重启后还在：E 的相邻 F 照样被接受。
+    # （第 6 步时归属只在内存里，重启后丢失，F 被整个丢弃；见 docs/step6-report.md 第 4 节）
     e, f = (-220, -200), (-219, -200)
     assert_fresh(server, [e, f])
     wid = worker_id(server, "worker")
     assert assign_and_wait(server, e, wid)["accepted"]
     ex, ez = tile_chunks(e)[0]
-    assert server.rcon(f"donor owner {ex} {ez}") != "none"
+    owner = server.rcon(f"donor owner {ex} {ez}")
+    assert owner != "none"
     compose("stop", "minecraft", timeout=180)
     compose("up", "-d", "--wait", "--wait-timeout", "600", "minecraft", timeout=660)
-    assert server.rcon(f"donor owner {ex} {ez}") == "none", "重启后归属应该丢了"
+    assert server.rcon(f"donor owner {ex} {ez}") == owner, "重启后归属应该还在"
     wid = worker_id(server, "worker")
     r = assign_and_wait(server, f, wid)
-    assert r["accepted"] is False, r
-    # F 最东边一列不在 E 的区域里，被整个丢弃后存档里没有
-    assert all(peek(server, f[0] * 4 + 3, z) == "none" for z in range(f[1] * 4, f[1] * 4 + 4))
+    assert r["accepted"] is True, r
+    assert all(peek(server, f[0] * 4 + 3, z) != "none" for z in range(f[1] * 4, f[1] * 4 + 4))
 
 
 # ---- 换了世界（清掉存档重建）的 donor，结果不会覆盖旧世界导入的 chunk ----

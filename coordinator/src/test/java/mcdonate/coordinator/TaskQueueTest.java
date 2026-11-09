@@ -35,6 +35,24 @@ class TaskQueueTest {
     }
 
     @Test
+    void resetClearsBacklogAndReturnsLeasesToCancel() {
+        // 第 7 步对比同一台服务器连着跑几轮：每轮开始前清掉上一轮积压的、在租的任务和内存里的归属（kexu 11-09）
+        q.enqueue(1, 2);
+        q.enqueue(9, 9);
+        q.enqueue(20, 20);
+        Assignment a = assign(7);
+        Assignment done = assign(8);
+        q.onResult(8, done.taskId(), true);
+        q.markImported(done.taskId(), "w8");
+        List<TaskQueue.Cancelled> cancel = q.reset();
+        assertEquals(List.of(new TaskQueue.Cancelled(a.taskId(), 7)), cancel, "在租的要发 cancel");
+        assertEquals(0, q.count(State.QUEUED) + q.count(State.LEASED) + q.count(State.DONE));
+        assertEquals(0, q.inFlight(7));
+        assertTrue(q.enqueue(9, 9), "做完的也忘掉：领地、归属不带进下一轮");
+        assertTrue(q.onResult(7, a.taskId(), true).action() != TaskQueue.Action.IMPORT, "清掉之前派出的结果回来也不导入");
+    }
+
+    @Test
     void idleWorkerTakesHeadInOrder() {
         q.enqueue(1, 1);
         q.enqueue(5, 5);

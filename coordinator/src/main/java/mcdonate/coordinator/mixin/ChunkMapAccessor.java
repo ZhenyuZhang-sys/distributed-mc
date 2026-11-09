@@ -20,6 +20,10 @@ public interface ChunkMapAccessor {
     @Accessor("pendingUnloads")
     Long2ObjectLinkedOpenHashMap<ChunkHolder> mcdonate$pendingUnloads();
 
+    /** chunk 缓存自己的主线程任务队列（ServerChunkCache 的 mainThreadProcessor）。主线程同步等 chunk 时也会执行它。 */
+    @Accessor("mainThreadExecutor")
+    net.minecraft.util.thread.BlockableEventLoop<Runnable> mcdonate$mainThreadExecutor();
+
     /** 写完要更新 ChunkMap 对这个位置 chunk 类型的缓存。 */
     @Invoker("markPosition")
     byte mcdonate$markPosition(ChunkPos pos, ChunkType type);

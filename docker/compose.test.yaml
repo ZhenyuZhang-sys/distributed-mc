@@ -4,7 +4,11 @@ services:
   minecraft:
     environment:
       # 自动找需求默认关：别的测试的假玩家周围不要自动放任务。第 6 步的找需求测试用 /donor demand on 打开
-      JVM_OPTS: "-Dmcdonate.demand=off"
+      # 第 9 步：测试服务器用离线模式（只绑 127.0.0.1），无头客户端用离线账号进服。正式的服务器开 online-mode（docs/config.md）
+      ONLINE_MODE: "FALSE"
+      # 第 9 步：Docker 里的本地 worker 没有玩家、没有 token，测试里放行（正式默认不放）
+      # publicHost：装了客户端 mod 的玩家进服时收到的 coordinator 地址（compose 网络里的主机名）。原版客户端收不到邀请（9.1 测这个）
+      JVM_OPTS: "-Dmcdonate.demand=off -Dmcdonate.allowTokenless=true -Dmcdonate.publicHost=minecraft ${MCD_JVM_EXTRA:-}"
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。
@@ -27,9 +31,12 @@ services:
     environment:
       MOTD: "mc-donate worker"
       # 第 5 步：建世界前向 coordinator 要 seed，起来后连上去领任务
-      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580"
+      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580 ${MCD_JVM_EXTRA:-}"
       # 故意和 MC_SEED 不一样：证明 worker 用的是 coordinator 给的 seed
       SEED: "1"
+      # worker 关掉看门狗：上面没有玩家，一个 tile 在一个 tick 里生成是设计如此，慢的时候（并行跑抢磁盘）看门狗会误杀它（11-09）。
+      # 服务器（minecraft）不改。worker2、worker3 继承这里
+      MAX_TICK_TIME: "-1"
     volumes: !override
       - ./test-data-worker:/data
       - ../build/mods-worker:/mods:ro
@@ -46,3 +53,44 @@ services:
       - ./test-data-worker2:/data
       - ../build/mods-worker:/mods:ro
       - ./test-exchange:/exchange
+
+  # 第三个 donor：第 7 步 7.3 的"慢 donor"（按实测算力分配要有快慢不一的 donor）。
+  # 0.5 个核，绑 WORKER3_CPUSET（fish 目录是 56 号核，节点 3）。单独的 profile worker3：
+  # 只有 7.3 慢 donor 那一轮会起，平时的 test.sh 和别的步骤都不起（tests/step7/test_06_worker3.py 检查）。
+  worker3:
+    profiles: !override ["worker3"]
+    extends:
+      service: worker
+    cpuset: ${WORKER3_CPUSET:-3}
+    cpus: ${WORKER3_CPUS:-0.5}
+    volumes: !override
+      - ./test-data-worker3:/data
+      - ../build/mods-worker:/mods:ro
+      - ./test-exchange:/exchange
+
+  # 第 9 步 9.1：没装 mod 的原版客户端（协议层，mineflayer）。单独的 profile client，只有第 9 步的测试会起（compose run）。
+  # 跑一次就退出：node join.js <host> <port> <玩家名> [停留秒数]，输出一行 JSON。
+  mineflayer:
+    profiles: ["client"]
+    build: ./mineflayer
+    image: mcdonate-mineflayer:4.23.0
+    cpuset: ${CLIENT_CPUSET:-${WORKER_CPUSET:-8-11}}
+    cpus: 1
+    mem_limit: 1g
+
+  # 第 9 步：无头的真客户端（HeadlessMC 2.10.0，docker/client）。单独的 profile client，只有第 9 步的测试会起（compose run）。
+  # /mods：这一轮要装的 mod（测试准备）；/out：证据（客户端日志、进程快照）；/cache：下载的客户端、库、资源（卷，不进仓库）。
+  client:
+    profiles: ["client"]
+    build: ./client
+    image: mcdonate-client:hmc-2.10.0
+    cpuset: ${CLIENT_CPUSET:-${WORKER_CPUSET:-8-11}}
+    cpus: 4
+    mem_limit: 4g
+    volumes:
+      - client-cache:/cache
+      - ${MCD_CLIENT_MODS:-./client-mods}:/mods:ro
+      - ${MCD_CLIENT_OUT:-./client-out}:/out
+
+volumes:
+  client-cache:
