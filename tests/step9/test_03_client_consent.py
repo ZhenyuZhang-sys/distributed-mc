@@ -37,6 +37,9 @@ def test_worker_started_and_registered(server, run):
     assert f"给 {NAME} 发了 donor 邀请" in logs
     # 客户端起的 worker 带着 token 连上（coordinator 的"worker N（名字）连上"），日志里不出现 token 本身
     assert any("连上" in l for l in logs.splitlines()), "coordinator 没看到 worker 连上"
+    # 客户端收到了 worker 经控制通道发的 CONNECTED（11-09：原来 worker 写 System.out 被原版包成日志格式，
+    # "[STDOUT]: MCDONATE CONNECTED 5" 客户端认不出，NEED_TOKEN、CONNECTED、STATUS 全丢；这里原来只看 coordinator 那边）
+    assert "worker：CONNECTED" in run["log"], [l for l in run["log"].splitlines() if "worker" in l][-20:]
 
 
 def test_worker_low_priority_and_memory(run):
