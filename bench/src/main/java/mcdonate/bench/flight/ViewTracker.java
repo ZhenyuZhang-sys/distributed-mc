@@ -38,6 +38,8 @@ public final class ViewTracker {
     private final Map<Long, Boolean> inView = new HashMap<>();
     private final Set<Long> initial = new HashSet<>();
     private ChunkTrackingView view;
+    /** 起飞时初始视野逐 chunk 的就绪状态（一行一个 JSON），给归档用（codex-audit K1）。 */
+    private String initialJsonl = "";
 
     public ViewTracker(int viewDistance, Sink sink) {
         if (viewDistance < 2) {
@@ -53,10 +55,15 @@ public final class ViewTracker {
             throw new IllegalStateException("已经开始了");
         }
         view = ChunkTrackingView.of(new ChunkPos(centerX, centerZ), viewDistance);
+        StringBuilder sb = new StringBuilder();
         view.forEach(p -> {
-            inView.put(p.toLong(), readiness.ready(p.x, p.z));
+            boolean r = readiness.ready(p.x, p.z);
+            inView.put(p.toLong(), r);
             initial.add(p.toLong());
+            if (sb.length() > 0) sb.append('\n');
+            sb.append("{\"cx\":").append(p.x).append(",\"cz\":").append(p.z).append(",\"ready\":").append(r).append('}');
         });
+        initialJsonl = sb.toString();
         return snapshot();
     }
 
@@ -101,6 +108,11 @@ public final class ViewTracker {
             }
         }
         return snapshot();
+    }
+
+    /** 起飞时初始视野逐 chunk 的就绪状态，一行一个 {"cx","cz","ready"}（initial.jsonl）。 */
+    public String initialJsonl() {
+        return initialJsonl;
     }
 
     public Snapshot snapshot() {

@@ -147,22 +147,19 @@ def test_view_ready_from_void_rate():
 
 
 def test_forward_ready_distance():
-    # 沿 +x 飞，每秒 32 格（2 个 chunk）。chunk 就绪的记录：前方 x=0..5 的 3 列宽的带子（z = -1、0、1）都就绪，
-    # 第 2 秒时 x=4 那列中间缺一个 → 前方连续就绪到 x=3
+    # 沿 +x 飞，每秒 32 格（2 个 chunk）。前方 x=0..5 的 3 列宽的带子（z = -1、0、1）都就绪，x=4 那列中间缺一个，2.5 秒补上。
+    # codex-audit K3：距离 = 从玩家位置沿中心线（和左右各 16 格的两条平行线）走，碰到第一个没就绪的 chunk 的边界有多远
     ev = []
     for cx in range(0, 8):
         for cz in (-1, 0, 1):
             ev.append(dict(t_ms=0, cx=cx, cz=cz, ev='enter'))
             if not (cx == 4 and cz == 0) and cx < 6:
                 ev.append(dict(t_ms=0, cx=cx, cz=cz, ev='ready'))
-    ev.append(dict(t_ms=2500, cx=4, cz=0, ev='ready'))   # 2.5 秒补上
+    ev.append(dict(t_ms=2500, cx=4, cz=0, ev='ready'))
     rows = [dict(t_s=1, x=8.0, z=8.0), dict(t_s=2, x=40.0, z=8.0), dict(t_s=3, x=72.0, z=8.0)]
     per = firework.forward_ready(ev, rows, view=10)
-    # 第 2 秒：玩家在 chunk 2，往前 chunk 3 就绪、chunk 4 缺 → 前方连续就绪 1 个 chunk（16 格）
-    assert per[2] == 16
-    # 第 3 秒：玩家在 chunk 4，chunk 5 就绪、chunk 6 没就绪 → 16 格
-    assert per[3] == 16
-
+    assert per[2] == pytest.approx(24)    # 玩家 x=40，chunk 4（x 从 64 起）没就绪
+    assert per[3] == pytest.approx(24)    # 玩家 x=72，chunk 6（x 从 96 起）没就绪
 
 def test_front_sector_ready():
     # 调度 11-09：前方 90 度扇形（左右各 45 度、视距以内）里就绪的比例。沿 +x 飞，视距 2：
@@ -212,17 +209,30 @@ def test_autosave_seconds_from_cumulative_ticks():
 
 
 def test_report_has_demo_section():
+    # codex-audit K9：标题不先下结论；结论句从同条件的重复样本算（中位数），只有 1 轮时注明
     rows = []
-    for v in (10, 15):
-        for d in (0, 1):
-            rows.append(dict(experiment='flight', scenario='firework', speed_bps=v, donors=d, donor_profile='1x8' if d else None,
-                             stall_after_exit=0.0, forward_ready_median=80 * (1 + d), view_ready_mean=.5 + .3 * d,
-                             front_sector_ready_mean=.4 + .4 * d))
+    for rep in (1, 2, 3):
+        for v in (10, 15):
+            for d in (0, 1):
+                rows.append(dict(experiment='flight', scenario='firework', speed_bps=v, donors=d, donor_profile='1x8' if d else None,
+                                 repeat=rep, stall_after_exit=0.0 if d or v == 10 else .08, forward_ready_median=80 * (1 + d) + rep,
+                                 view_ready_mean=.5 + .3 * d, front_sector_ready_mean=.4 + .4 * d))
     md = firework.report(rows)
-    assert '## 演示用：10/15 格/秒，同样不卡、前方已生成区域翻倍' in md
+    assert '## 演示用：10/15 格每秒对照' in md and '翻倍' not in md.split('## 演示用')[1].splitlines()[0]
     sec = md.split('## 演示用')[1]
-    assert '| 10 | 原版（0 个 donor） | 0% | 80 | 50% | 40% |' in sec and '| 10 | 1 个 donor，8 核 | 0% | 160 | 80% | 80% |' in sec
+    assert '| 10 | 原版（0 个 donor） | 0%（0%～0%，3 轮） | 82（81～83，3 轮） |' in sec, sec
+    assert '10 格/秒：两种配置都不卡（卡住 < 5%）；前方已就绪距离 1 个 donor，8 核 是原版的 2.0 倍（中位数，各 3 轮）' in sec, sec
+    assert '15 格/秒：原版（0 个 donor） 卡住' in sec
+    one = firework.report([r for r in rows if r['repeat'] == 1])
+    assert '各 1 轮，只能当粗测' in one
 
+
+def test_autosave_uses_flight_start_tick_from_run_json():
+    # codex-audit K8：驱动取的 tick 在等初始视野之前；run.json 有 start_tick（起飞那一刻）时用它
+    rows = [dict(t_s=i, ticks=20) for i in range(1, 10)]
+    assert firework.autosave_from(rows, dict(start_tick=5990), dict(fly_start_tick=5000)) == [1]
+    assert firework.autosave_from(rows, dict(start_tick=-1), dict(fly_start_tick=5990)) == [1]
+    assert firework.autosave_from(rows, {}, {}) == []
 
 def test_report_median_and_range_for_repeats():
     # 调度 11-09：关键对比每臂至少 3 轮，报中位数和范围
@@ -231,3 +241,60 @@ def test_report_median_and_range_for_repeats():
     md = firework.report(rows)
     line = next(l for l in md.splitlines() if l.startswith('| 转弯'))
     assert '41%（35%～48%，3 轮）' in line, line
+
+
+
+def test_view_shape_matches_vanilla():
+    # 原版 ChunkTrackingView.of(center, 10).contains：453 个（ViewTracker 的注释）
+    assert sum(firework.in_view(0, 0, 10, x, z) for x in range(-12, 13) for z in range(-12, 13)) == 453
+
+
+def test_initial_view_counts_as_ready_when_archive_says_so():
+    # codex-audit K1：起飞前的初始视野不进事件流。run.json 的 initial.not_ready = 0 时，初始视野（起点 chunk 的原版视野）全算就绪，
+    # 离开视野后不再算（初始视野离开也不发 leave）；有 initial.jsonl（逐 chunk 状态）时按它
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(view=21, not_ready=0))
+    rows = [dict(t_s=1, x=8.0, z=8.0), dict(t_s=2, x=8.0 + 16 * 8, z=8.0)]
+    per = firework.front_sector_ready([], rows, view=2, run=run)
+    assert per[1] == pytest.approx(1.0)       # 还在起点：前方扇形全是初始视野，都就绪
+    assert per[2] == pytest.approx(0.0)       # 飞出 8 个 chunk：初始视野都离开了，新进来的没有就绪记录
+    run_unknown = dict(run, initial=dict(view=21, not_ready=3))
+    assert firework.front_sector_ready([], rows, view=2, run=run_unknown) is None   # 初始有没就绪的、又没有逐 chunk 记录：算不了
+    init = [dict(cx=cx, cz=cz, ready=not (cx == 1 and cz == 0)) for cx in range(-3, 4) for cz in range(-3, 4)
+            if firework.in_view(0, 0, 2, cx, cz)]
+    per = firework.front_sector_ready([], rows[:1], view=2, run=run_unknown, initial=init)
+    assert 0 < per[1] < 1
+
+
+def test_heading_follows_route_when_blocked():
+    # codex-audit K2：route 模式下被挡住不动时，方向按 run.json 的航段和时刻取，不沿用旧的运动方向
+    run = dict(mode='route', route='-90,30,2;0,30,2', start_x=8.0, start_z=8.0, view_distance=2, initial=dict(view=0, not_ready=0))
+    rows = [dict(t_s=1, x=38.0, z=8.0), dict(t_s=2, x=68.0, z=8.0), dict(t_s=3, x=68.0, z=8.0)]   # 第 3 秒该往南（+z）了，但被挡住
+    ev = [dict(t_ms=0, cx=cx, cz=cz, ev='enter') for cx in range(0, 8) for cz in range(-3, 4)]
+    ev += [dict(t_ms=0, cx=cx, cz=cz, ev='ready') for cx in range(0, 8) for cz in range(1, 4)]   # 南边就绪、东边没有
+    per = firework.front_sector_ready(ev, rows, view=2, run=run)
+    assert per[3] == pytest.approx(1.0)
+    assert firework.forward_ready(ev, rows, view=2, run=run)[3] > 0
+
+
+def test_forward_ready_does_not_skip_chunks_on_diagonal():
+    # codex-audit K3：每 16 格采一个点，斜飞会跳过航线擦过的 chunk。DDA 逐 chunk 走，和细采样（0.01 格）对得上
+    import random
+    rnd = random.Random(5)
+    for _ in range(200):
+        a = rnd.uniform(0, 2 * math.pi)
+        d = (math.cos(a), math.sin(a))
+        x0, z0 = rnd.uniform(0, 16), rnd.uniform(0, 16)
+        holes = {(rnd.randint(-10, 10), rnd.randint(-10, 10)) for _ in range(6)} - {(0, 0)}
+        ready = lambda c: c not in holes   # noqa: E731
+        got = firework.first_unready(ready, x0, z0, d, 160)
+        want = 160
+        t = 0.0
+        while t <= 160:
+            c = (math.floor((x0 + d[0] * t) / 16), math.floor((z0 + d[1] * t) / 16))
+            if not ready(c):
+                want = t
+                break
+            t += 0.01
+        assert got == pytest.approx(want, abs=0.02), (a, x0, z0, holes)
+    # 正好穿过 chunk 角：两边相邻的都算擦过（supercover）
+    assert firework.first_unready(lambda c: c != (1, 0), 8.0, 8.0, (math.sqrt(.5), math.sqrt(.5)), 160) == pytest.approx(math.hypot(8, 8))
