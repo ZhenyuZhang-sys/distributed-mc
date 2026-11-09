@@ -319,4 +319,19 @@ class TaskQueueDeadlineTest {
         assertEquals(-1, q.slackAtLease(b));
         assertEquals(-1, q.slackAtLease(999));
     }
+
+    @Test
+    void heartbeatsCannotRenewForever() {
+        // 11-09 用户真机：worker 卡死（主线程在等一个永远不会完成的 chunk），心跳照发，任务续租了 5 分钟，inFlight 一直是 4。
+        // 从派出起最多续到 MAX_LEASE_TOTAL_MS，过了就不再续，到期收回重派
+        TaskQueue q = queue("");
+        q.enqueue(0, 0);
+        long id = q.assign(1).orElseThrow().taskId();
+        for (long t = 0; t < TaskQueue.MAX_LEASE_TOTAL_MS + 40_000; t += 5_000) {
+            now.addAndGet(5_000);
+            q.heartbeat(1, id);
+            q.expire();
+        }
+        assertEquals(State.QUEUED, q.state(id), "总时长到了上限，不再续租，收回");
+    }
 }
