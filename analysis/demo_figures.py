@@ -74,6 +74,8 @@ def label(r, vanilla_groups=None) -> str:
     s = base + f"{r['donors']} donor {r.get('features')}"
     if r.get('lookahead'):
         s += f" 提前量 {r['lookahead']}"
+    if r.get('scan_budget_us'):
+        s += f" 扫描预算 {r['scan_budget_us']}"
     if (r.get('latency_ms') or 0) > 0:
         s += ' + 网络'
     return s
@@ -81,7 +83,7 @@ def label(r, vanilla_groups=None) -> str:
 
 def _sort_key(r):
     return (str(r.get('scenario') or ''), -r['server_cpus'], str(r.get('group') or ''), r['donors'] > 0, r.get('latency_ms') or 0,
-            r.get('lookahead') or 0, r['donors'])
+            r.get('lookahead') or 0, r['donors'], r.get('scan_budget_us') or 0)
 
 
 def configs(rows):
@@ -118,8 +120,9 @@ def settings(rows) -> list[dict]:
             by.setdefault(label(r, vg), []).append(r)
     out = []
     for name, rs in by.items():
-        pairs = sorted((r['repeat'], vanilla[(_group(r), r['repeat'])], r) for r in rs if (_group(r), r['repeat']) in vanilla
-                       and _vals([vanilla[(_group(r), r['repeat'])]], 'stall_fraction') and _vals([r], 'stall_fraction'))
+        pairs = sorted(((r['repeat'], vanilla[(_group(r), r['repeat'])], r) for r in rs if (_group(r), r['repeat']) in vanilla
+                        and _vals([vanilla[(_group(r), r['repeat'])]], 'stall_fraction') and _vals([r], 'stall_fraction')),
+                       key=lambda t: t[0])   # 只按轮排：同一轮两行时不去比 dict
         red = [v['stall_fraction'] - d['stall_fraction'] for _, v, d in pairs]
         out.append(dict(setting=name, group=_group(rs[0]), pairs=len(pairs),
                         vanilla_stall=[v['stall_fraction'] for _, v, _ in pairs], donor_stall=[d['stall_fraction'] for _, _, d in pairs],
