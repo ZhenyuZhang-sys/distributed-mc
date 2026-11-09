@@ -285,18 +285,15 @@ final class CoordinatorServer {
 
     /**
      * 每个结果的大小（NBT 字节；线上的帧字节数）和派出到收到的毫秒数，导入时写进 /donor imports（第 7 步"有网络"那组要看分布）。
-     * 线上字节数（限速卡的是它）：common 的 FrameDecoder 不报每帧长度，这里用同一个 Frame.encode 把收到的结果重新编码一次取长度。
-     * gzip 的字节和 worker 发的可能差几个（NBT 键的顺序），当估计值用。在网络线程（读这个连接的线程）上做，不占主线程，
-     * 但也吃服务器容器的 CPU，所以默认关，只在第 7 步对比里开（mcdonate.measureWireBytes=true）。kexu 让 FrameDecoder 报每帧长度以后换掉。
+     * 线上字节数（限速卡的是它）：common 的 FrameDecoder.feedFrames 报每帧的长度（长度前缀里的 N + 4，kexu 11-09），精确值。
      */
-    static final boolean MEASURE_WIRE_BYTES = Boolean.parseBoolean(Config.get("measureWireBytes", "false"));
     private final Map<Long, long[]> resultMeta = new ConcurrentHashMap<>();
 
     private void onResult(Connection c, Result r) {
         long leasedAt = tasks.leasedAt(r.taskId());
         if (r.ok()) {
             long ms = leasedAt > 0 ? System.currentTimeMillis() - leasedAt : -1;
-            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, MEASURE_WIRE_BYTES ? Frame.encode(r).length : -1});
+            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, c.lastWireBytes});
         }
         if (r.ok() && leasedAt > 0) {
             // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
@@ -415,7 +412,6 @@ final class CoordinatorServer {
                 + ",\"motionWindowMs\":" + Motion.WINDOW_MS
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
-                + ",\"measureWireBytes\":" + MEASURE_WIRE_BYTES
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
@@ -491,6 +487,8 @@ final class CoordinatorServer {
         volatile long lastSeen = System.currentTimeMillis();
         volatile int workerId = -1;
         volatile String name = "";
+        /** 正在处理的这一帧在线上占多少字节（读线程上写、同一线程上的 onResult 读）。 */
+        volatile int lastWireBytes = -1;
         /** 第 9 步：worker 在心跳里报的暂停状态（限速），暂停时不派新任务。 */
         volatile boolean paused;
         /** 第 9 步：这个 worker 属于哪个玩家（token 换来的）；免 token 的本地 worker 是 null。 */
@@ -537,9 +535,10 @@ final class CoordinatorServer {
             try (InputStream in = socket.getInputStream()) {
                 int n;
                 while (!closed && (n = in.read(buf)) >= 0) {
-                    for (Message m : decoder.feed(buf, 0, n)) {
+                    for (FrameDecoder.Decoded d : decoder.feedFrames(buf, 0, n)) {
                         lastSeen = System.currentTimeMillis();
-                        handle(m);
+                        lastWireBytes = d.wireBytes(); // handle 在同一个线程上同步处理这一帧，onResult 读到的就是这一帧的
+                        handle(d.message());
                     }
                 }
             } catch (SocketException e) {
