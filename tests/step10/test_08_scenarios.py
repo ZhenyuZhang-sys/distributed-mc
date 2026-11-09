@@ -181,3 +181,35 @@ def test_profile_env_can_join_slot_core_sets():
     assert got == {'WORKER_CPUS': '8', 'WORKER_CPUSET': '24-27,28-31'}
     with pytest.raises(ValueError):
         resolve_env({'WORKER_CPUSET': '@NOPE'}, local.get)
+
+
+def test_driver_keeps_spike_diagnostics(tmp_path):
+    # 调度 11-09：查 MSPT 尖峰是导入还是 GC。驱动存下飞的时候带时间戳的服务器日志（含 GC 日志）、/donor imports 的全部条目、起飞时刻
+    import json
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    runner.server_log_ts = lambda t: ['2026-11-09T13:30:00.1Z [GC] Pause Young 12ms', '2026-11-09T13:30:01.2Z 导入任务 3']
+    items = [dict(tile=[i, 0], imp=dict(parse=1.0, check=2.0, write=3.0)) for i in range(5)]
+    orig = runner.rcon
+
+    def rcon(cmd):
+        if cmd.startswith('donor imports'):
+            a = int(cmd.split()[2]) if len(cmd.split()) > 2 else 0
+            return json.dumps(dict(total=len(items), items=items[a:a + 2]))   # 一页 2 条，要翻页
+        return orig(cmd)
+    runner.rcon = rcon
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    profiles = {'1x8': {'donors': 1, 'env': {'WORKER_CPUS': '8'}}}
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles=profiles,
+                               server_env={'MCD_JVM_EXTRA': '-Xlog:gc:stdout:time'})
+    cell = rcell('firework')
+    cell['params']['lookahead'] = 8
+    fly.lookahead = '8'
+    out = drive(cell, tmp_path / 'c9')
+    assert envs[0]['MCD_JVM_EXTRA'] == '-Xlog:gc:stdout:time -Dmcdonate.demandLookahead=8'   # 提前量不盖掉 server_env 里的
+    assert (tmp_path / 'c9' / 'server-log.txt').read_text().count('\n') == 2
+    got = [json.loads(l) for l in (tmp_path / 'c9' / 'imports.jsonl').read_text().splitlines()]
+    assert [g['tile'] for g in got] == [[i, 0] for i in range(5)]
+    assert isinstance(out['fly_start_unix'], float)

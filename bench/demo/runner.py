@@ -67,6 +67,10 @@ class Runner:
         """服务器 t（unix 秒）以后的日志行（数 Can't keep up、moved too quickly 用）。"""
         return compose('logs', '--since', str(int(t)), '--no-log-prefix', 'minecraft', timeout=120).splitlines()
 
+    def server_log_ts(self, t: float) -> list:
+        """同上，每行带 Docker 的时间戳（UTC，到纳秒）：查 MSPT 尖峰时和 GC 日志、导入日志对时间。"""
+        return compose('logs', '--since', str(int(t)), '--timestamps', '--no-log-prefix', 'minecraft', timeout=120).splitlines()
+
     def services(self) -> list:
         """compose 里定义了的服务（不管起没起）。"""
         return compose('config', '--services').split()

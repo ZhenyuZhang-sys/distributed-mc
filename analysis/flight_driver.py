@@ -82,6 +82,27 @@ def _status_counts(controller) -> dict:
                 import_ms=s.get('import', {}).get('totalMs', 0), tiles_done=sum(w.get('done', 0) for w in s.get('workers', [])))
 
 
+def _keep_diagnostics(runner, out, t_fly, donors):
+    """查 MSPT 尖峰用（调度 11-09）：飞的时候带时间戳的服务器日志（server_env 开了 GC 日志的话也在里面），和 /donor imports 的全部条目
+    （每条有主线程导入的三段耗时：解析、查区域含读存档、写入）。拿不到就算了，不影响这一轮。"""
+    import json
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        if hasattr(runner, 'server_log_ts'):
+            (out / 'server-log.txt').write_text(''.join(l + '\n' for l in runner.server_log_ts(t_fly)))
+        if donors:
+            items, total = [], None
+            while total is None or len(items) < total:
+                page = json.loads(runner.rcon(f'donor imports {len(items)}'))
+                total = page.get('total', 0)
+                if not page.get('items'):
+                    break
+                items += page['items']
+            (out / 'imports.jsonl').write_text(''.join(json.dumps(i, ensure_ascii=False) + '\n' for i in items))
+    except Exception as e:   # noqa: BLE001
+        (out / 'diagnostics-error.txt').write_text(repr(e))
+
+
 def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_START, seed=424242, donor_env=None,
                        donor_profiles=None, server_env=None):
     """donor_env：起 donor 时给 compose 的环境变量（演示矩阵里 worker3 提到 4 核）。
@@ -112,8 +133,8 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         lookahead = p.get('lookahead')
         # server_env：服务器容器的其他设置（调度 11-09"用户同款"：容器 3G、-Xms512M -Xmx2G）
         world_env = {**(server_env or {}), 'MC_CPUS': str(cpus), 'MC_CPUSET': cpuset}
-        if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）
-            world_env['MCD_JVM_EXTRA'] = f'-Dmcdonate.demandLookahead={lookahead}'
+        if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）；接在 server_env 的后面（比如 GC 日志）
+            world_env['MCD_JVM_EXTRA'] = ' '.join(x for x in (world_env.get('MCD_JVM_EXTRA', ''), f'-Dmcdonate.demandLookahead={lookahead}') if x)
         runner.script('new_world.sh', name, str(seed), env=world_env, timeout=900)
         if p.get('view_distance'):   # 按用户正式服的视距测（默认是 compose 里的 10）
             runner.rcon(f"bench viewdistance {p['view_distance']}")
@@ -168,6 +189,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         counts_after = _status_counts(controller) if donors else None
         cpu_after = runner.worker_cpu(services) if cpu_before is not None else None
         log_lines = runner.server_log_since(t_fly) if hasattr(runner, 'server_log_since') else []
+        _keep_diagnostics(runner, out, t_fly, donors)
         all_judged = [ab._judge(d, donors > 0, cpus, ids_before, ids_after) for d in dirs]
         judged = all_judged[0]
         for j in all_judged[1:]:
@@ -187,7 +209,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 result.update(stall_fraction=sum(stalls) / len(stalls), stall_fraction_max=max(stalls))
             if dists:
                 result['distance_ratio'] = sum(dists) / len(dists)
-        result.update(players=len(routes), scenario_route=routes[0],
+        result.update(players=len(routes), scenario_route=routes[0], fly_start_unix=t_fly,
                       cant_keep_up=sum("Can't keep up" in l for l in log_lines),
                       moved_too_quickly=sum('moved too quickly' in l for l in log_lines))
         if cpu_before is not None:
