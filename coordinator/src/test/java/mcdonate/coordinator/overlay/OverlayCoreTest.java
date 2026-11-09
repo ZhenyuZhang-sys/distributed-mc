@@ -39,11 +39,16 @@ class OverlayCoreTest {
     }
 
     @Test
-    void nothingWithoutSubscription() {
+    void nothingSentWithoutSubscriptionButHistoryKept() {
+        // 没人订阅时不发；但来源一直记着（每个 chunk 约 12 字节）：打开 overlay 时整片快照里有之前生成的 chunk
+        //（原来没人订阅时不记，打开以后只看得到之后变化的，11-09 端到端时发现）
         core.onEvent(0, 0, Provenance.Kind.VANILLA, -1);
+        core.onEvent(1, 0, Provenance.Kind.DONOR, 7);
         assertTrue(core.tick(List.of(new OverlayCore.View(ALICE, 0, 0, 2))).isEmpty());
-        assertFalse(core.active(), "没人订阅时不记事件");
-        assertEquals(0, core.stateSize());
+        assertFalse(core.active(), "没人订阅");
+        assertEquals(2, core.stateSize());
+        core.subscribe(ALICE, new OverlaySubscribe(true, false));
+        assertEquals(Set.of(key(0, 0), key(1, 0)), chunks(tick(ALICE, 0, 0)));
     }
 
     @Test
