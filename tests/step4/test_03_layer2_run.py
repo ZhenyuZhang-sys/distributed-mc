@@ -120,3 +120,13 @@ def test_chunks_carry_source_three_kinds(tmp_path):
     summary = json.loads((out / 'summary.json').read_text())
     # 飞行期间的计数增量原样带进汇总（第 10 步按三类算）
     assert (summary['full_generated'], summary['full_resumed'], summary['full_loaded']) == (5, 2, 1)
+
+
+def test_compose_accepts_real_player_record(tmp_path):
+    # 第 10 步 7.2：/bench record 跟踪真人玩家，文件和飞行一样；没有速度和理想距离（null），距离比是空的
+    run = write_run(tmp_path / 'rec', done=dict(mode='record', speed=None, ideal_distance=None, stopped_reason='left',
+                                                 distance=37.5, stall_ms=400.0, stalled_ticks=8))
+    out = layer2.compose(run, samples(), tmp_path / 'out', tail_exclude_ms=0)
+    summary = json.loads((out / 'summary.json').read_text())
+    assert summary['mode'] == 'record' and summary['speed'] is None
+    assert summary['distance'] == 37.5 and summary['distance_ratio'] is None and summary['stall_s'] == 0.4

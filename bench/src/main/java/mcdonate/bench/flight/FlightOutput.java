@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 /**
  * 一次飞行的输出文件（bench-runs/&lt;run&gt;/）。主线程只往写线程排任务，按提交顺序写；
  * done.json 最后写（先写临时文件再改名），Python 看到它就说明前面的行都已落盘。
+ * 每写一行逐秒行就把三个流都 flush，飞行中途读到的是写完整的行（最后一行可能没写完，读的人按换行切）。
  */
 final class FlightOutput {
     private static final Logger LOG = LoggerFactory.getLogger("mcdonate-bench");
@@ -38,6 +39,10 @@ final class FlightOutput {
                 if (seconds == null) seconds = Files.newBufferedWriter(dir.resolve("seconds.jsonl"), StandardCharsets.UTF_8);
                 seconds.write(line);
                 seconds.write('\n');
+                // 每秒落一次盘：实时地图和演示面板边飞边读（20 秒的飞行不到 8 KB，不 flush 就到 done 才写）
+                seconds.flush();
+                if (chunks != null) chunks.flush();
+                if (provenance != null) provenance.flush();
             } catch (IOException e) {
                 LOG.error("写 seconds.jsonl 失败：{}", dir, e);
             }

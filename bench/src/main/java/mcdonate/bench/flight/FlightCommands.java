@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -36,6 +37,8 @@ import org.slf4j.LoggerFactory;
  *   /bench fly stop &lt;run名&gt;                                   提前结束，done.json 标 stopped
  *   /bench fly status                                         正在飞的，一行 JSON；返回值是个数
  *   /bench fly ready &lt;玩家&gt;                                   视野里没就绪的 chunk 数（一行 JSON；返回值就是这个数，出错 −1）
+ *   /bench record start &lt;玩家&gt; [run名]                          跟踪真人玩家：只记录不移动（第 10 步 7.2），文件和飞行一样
+ *   /bench record stop [run名]                                结束跟踪（不给 run 名就结束全部跟踪）
  * </pre>
  * 输出在服务器目录的 bench-runs/&lt;run名&gt;/。同一个玩家同时只能有一次飞行；run 名不能重复（目录已存在就拒绝）。
  * 多架假玩家（第 7 步容量测试）= 每架一个 run 名。
@@ -52,15 +55,20 @@ public final class FlightCommands {
     public static void registerEvents() {
         ServerTickEvents.START_SERVER_TICK.register(server -> {
             mcdonate.bench.SyncLoads.onTickStart();
+            mcdonate.bench.TickTimes.onTickStart();
             for (FlightRecorder r : new ArrayList<>(ACTIVE.values())) r.startTick(server);
             prune();
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (FlightRecorder r : new ArrayList<>(ACTIVE.values())) r.endTick(server);
             prune();
+            mcdonate.bench.TickTimes.onTickEnd();  // 放最后：飞行记录自己的开销也算进 tick
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
-            for (FlightRecorder r : new ArrayList<>(ACTIVE.values())) r.finish(false, "server_stopping");
+            for (FlightRecorder r : new ArrayList<>(ACTIVE.values())) {
+                if (r.recording()) r.finishRecord("server_stopping");
+                else r.finish(false, "server_stopping");
+            }
             ACTIVE.clear();
             if (writer != null) {
                 writer.shutdown();
@@ -91,15 +99,59 @@ public final class FlightCommands {
                         .then(Commands.argument("player", EntityArgument.entity()).executes(FlightCommands::ready)));
     }
 
+    public static LiteralArgumentBuilder<CommandSourceStack> recordNode() {
+        return Commands.literal("record")
+                .then(Commands.literal("start")
+                        .then(Commands.argument("player", EntityArgument.entity())
+                                .executes(ctx -> record(ctx, null))
+                                .then(Commands.argument("run", StringArgumentType.word())
+                                        .executes(ctx -> record(ctx, StringArgumentType.getString(ctx, "run"))))))
+                .then(Commands.literal("stop")
+                        .executes(ctx -> stopRecord(ctx, null))
+                        .then(Commands.argument("run", StringArgumentType.word())
+                                .executes(ctx -> stopRecord(ctx, StringArgumentType.getString(ctx, "run")))));
+    }
+
+    private static int record(CommandContext<CommandSourceStack> ctx, String run) throws CommandSyntaxException {
+        ServerPlayer player = player(ctx);
+        if (player == null) return fail(ctx.getSource(), "不是玩家");
+        if (run == null) {
+            run = "rec-" + player.getGameProfile().getName() + "-"
+                    + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss").withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now());
+        }
+        return begin(ctx.getSource(), player, run, null);
+    }
+
+    private static int stopRecord(CommandContext<CommandSourceStack> ctx, String run) {
+        List<String> stopped = new ArrayList<>();
+        for (FlightRecorder r : new ArrayList<>(ACTIVE.values())) {
+            if (r.recording() && (run == null || r.run.equals(run))) {
+                ACTIVE.remove(r.run);
+                r.finishRecord("command");
+                stopped.add(r.run);
+            }
+        }
+        if (stopped.isEmpty()) return fail(ctx.getSource(), run == null ? "没有在跟踪的玩家" : "没有在跟踪的 run：" + run);
+        ctx.getSource().sendSuccess(() -> Component.literal("bench record stopped " + String.join(" ", stopped)), false);
+        return stopped.size();
+    }
+
     private static int start(CommandContext<CommandSourceStack> ctx, Flight.Mode mode) throws CommandSyntaxException {
         CommandSourceStack src = ctx.getSource();
         ServerPlayer player = player(ctx);
         if (player == null) return fail(src, "不是玩家");
         String run = StringArgumentType.getString(ctx, "run");
+        Flight flight = Flight.eastward(player.getX(), player.getZ(), player.getY(),
+                DoubleArgumentType.getDouble(ctx, "speed"), IntegerArgumentType.getInteger(ctx, "seconds"), mode);
+        return begin(src, player, run, flight);
+    }
+
+    /** flight == null：跟踪真人玩家。 */
+    private static int begin(CommandSourceStack src, ServerPlayer player, String run, Flight flight) {
         if (!RUN.matcher(run).matches()) return fail(src, "run 名只能用字母、数字、. _ -，最长 64：" + run);
-        if (ACTIVE.containsKey(run)) return fail(src, "run 正在飞：" + run);
+        if (ACTIVE.containsKey(run)) return fail(src, "run 正在进行：" + run);
         for (FlightRecorder r : ACTIVE.values())
-            if (r.playerId().equals(player.getUUID())) return fail(src, "这个玩家已经在飞：" + r.run);
+            if (r.playerId().equals(player.getUUID())) return fail(src, "这个玩家已经在飞或在被跟踪：" + r.run);
         MinecraftServer server = src.getServer();
         int view = server.getPlayerList().getViewDistance();
         if (view < 2) return fail(src, "服务器视距小于 2：" + view);
@@ -113,11 +165,10 @@ public final class FlightCommands {
             LOG.error("建飞行目录失败：{}", dir, e);
             return fail(src, "建目录失败：" + e.getMessage());
         }
-        Flight flight = Flight.eastward(player.getX(), player.getZ(), player.getY(),
-                DoubleArgumentType.getDouble(ctx, "speed"), IntegerArgumentType.getInteger(ctx, "seconds"), mode);
         FlightRecorder r;
         try {
-            r = new FlightRecorder(run, player, flight, view, new FlightOutput(dir, writer()));
+            FlightOutput out = new FlightOutput(dir, writer());
+            r = flight == null ? FlightRecorder.record(run, player, view, out) : new FlightRecorder(run, player, flight, view, out);
         } catch (RuntimeException e) {
             LOG.error("起飞失败：{}", run, e);
             try {
@@ -128,7 +179,8 @@ public final class FlightCommands {
             return fail(src, "起飞失败：" + e.getMessage());
         }
         ACTIVE.put(run, r);
-        src.sendSuccess(() -> Component.literal("bench fly started " + run), false);
+        String what = flight == null ? "bench record started " : "bench fly started ";
+        src.sendSuccess(() -> Component.literal(what + run), false);
         return 1;
     }
 
