@@ -48,16 +48,83 @@ final class DonorThroughput {
      * 11-09（codex-audit 第十五节）：速率按这两个量算实测并行度，不按完成间隔（空档、批次边界都会估偏）。
      */
     synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs) {
+        record(worker, durationMs, completedAtMs, busyMs, loadMs, -1);
+    }
+
+    /** 同上，再带派出时这个 worker 手上一共几个（含这个，不知道是 -1）：往上探 lanes 用。 */
+    synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs, int inFlightAtLease) {
         Deque<long[]> d = samples.computeIfAbsent(worker, k -> new ArrayDeque<>());
-        d.addLast(new long[] {durationMs, completedAtMs, busyMs, loadMs});
+        d.addLast(new long[] {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease});
         while (d.size() > WINDOW) {
             d.pollFirst();
         }
+        if (inFlightAtLease > 0) {
+            probe(worker, durationMs, inFlightAtLease);
+        }
+    }
+
+    /**
+     * 往上探（调度 11-09）：实测并行度只是"我们派了多少"，估低了只派 1～2 个，测出来也就 1～2，会自我强化。
+     * 每个 worker 记一个探路的 lanes：在 lanes 个都占着时做完的，延迟不超过单独做时的 1.2 倍，连续 3 个就 +1（最多 MAX_CONCURRENCY）；
+     * 超过 1.5 倍就退到"派出时手上的个数 − 1"（不比现在高），之后 20 个结果里不再往上探（一个一个做的 donor 不来回试）。
+     */
+    static final double PROBE_OK = 1.2, PROBE_BAD = 1.5;
+    static final int PROBE_GOOD = 3, PROBE_HOLD = 20;
+
+    /** worker → {lanes, 连续好的个数, 还要等几个结果才能再往上探}。 */
+    private final Map<Integer, int[]> probes = new HashMap<>();
+
+    private void probe(int worker, long durationMs, int k) {
+        int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0, 0});
+        if (st[2] > 0) {
+            st[2]--;
+        }
+        if (k < st[0]) {
+            return; // 没占满 lanes：看不出多一个行不行
+        }
+        long base = soloLatencyMs(worker);
+        if (durationMs <= PROBE_OK * base) {
+            if (++st[1] >= PROBE_GOOD && st[2] == 0) {
+                st[0] = Math.min(MAX_CONCURRENCY, st[0] + 1);
+                st[1] = 0;
+            }
+        } else {
+            st[1] = 0;
+            if (durationMs > PROBE_BAD * base) {
+                st[0] = Math.max(1, Math.min(st[0], k - 1)); // 只往下退：派得比 lanes 还多的那个慢了，不能反而退到更高
+                st[2] = PROBE_HOLD;
+            }
+        }
+    }
+
+    /**
+     * 马上能开始的做完要多久：窗口里派出时手上不超过 lanes 个（没在 worker 上排队）的那些的延迟中位数；
+     * 没有这样的（没记派出时手上几个）就用全部的中位数。往上探时排队的那几个延迟很长，不能拿来估空着的 donor（会把紧任务全拒掉）。
+     */
+    synchronized long laneLatencyMs(int worker) {
+        Deque<long[]> d = samples.get(worker);
+        if (d == null || d.isEmpty()) {
+            return DEFAULT_MS;
+        }
+        int lanes = lanes(worker);
+        long[] v = d.stream().filter(s -> s[4] > 0 && s[4] <= lanes).mapToLong(s -> s[0]).sorted().toArray();
+        return v.length == 0 ? latencyMs(worker) : v[v.length / 2];
+    }
+
+    /** 单独做一个要多久：窗口里派出时手上只有它自己的那些的中位数；没有就取窗口里最短的。 */
+    private long soloLatencyMs(int worker) {
+        Deque<long[]> d = samples.get(worker);
+        long[] solo = d.stream().filter(s -> s[4] == 1).mapToLong(s -> s[0]).sorted().toArray();
+        if (solo.length > 0) {
+            return Math.max(1, solo[solo.length / 2]);
+        }
+        return Math.max(1, d.stream().mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
     }
 
     /** worker 断开：忘掉它的记录（重连后是新的编号）。 */
     synchronized void forget(int worker) {
         samples.remove(worker);
+        probes.remove(worker);
     }
 
     /** 延迟的中位数（毫秒）。 */
@@ -108,23 +175,33 @@ final class DonorThroughput {
         return last[2] > 0 ? Math.max(1, last[3] / (double) last[2]) : 1;
     }
 
-    /** 实测能同时做几个（并行度取整，至少 1）：前面不到这么多个时，新给的马上开始。 */
+    /**
+     * 能同时做几个：前面不到这么多个时，新给的马上开始。有往上探的记录时按它（{@link #probe}），
+     * 否则按实测并行度取整（至少 1）；冷启动按 MAX_CONCURRENCY。
+     */
     synchronized int lanes(int worker) {
         Deque<long[]> d = samples.get(worker);
         if (d == null || d.isEmpty()) {
             return MAX_CONCURRENCY;
         }
+        int[] st = probes.get(worker);
+        if (st != null) {
+            return st[0];
+        }
         return (int) Math.max(1, Math.round(parallelism(worker)));
     }
 
-    /** 速率（个/毫秒）：实测并行度 ÷ 延迟（Little 定律），不小于 1/延迟。 */
+    /**
+     * 速率（个/毫秒）：实测并行度 ÷ 平均延迟（Little 定律：吞吐 = 平均在途 ÷ 平均停留时间；要用平均不用中位数，
+     * 在 worker 上排队的那几个延迟长，中位数会把它们略掉、高估速率），不小于 1/延迟中位数。
+     */
     synchronized double ratePerMs(int worker) {
         Deque<long[]> d = samples.get(worker);
         if (d == null || d.isEmpty()) {
             // 冷启动（codex-audit G4）：假设能同时做 MAX_CONCURRENCY 个，派出去探路的不被剪掉
             return MAX_CONCURRENCY / (double) DEFAULT_MS;
         }
-        return parallelism(worker) / Math.max(1, latencyMs(worker));
+        return Math.max(1.0 / Math.max(1, latencyMs(worker)), parallelism(worker) / Math.max(1, averageMs(worker)));
     }
 
     /** 同时能领几个任务：租约内能做完的个数，至少 1、最多 MAX_CONCURRENCY。 */
@@ -146,12 +223,12 @@ final class DonorThroughput {
             // 冷启动：还没有样本，按默认延迟估一个、不乘在途数（codex-audit F5：原来 3/6/9/12 秒，少派就测不出并行）
             return nowMs + DEFAULT_MS <= deadlineMs;
         }
-        return predictFinish(nowMs, latencyMs(worker), ratePerMs(worker), inFlight, lanes(worker)) <= deadlineMs;
+        return predictFinish(nowMs, laneLatencyMs(worker), ratePerMs(worker), inFlight, lanes(worker)) <= deadlineMs;
     }
 
     /**
-     * 派发和剪枝共用的完成预测（codex-audit F2）：前面还有 ahead 个（在做的加排在前面的），
-     * 这个在 now + max(延迟, (ahead + 1) / 速率) 做完。速率是个/毫秒。
+     * 派发和剪枝共用的完成预测（codex-audit F2）：前面还有 ahead 个（在做的加排在前面的），一个一个做时
+     * 在 now + 延迟 + ahead / 速率 做完。速率是个/毫秒。
      */
     static double predictFinish(long nowMs, long latencyMs, double ratePerMs, double ahead) {
         return predictFinish(nowMs, latencyMs, ratePerMs, ahead, 1);
@@ -165,6 +242,8 @@ final class DonorThroughput {
         if (ahead < lanes) {
             return nowMs + latencyMs;
         }
-        return nowMs + Math.max(latencyMs, (ahead + 1) / ratePerMs);
+        // 要排队：等前面空出一个（按速率），再做一个延迟。原来 max(延迟, (前面 + 1) ÷ 速率) 把完成当成均匀的流，
+        // lanes 个同时在做时，下一个其实要等一个做完再做满一个延迟（往上探的模拟里 2 个并行的 donor 第 3 个次次迟到）
+        return nowMs + latencyMs + (ahead - lanes + 1) / ratePerMs;
     }
 }

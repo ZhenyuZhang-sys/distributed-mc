@@ -327,6 +327,7 @@ class DonorThroughputTest {
     void lanesClimbToRealParallelism() {
         // 正式服的情形：M5 真能同时做 4 个、每个 0.7 秒，开始只估成 1 个；队里全是 1 秒截止的紧任务。几十秒内 lanes 要爬到 4
         int[] r = simulate(4, 700, 1_000, 60);
+        System.out.println("4 并行：lanes=" + r[0] + " 迟到 " + r[1] + "/" + r[2]);
         assertEquals(4, r[0], "lanes 爬到真实的并行度");
         assertTrue(r[1] == 0, "真能并行时往上探不会迟到：" + r[1] + "/" + r[2]);
     }
@@ -335,6 +336,7 @@ class DonorThroughputTest {
     void probingSerialDonorStaysLowAndRarelyLate() {
         // 真的一个一个做：往上探一次延迟就翻倍，退回来、过一阵才再探。迟到的只是偶尔探路的那几个
         int[] r = simulate(1, 700, 1_000, 60);
+        System.out.println("1 并行：lanes=" + r[0] + " 迟到 " + r[1] + "/" + r[2]);
         assertTrue(r[0] <= 2, "lanes " + r[0]);
         assertTrue(r[1] * 10 <= r[2], "迟到不超过一成：" + r[1] + "/" + r[2]);
     }
@@ -343,6 +345,7 @@ class DonorThroughputTest {
     void probingStopsWhereLatencyGrows() {
         // 真能做 2 个：爬到 2，探 3 时延迟变长，退回
         int[] r = simulate(2, 700, 1_000, 60);
+        System.out.println("2 并行：lanes=" + r[0] + " 迟到 " + r[1] + "/" + r[2]);
         assertTrue(r[0] >= 2 && r[0] <= 3, "lanes " + r[0]);
         assertTrue(r[1] * 10 <= r[2], "迟到不超过一成：" + r[1] + "/" + r[2]);
     }

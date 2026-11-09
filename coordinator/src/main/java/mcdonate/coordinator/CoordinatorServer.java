@@ -266,7 +266,7 @@ final class CoordinatorServer {
                 List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
-                        est.add(new TaskQueue.DonorEstimate(throughput.latencyMs(c.workerId), throughput.ratePerMs(c.workerId),
+                        est.add(new TaskQueue.DonorEstimate(throughput.laneLatencyMs(c.workerId), throughput.ratePerMs(c.workerId),
                                 tasks.inFlight(c.workerId), throughput.lanes(c.workerId)));
                     }
                 }
@@ -385,7 +385,7 @@ final class CoordinatorServer {
             // 同时记下在途表读数（这个任务还算在途），速率按实测并行度算
             long nowMs = System.currentTimeMillis();
             long[] load = tasks.load(c.workerId);
-            throughput.record(c.workerId, nowMs - sampleAt, nowMs, load[0], load[1]);
+            throughput.record(c.workerId, nowMs - sampleAt, nowMs, load[0], load[1], tasks.inFlightAtLease(r.taskId()));
         }
         if (r.ok()) {
             String world = r.tile().getString("worldId");
@@ -593,6 +593,7 @@ final class CoordinatorServer {
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
                     // 11-09（正式服 hopeless 398）：派活怎么估这个 donor
                     .append(",\"latencyMs\":").append(throughput.latencyMs(c.workerId))
+                    .append(",\"laneLatencyMs\":").append(throughput.laneLatencyMs(c.workerId))
                     .append(",\"ratePerSec\":").append(Math.round(throughput.ratePerMs(c.workerId) * 1e5) / 100.0)
                     .append(",\"busyMs\":").append(tasks.load(c.workerId)[0])
                     .append(",\"slots\":").append(slots(c))

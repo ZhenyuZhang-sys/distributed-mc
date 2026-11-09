@@ -454,7 +454,9 @@ class TaskQueueDeadlineTest {
         long by = now.get() + 5_000 + TaskQueue.IMPORT_MARGIN_MS;     // 4 + 1 = 5 秒能做完
         q.setDue(0, 0, by + 1_000, by, 0);
         assertTrue(t.canMeet(1, q.inFlight(1), now.get(), by - TaskQueue.IMPORT_MARGIN_MS));
-        assertEquals(List.of(), q.pruneHopeless(t.ratePerMs(1), t.latencyMs(1)), "派发说做得完的，剪枝不剪");
+        // 剪枝用和派发一样的估计（CoordinatorServer 传的就是这几个量）
+        assertEquals(List.of(), q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(t.laneLatencyMs(1), t.ratePerMs(1),
+                q.inFlight(1), t.lanes(1)))), "派发说做得完的，剪枝不剪");
     }
 
     @Test

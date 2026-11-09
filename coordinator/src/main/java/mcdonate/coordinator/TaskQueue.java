@@ -88,6 +88,8 @@ public final class TaskQueue {
         long leasedAt;
         /** 派出过几次（重派的结果分不清是哪一次的，不拿来估延迟，codex-audit 第十五节 V4）。 */
         int leaseCount;
+        /** 派出时这个 worker 手上一共几个（含这个）：往上探 lanes 用。 */
+        int inFlightAtLease;
         /** 对冲撤回过：之后回来的结果不导入，算浪费。 */
         boolean hedged;
         /** 7.2：预计玩家什么时候看到这个 tile（毫秒时间戳）；不知道是 Long.MAX_VALUE。 */
@@ -285,6 +287,12 @@ public final class TaskQueue {
         return t != null && t.state == State.LEASED && t.worker == worker && t.leaseCount == 1 ? t.leasedAt : -1;
     }
 
+    /** 派出时这个 worker 手上一共几个（含这个）；不认识的任务是 0。 */
+    public synchronized int inFlightAtLease(long taskId) {
+        Task t = tasks.get(taskId);
+        return t == null ? 0 : t.inFlightAtLease;
+    }
+
     /** 这个 worker 的在途表读数 {手上有活的累计毫秒, 在途数 × 时间的累计}；没派过是 {0, 0}。 */
     public synchronized long[] load(int worker) {
         LoadMeter m = meters.get(worker);
@@ -397,6 +405,7 @@ public final class TaskQueue {
         t.worker = worker;
         t.deadline = Math.min(t.leasedAt + leaseMs, t.leasedAt + MAX_LEASE_TOTAL_MS);
         leaseAdd(worker, t.id);
+        t.inFlightAtLease = inFlight(worker);
         return Optional.of(new Assignment(t.id, t.tx, t.tz, leaseMs));
     }
 
