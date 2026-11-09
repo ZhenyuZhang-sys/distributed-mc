@@ -311,3 +311,24 @@ def test_firework_config_name_shows_scan_budget():
     r = dict(donors=1, donor_profile='1x8', scan_budget_us=2000)
     assert f._cfg(r).endswith('扫描预算 2000 µs')
     assert '扫描预算' not in f._cfg(dict(donors=0))
+
+
+def test_driver_sets_corridor_and_concurrency_and_checks_them(tmp_path):
+    # 调度 11-09：直线参数扫描 lookahead × corridorChunks、maxConcurrency，和扫描预算一样接在 JVM 参数后面并核对
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles={'1x8': {'donors': 1, 'env': {}}},
+                               server_env={'MCD_JVM_EXTRA': '-Xlog:gc:stdout:time'})
+    cell = rcell('firework')
+    cell['params'].update(scan_budget_us=2000, corridor_chunks=10, max_concurrency=6)
+    runner.status['config'] = {'demandScanBudgetMicros': 2000, 'corridorChunks': 10, 'maxConcurrency': 6}
+    out = drive(cell, tmp_path / 'c13')
+    extra = envs[0]['MCD_JVM_EXTRA']
+    assert extra.startswith('-Xlog:gc:stdout:time ')
+    assert {'-Dmcdonate.demandScanBudgetMicros=2000', '-Dmcdonate.corridorChunks=10', '-Dmcdonate.maxConcurrency=6'} <= set(extra.split())
+    assert out['corridor_chunks_effective'] == 10 and out['max_concurrency_effective'] == 6
+    runner.status['config'] = {'demandScanBudgetMicros': 2000, 'corridorChunks': 6, 'maxConcurrency': 6}
+    with pytest.raises(RuntimeError, match='corridorChunks没生效'):
+        drive(cell, tmp_path / 'c14')

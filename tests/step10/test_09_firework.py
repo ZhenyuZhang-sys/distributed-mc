@@ -355,3 +355,24 @@ def test_spike_section_and_cross_slot_note(tmp_path):
                    '2026-11-09T14:18:29Z [2026-11-09T09:18:29.423-0500][490.330s] GC(227) Pause Remark 389M->389M(883M) 93.5ms\n')
     assert firework.gc_max_ms(log) == pytest.approx(93.5)
     assert firework.gc_max_ms(tmp_path / 'nope.txt') is None
+
+
+def test_blank_time_counts_front_chunks_outside_cache():
+    # 调度 11-09 用户定的主指标：前方 90 度扇形里、进视野时还没就绪的 chunk，从进视野到服务器可发送（ready 事件）的秒数
+    from analysis.firework import blank_times, blank_summary
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0) for t in range(0, 11)]   # 往 +x 飞，每秒 1 个 chunk
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))
+    ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=3000, cx=4, cz=0, ev='ready'),      # 前方、缓存区外：2 秒
+          dict(t_ms=2000, cx=5, cz=0, ev='enter'), dict(t_ms=2000, cx=5, cz=0, ev='ready'),      # 进来就就绪：0 秒
+          dict(t_ms=3000, cx=6, cz=1, ev='enter'), dict(t_ms=7000, cx=6, cz=1, ev='ready'),      # 4 秒
+          dict(t_ms=3000, cx=2, cz=3, ev='enter'), dict(t_ms=9000, cx=2, cz=3, ev='ready'),      # 正侧面（90 度）：不算
+          dict(t_ms=4000, cx=1, cz=0, ev='enter'), dict(t_ms=9000, cx=1, cz=0, ev='ready'),      # 缓存区里（预生成）：不算
+          dict(t_ms=5000, cx=8, cz=0, ev='enter'), dict(t_ms=6500, cx=8, cz=0, ev='leave'),      # 没就绪就离开：1.5 秒，截尾
+          dict(t_ms=9000, cx=13, cz=0, ev='enter')]                                              # 到结束（10 秒）也没就绪：1 秒，截尾
+    got = blank_times(ev, rows, run=run, view=2, cache_radius_blocks=24)
+    assert sorted((round(d, 3), c) for d, c in got) == [(0.0, False), (1.0, True), (1.5, True), (2.0, False), (4.0, False)]
+    s = blank_summary(got)
+    assert s['blank_median_s'] == 1.5 and s['blank_n'] == 5 and s['blank_censored'] == 2
+    assert s['blank_p90_s'] == pytest.approx(4.0)
+    assert s['blank_ready_share'] == pytest.approx(3 / 5)
+    assert blank_summary([]) == dict(blank_median_s=None, blank_p90_s=None, blank_n=0, blank_censored=0, blank_ready_share=None)

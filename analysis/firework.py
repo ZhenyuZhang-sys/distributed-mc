@@ -189,6 +189,75 @@ def front_sector_ready(events, rows, view=10, half_angle=45, run=None, initial=N
     return out if have or not rows else None
 
 
+def _pos_at(rows, t):
+    """t 秒时玩家的位置：逐秒行之间线性插值，超出两头取端点。"""
+    import bisect
+    ts = [r['t_s'] for r in rows]
+    i = bisect.bisect_right(ts, t)
+    if i == 0:
+        return rows[0]['x'], rows[0]['z']
+    if i >= len(rows):
+        return rows[-1]['x'], rows[-1]['z']
+    a, b = rows[i - 1], rows[i]
+    f = (t - a['t_s']) / (b['t_s'] - a['t_s']) if b['t_s'] > a['t_s'] else 0
+    return a['x'] + (b['x'] - a['x']) * f, a['z'] + (b['z'] - a['z']) * f
+
+
+def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blocks=0, start=None):
+    """前方空白时长（调度 11-09 用户定的主指标）：进视野时 chunk 中心在飞行方向左右各 half_angle 度以内、又在缓存区（预生成的方形）
+    外面的 chunk，从 enter 到第一个 ready（服务器 getChunkToSend 就绪）的秒数。进来就就绪是 0。没就绪就离开视野、或到飞行结束也没就绪的
+    记到那一刻为止，标截尾（实际只会更长）。返回 [(秒, 是否截尾)]。"""
+    if not rows:
+        return []
+    heading = _route_heading(run)
+    sx, sz = start if start is not None else ((run or {}).get('start_x', rows[0]['x']), (run or {}).get('start_z', rows[0]['z']))
+    cos_a = math.cos(math.radians(half_angle))
+    end = rows[-1]['t_s']
+    evs = sorted(events, key=lambda e: e['t_ms'])
+    out, open_ = [], {}
+
+    def direction(t):
+        if heading is not None:
+            return heading(t)
+        a, b = _pos_at(rows, max(rows[0]['t_s'], t - 1)), _pos_at(rows, t)
+        n = math.hypot(b[0] - a[0], b[1] - a[1])
+        if n < 1e-6:
+            a, b = _pos_at(rows, t), _pos_at(rows, min(end, t + 1))
+            n = math.hypot(b[0] - a[0], b[1] - a[1])
+        return ((b[0] - a[0]) / n, (b[1] - a[1]) / n) if n > 1e-6 else None
+
+    for e in evs:
+        key, t = (e['cx'], e['cz']), e['t_ms'] / 1000
+        if e['ev'] == 'enter':
+            ccx, ccz = e['cx'] * 16 + 8, e['cz'] * 16 + 8
+            if max(abs(ccx - sx), abs(ccz - sz)) <= cache_radius_blocks:
+                continue
+            d = direction(t)
+            x, z = _pos_at(rows, t)
+            rx, rz = ccx - x, ccz - z
+            dist = math.hypot(rx, rz)
+            if d is None or dist == 0 or rx * d[0] + rz * d[1] < cos_a * dist - 1e-9:
+                continue
+            open_[key] = t
+        elif key in open_:
+            t0 = open_.pop(key)
+            out.append((t - t0, e['ev'] != 'ready'))
+    out += [(max(0.0, end - t0), True) for t0 in open_.values()]
+    return out
+
+
+def blank_summary(times):
+    """中位数和 p90（按名次取，不插值），个数，截尾个数。"""
+    vals = sorted(d for d, _ in times)
+    if not vals:
+        return dict(blank_median_s=None, blank_p90_s=None, blank_n=0, blank_censored=0, blank_ready_share=None)
+    n = len(vals)
+    med = vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+    cens = sum(1 for _, c in times if c)
+    return dict(blank_median_s=med, blank_p90_s=vals[max(0, math.ceil(0.9 * n) - 1)], blank_n=n, blank_censored=cens,
+                blank_ready_share=(n - cens) / n)
+
+
 def sector_summary(per, rows, start, radius):
     i = _exit_index(rows, start, radius)
     vals = [per[r['t_s']] for r in (rows[i + 1:] if i is not None and per else []) if per.get(r['t_s']) is not None]
@@ -273,6 +342,7 @@ def recompute(attempt_dir, params) -> dict:
                    if (raw / 'initial.jsonl').exists() else None)
         out.update(forward_summary(forward_ready(ev, rows, view=view, run=run, initial=initial), rows, DEFAULT_START, radius))
         out.update(sector_summary(front_sector_ready(ev, rows, view=view, run=run, initial=initial), rows, DEFAULT_START, radius))
+        out.update(blank_summary(blank_times(ev, rows, run=run, view=view, cache_radius_blocks=radius, start=DEFAULT_START)))
     return out
 
 
@@ -306,8 +376,11 @@ ORDER = [PROFILE_NAME[None], PROFILE_NAME['1x8'], PROFILE_NAME['1x4'], PROFILE_N
 def _cfg(r):
     """配置名；行带 code（哪套代码，三臂对比用）时后面标上。"""
     base = PROFILE_NAME.get(r.get('donor_profile'), r.get('donor_profile')) if r.get('donors') else PROFILE_NAME[None]
-    if r.get('donors') and r.get('scan_budget_us'):
-        base += f" · 扫描预算 {r['scan_budget_us']} µs"
+    if r.get('donors'):
+        for k, name, unit in (('lookahead', '提前量', ''), ('corridor_chunks', 'corridor', ''), ('max_concurrency', '并发', ''),
+                              ('scan_budget_us', '扫描预算', ' µs')):
+            if r.get(k) and (k != 'lookahead' or r[k] != 16):   # 提前量只标和部署值 16 不一样的
+                base += f" · {name} {r[k]}{unit}"
     return f"{base} · {r['code']}" if r.get('code') else base
 
 
