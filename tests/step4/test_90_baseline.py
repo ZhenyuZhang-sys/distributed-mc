@@ -68,3 +68,10 @@ def test_published_selfchecks_and_report():
     assert {check['pregen']['status'], check['one_core']['status']} <= {'passed', 'reference'}
     report = (OUT / 'baseline-layer2.md').read_text()
     assert '冒烟' in report and 'N100 上要重测' in report and '生成线程' in report
+
+
+def test_readme_layer2_numbers_match_published():
+    # 4.9：README 第 2 层的数字由已发布结果生成，手改了或者结果重发了没更新都会失败
+    published()
+    text = (ROOT / 'README.md').read_text()
+    assert lc.readme_block(OUT) in text

@@ -86,3 +86,21 @@ def test_publish_refuses_failed_slots_and_failed_selfcheck(tmp_path):
     p, result, root = campaign(tmp_path / 'b', pregen_void=.05)
     with pytest.raises(ValueError, match='自检'):
         lc.publish(root, p, result, tmp_path / 'r2')
+
+
+def test_readme_block_rendered_from_published_results(tmp_path):
+    p, result, root = campaign(tmp_path)
+    out = tmp_path / 'results'
+    lc.publish(root, p, result, out)
+    block = lc.readme_block(out)
+    assert block.startswith(lc.README_BEGIN) and block.rstrip().endswith(lc.README_END)
+    assert '冒烟' in block and 'N100 上要重测' in block and 'baseline-layer2.md' in block
+    for speed in ('walk', 'horse', 'elytra'):
+        assert speed in block or {'walk': '走路', 'horse': '骑马', 'elytra': '鞘翅'}[speed] in block
+    assert '自检' in block
+    # README 里两个标记之间的内容就是它；替换函数只动标记之间
+    readme = tmp_path / 'README.md'
+    readme.write_text('前面\n' + lc.README_BEGIN + '\n旧的\n' + lc.README_END + '\n后面\n')
+    lc.update_readme(readme, out)
+    text = readme.read_text()
+    assert text.startswith('前面\n') and text.endswith('后面\n') and '旧的' not in text and lc.readme_block(out) in text
