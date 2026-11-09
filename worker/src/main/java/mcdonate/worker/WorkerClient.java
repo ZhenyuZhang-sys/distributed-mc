@@ -107,7 +107,8 @@ final class WorkerClient {
                 s.connect(new InetSocketAddress(host, port), 5000);
                 s.setSoTimeout(READ_TIMEOUT_MS);
                 socket = s;
-                send(new Hello(Protocol.VERSION, hostName(), tokens.forHello()));
+                // 带上 donor 世界编号：coordinator 一连上就知道是哪个世界（11-09：原来要等第一个结果，认主的任务派不出去）
+                send(new Hello(Protocol.VERSION, hostName(), tokens.forHello(), WorldId.of(server)));
                 wait = 1000;
                 readLoop(s);
             } catch (IOException | ProtocolException e) {

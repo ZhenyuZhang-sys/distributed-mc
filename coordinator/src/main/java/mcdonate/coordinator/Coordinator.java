@@ -59,7 +59,11 @@ public final class Coordinator implements ModInitializer {
                                         .then(Commands.argument("tz", IntegerArgumentType.integer())
                                                 .executes(ctx -> enqueue(ctx.getSource(),
                                                         IntegerArgumentType.getInteger(ctx, "tx"),
-                                                        IntegerArgumentType.getInteger(ctx, "tz"))))))
+                                                        IntegerArgumentType.getInteger(ctx, "tz")))
+                                                // 按找需求的规则入队（区域里有某个 donor 世界导入的 chunk 就认主给它）：测试用
+                                                .then(Commands.literal("rules").executes(ctx -> enqueueByRules(ctx.getSource(),
+                                                        IntegerArgumentType.getInteger(ctx, "tx"),
+                                                        IntegerArgumentType.getInteger(ctx, "tz")))))))
                         .then(Commands.literal("assign")
                                 .then(Commands.argument("tx", IntegerArgumentType.integer())
                                         .then(Commands.argument("tz", IntegerArgumentType.integer())
@@ -349,6 +353,33 @@ public final class Coordinator implements ModInitializer {
         }
         boolean added = network.tasks.enqueue(tx, tz);
         String msg = added ? "queued " + tx + " " + tz : "already queued or done " + tx + " " + tz;
+        source.sendSuccess(() -> Component.literal(msg), false);
+        return added ? 1 : 0;
+    }
+
+    /** 按 RegionRules.enqueue 入队（和找需求一样认主）。回 "queued tx tz world=<认主的世界，没有是空>"。 */
+    private static int enqueueByRules(CommandSourceStack source, int tx, int tz) {
+        if (network == null) {
+            source.sendFailure(Component.literal("coordinator network not running"));
+            return 0;
+        }
+        net.minecraft.server.level.ServerLevel level = source.getServer().overworld();
+        net.minecraft.server.level.ChunkMap chunkMap = level.getChunkSource().chunkMap;
+        mcdonate.coordinator.mixin.ChunkMapAccessor access = (mcdonate.coordinator.mixin.ChunkMapAccessor) chunkMap;
+        mcdonate.common.TilePos tile = new mcdonate.common.TilePos(tx, tz);
+        java.util.List<RegionRules.ChunkInfo> region = new java.util.ArrayList<>();
+        for (int x = tile.minChunkX() - 1; x <= tile.maxChunkX() + 1; x++) {
+            for (int z = tile.minChunkZ() - 1; z <= tile.maxChunkZ() + 1; z++) {
+                region.add(TileImporter.chunkInfo(chunkMap, access, net.minecraft.world.level.ChunkPos.asLong(x, z)));
+            }
+        }
+        RegionRules.Enqueue e = RegionRules.enqueue(region);
+        if (!e.enqueue()) {
+            source.sendFailure(Component.literal("not enqueued: " + e.reason()));
+            return 0;
+        }
+        boolean added = network.tasks.enqueue(tx, tz, e.world());
+        String msg = (added ? "queued " : "already queued or done ") + tx + " " + tz + " world=" + (e.world() == null ? "" : e.world());
         source.sendSuccess(() -> Component.literal(msg), false);
         return added ? 1 : 0;
     }

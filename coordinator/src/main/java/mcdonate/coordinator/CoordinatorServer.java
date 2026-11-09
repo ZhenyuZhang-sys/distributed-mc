@@ -631,9 +631,15 @@ final class CoordinatorServer {
                 workerId = w.workerId();
                 name = hello.name();
                 player = adm.player();
+                // 11-09：worker 一连上就报它的 donor 世界，认主给这个世界的任务马上能派，"认主的世界不在"也不会误报
+                // （原来要等它交出第一个结果；donor 世界跨会话复用时，新连上的 worker 领不到认主的任务，用户真机上空等了 83 秒）
+                if (!hello.worldId().isEmpty()) {
+                    world = hello.worldId();
+                    tasks.setWorkerWorld(w.workerId(), world);
+                }
                 workers.put(workerId, this);
                 send(w);
-                LOG.info("worker {}（{}）连上", workerId, name);
+                LOG.info("worker {}（{}）连上{}", workerId, name, world == null ? "" : "，donor 世界 " + world);
                 return;
             }
             switch (m) {

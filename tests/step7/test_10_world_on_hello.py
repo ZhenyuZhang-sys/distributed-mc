@@ -30,7 +30,8 @@ def test_reconnected_worker_gets_tasks_bound_to_its_world(server, worker):
     new = next(w["id"] for w in status(server)["workers"] if w["id"] != wid)
     logs_before = len(server.logs())
     # 旁边的 tile：区域碰到上一个 tile 的外圈（这个世界导入的），认主给这个世界
-    assert server.rcon(f"donor enqueue {tile[0] + 1} {tile[1]}").startswith("queued")
+    r = server.rcon(f"donor enqueue {tile[0] + 1} {tile[1]} rules")
+    assert r.startswith("queued") and not r.endswith("world="), f"旁边的 tile 应该认主给 worker 的世界：{r}"
     wait_until(lambda: f"派给 worker {new}" in server.logs()[logs_before:], timeout=10, interval=0.5,
                what="新连上的 worker 马上领到认主给它世界的任务")
     assert "60 秒不在" not in server.logs()[logs_before:], "worker 连着，不该报'认主的世界不在'"
