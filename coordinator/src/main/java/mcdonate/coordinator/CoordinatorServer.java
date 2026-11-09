@@ -124,10 +124,46 @@ final class CoordinatorServer {
 
     /** 握手：版本对就分配编号回 welcome，不对回 workerId = -1。纯函数，单元测试用。 */
     static Welcome handshake(Hello hello, int workerId, long seed, int dataVersion) {
+        return handshake(hello, workerId, seed, dataVersion, true);
+    }
+
+    /** 第 9 步：token 不认（admitted = false）回 {@link Welcome#BAD_TOKEN}。版本不对优先报版本。 */
+    static Welcome handshake(Hello hello, int workerId, long seed, int dataVersion, boolean admitted) {
         if (hello.protocol() != Protocol.VERSION) {
-            return new Welcome(Protocol.VERSION, -1, seed, dataVersion);
+            return new Welcome(Protocol.VERSION, Welcome.BAD_VERSION, seed, dataVersion);
         }
-        return new Welcome(Protocol.VERSION, workerId, seed, dataVersion);
+        return new Welcome(Protocol.VERSION, admitted ? workerId : Welcome.BAD_TOKEN, seed, dataVersion);
+    }
+
+    /** 第 9 步：放不放这个 worker 进来；player 是 token 对应的玩家，免 token 的本地 worker 是 null。 */
+    record Admission(boolean ok, java.util.UUID player) {}
+
+    /**
+     * 第 9 步（docs/step9-plan.md 3.1）：hello 带了 token 就必须有效（认识、没用过、没过期），用掉它；
+     * 没带 token 只有 allowTokenless 时放行（测试里 Docker 的本地 worker，系统属性 mcdonate.allowTokenless，正式默认关）。
+     */
+    static Admission admit(Hello hello, TokenRegistry tokens, boolean allowTokenless) {
+        if (hello.token().isEmpty()) {
+            return new Admission(allowTokenless, null);
+        }
+        return tokens.consume(hello.token()).map(p -> new Admission(true, p)).orElse(new Admission(false, null));
+    }
+
+    /** 第 9 步：没有 token 的 worker 放不放（测试 compose 里设 true；正式默认 false）。 */
+    static final boolean ALLOW_TOKENLESS = Boolean.parseBoolean(mcdonate.common.Config.get("allowTokenless", "false"));
+
+    /** 第 9 步：玩家 worker 的一次性 token。玩家进服时发（Coordinator），worker 握手时用掉。 */
+    final TokenRegistry tokens = new TokenRegistry(System::currentTimeMillis);
+
+    /** 第 9 步：玩家退出：作废他没用过的 token，断开他的 worker（手上的任务回到队列）。 */
+    void playerLeft(java.util.UUID player) {
+        tokens.revoke(player);
+        for (Connection c : workers.values()) {
+            if (player.equals(c.player)) {
+                LOG.info("玩家 {} 退出，断开他的 worker {}", player, c.workerId);
+                c.close();
+            }
+        }
     }
 
     private void acceptLoop() {
@@ -262,7 +298,8 @@ final class CoordinatorServer {
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
             String tile = "[" + file.tile().x() + "," + file.tile().z() + "]";
             if (strict) {
-                TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file, workerId);
+                TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file, workerId,
+                        c.player == null ? "" : c.player.toString());
                 if (!res.accepted()) {
                     discardedConflict.incrementAndGet();
                     discardedBy.get(res.discard()).incrementAndGet();
@@ -312,6 +349,7 @@ final class CoordinatorServer {
                 + ",\"motionWindowMs\":" + Motion.WINDOW_MS
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
+                + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicAddress\":\"" + Coordinator.PUBLIC_ADDRESS + "\""
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
                 + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))
@@ -370,6 +408,8 @@ final class CoordinatorServer {
         volatile long lastSeen = System.currentTimeMillis();
         volatile int workerId = -1;
         volatile String name = "";
+        /** 第 9 步：这个 worker 属于哪个玩家（token 换来的）；免 token 的本地 worker 是 null。 */
+        volatile java.util.UUID player;
         /** 这个 worker 的 donor 世界（从它交的第一个结果里知道）。 */
         volatile String world;
         /** 被接受导入的 tile 数。 */
@@ -433,8 +473,16 @@ final class CoordinatorServer {
                     close();
                     return;
                 }
+                Admission adm = admit(hello, tokens, ALLOW_TOKENLESS);
                 Welcome w = handshake(hello, nextWorkerId.getAndIncrement(), server.overworld().getSeed(),
-                        TileImporter.dataVersion());
+                        TileImporter.dataVersion(), adm.ok());
+                if (w.workerId() == Welcome.BAD_TOKEN) {
+                    // 不打 token 本身（TokenRegistry.redact）
+                    LOG.warn("worker {} 的 token 不对（{}），拒绝", hello.name(),
+                            hello.token().isEmpty() ? "没带" : TokenRegistry.redact(hello.token()));
+                    sendThenClose(w);
+                    return;
+                }
                 if (w.workerId() < 0) {
                     LOG.warn("worker {} 的协议版本是 {}，本机是 {}，拒绝", hello.name(), hello.protocol(), Protocol.VERSION);
                     sendThenClose(w);
@@ -442,6 +490,7 @@ final class CoordinatorServer {
                 }
                 workerId = w.workerId();
                 name = hello.name();
+                player = adm.player();
                 workers.put(workerId, this);
                 send(w);
                 LOG.info("worker {}（{}）连上", workerId, name);

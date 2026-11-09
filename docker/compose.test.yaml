@@ -4,7 +4,8 @@ services:
   minecraft:
     environment:
       # 自动找需求默认关：别的测试的假玩家周围不要自动放任务。第 6 步的找需求测试用 /donor demand on 打开
-      JVM_OPTS: "-Dmcdonate.demand=off ${MCD_JVM_EXTRA:-}"
+      # 第 9 步：Docker 里的本地 worker 没有玩家、没有 token，测试里放行（正式默认不放）
+      JVM_OPTS: "-Dmcdonate.demand=off -Dmcdonate.allowTokenless=true ${MCD_JVM_EXTRA:-}"
     volumes:
       # 我们构建的 mod（scripts/gradle.sh collectMods 的产物）。
       # 镜像启动时把 /mods 同步进服务器的 mods 目录。

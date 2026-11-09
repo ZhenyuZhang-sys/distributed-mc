@@ -142,8 +142,12 @@ final class TileImporter {
         return importStrict(level, file, -1);
     }
 
-    /** workerId：交这个结果的 worker（账本、来源事件用），不知道是 -1。 */
     static StrictResult importStrict(ServerLevel level, TileFile file, int workerId) {
+        return importStrict(level, file, workerId, "");
+    }
+
+    /** workerId：交这个结果的 worker（账本、来源事件用），不知道是 -1。player：donor 的玩家 UUID（第 9 步），本地 worker 是空串。 */
+    static StrictResult importStrict(ServerLevel level, TileFile file, int workerId, String player) {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         Map<Long, RegionRules.ChunkInfo> current = new HashMap<>();
@@ -185,8 +189,7 @@ final class TileImporter {
             recorded.add(e.getKey());
             DemandScanner.diskChanged(e.getKey(), ChunkStatus.byName(c.status()).getIndex());
         }
-        // 玩家 UUID 第 9 步起由调用方传进来；现在空串
-        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), workerId, "", recorded, System.currentTimeMillis());
+        Ownership.LEDGER.recordImport(file.worldId(), file.tile().x(), file.tile().z(), workerId, player, recorded, System.currentTimeMillis());
         // 实时地图：这些 chunk 是 donor 生成的（第 4 步 4.3 的来源事件）
         for (long k : recorded) {
             Provenance.report((int) k, (int) (k >>> 32), Provenance.Kind.DONOR, workerId);

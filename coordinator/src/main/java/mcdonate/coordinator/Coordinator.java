@@ -9,6 +9,10 @@ import java.io.IOException;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import mcdonate.common.net.DonorInvite;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -132,6 +136,24 @@ public final class Coordinator implements ModInitializer {
             }
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
+        // 第 9 步：玩家进服时，装了客户端 mod 的（注册了 mcdonate:invite 频道）收到 coordinator 地址、一次性 token、seed；
+        // 原版客户端不发。没配公开地址（mcdonate.publicAddress，host:port）就不发。玩家退出：作废没用过的 token，断开他的 worker。
+        PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            CoordinatorServer n = network;
+            if (n == null || PUBLIC_ADDRESS.isEmpty() || !ServerPlayNetworking.canSend(handler.player, DonorInvite.TYPE)) {
+                return;
+            }
+            String token = n.tokens.issue(handler.player.getUUID());
+            ServerPlayNetworking.send(handler.player, new DonorInvite(PUBLIC_ADDRESS, token, server.overworld().getSeed()));
+            LOG.info("给 {} 发了 donor 邀请（token {}）", handler.player.getGameProfile().getName(), TokenRegistry.redact(token));
+        });
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            CoordinatorServer n = network;
+            if (n != null) {
+                n.playerLeft(handler.player.getUUID());
+            }
+        });
         // 网络：服务器起来后监听，关服时停。端口 0 表示不开（系统属性 mcdonate.port，默认 25580）
         int port = Config.getInt("port", 25580);
         if (port > 0) {
@@ -162,6 +184,9 @@ public final class Coordinator implements ModInitializer {
     }
 
     private static volatile CoordinatorServer network;
+
+    /** 第 9 步：发给玩家的 coordinator 公开地址（host:port），空 = 不发邀请。 */
+    static final String PUBLIC_ADDRESS = Config.get("publicAddress", "");
 
     /** 最近的来源事件（测试用；实时地图的正式记录在 bench 的 provenance.jsonl，第 4 步 4.3）。 */
     private static final java.util.Deque<String> PROVENANCE = new java.util.concurrent.ConcurrentLinkedDeque<>();
