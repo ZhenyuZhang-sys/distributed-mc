@@ -224,6 +224,29 @@ public class FlightGameTest implements FabricGameTest {
         }).thenSucceed();
     }
 
+    /**
+     * 守护计数分两类（11-09）：玩家实体 tick（ServerPlayer.tick / doTick）里的同步加载算 count，必须是 0；
+     * 别的（原版流体 tick、chunk 变成可 tick 时的后处理读到还没做完的邻居）算 world，只记录。
+     * 这里让一个模拟玩家站在没生成的地方，手动调一次 doTick：它查脚下流体，同步生成，count 至少 1。
+     */
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
+    public void playerTickSyncLoadIsCountedSeparately(GameTestHelper h) {
+        ServerPlayer flyer = player(h);
+        ServerPlayer stray = h.makeMockServerPlayerInLevel();
+        // 远处没生成过的地方；不调 move，ChunkMap 不给它加票据，脚下的 chunk 只能在 doTick 里同步生成
+        stray.teleportTo(h.getLevel(), flyer.getX() + 30_000 + (UUID.randomUUID().hashCode() & 4095) * 16, 120, flyer.getZ(), 0, 0);
+        String run = newRun("sync");
+        check(run(h, "bench fly start " + flyer.getStringUUID() + " 0.001 600 " + run) == 1, "fly start 失败");
+        stray.doTick();
+        check(run(h, "bench fly stop " + run) == 1, "fly stop 失败");
+        h.succeedWhen(() -> {
+            JsonObject sync = field(done(h, run), "sync_loads").getAsJsonObject();
+            check(field(sync, "count").getAsInt() >= 1 && field(sync, "max_ms").getAsDouble() >= 1, "玩家 tick 里的同步加载没被记成 count：" + sync);
+            check(field(sync, "world").getAsJsonObject().has("count"), "缺 world：" + sync);
+            delete(h, run);
+        });
+    }
+
     /** 中途 stop：done.json 标 stopped，飞行不再推玩家。 */
     @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
     public void stopEndsFlightEarly(GameTestHelper h) {

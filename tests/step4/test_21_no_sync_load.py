@@ -26,7 +26,9 @@ def test_two_core_elytra_never_blocks_main_thread(server_manager):
     directory.mkdir(parents=True)
     result = lc.real_fly_slot(p)(slot, directory)
     done = json.loads((Path(result['flight_dir']) / 'raw' / 'done.json').read_text())
+    # 玩家实体 tick 引起的同步加载必须是 0；原版流体 tick 等引起的（world）只记录，不能让主线程卡到看门狗
     assert done['sync_loads']['count'] == 0, done['sync_loads']
+    assert done['sync_loads']['world']['max_ms'] < 1_000, done['sync_loads']['world']
     assert 'invalid' not in result
     assert result['mspt_max'] < 5_000, result['mspt_max']
     assert done['unready_ticks'] == 0

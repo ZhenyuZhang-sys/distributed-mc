@@ -26,7 +26,7 @@ def write_run(d, rows=3, done=None, events=None):
                 events=dict(enter=2, ready=1, leave=0), initial=dict(view=453, not_ready=0), scan_ms_total=1.5, scan_every_ticks=1,
                 stopped=False, aborted=None, coordinator_features=None, demand_lookahead=None,
                 distance=4.3 * rows - 1.0, ideal_distance=4.3 * rows, stall_ms=250.0, stalled_ticks=5, unready_ticks=0,
-                sync_loads=dict(count=0, max_ms=0.0, total_ms=0.0, stack=''))
+                sync_loads=dict(count=0, max_ms=0.0, total_ms=0.0, stack='', world=dict(count=3, max_ms=5.0, total_ms=9.0, stack='fluid')))
     base.update(done or {})
     (d / 'done.json').write_text(json.dumps(base))
     return d
@@ -66,6 +66,8 @@ def test_compose_writes_seconds_chunks_and_summary(tmp_path):
     assert summary['stall_s'] == .25 and summary['stalled_ticks_total'] == 5
     assert math.isclose(summary['stall_fraction'], .25 / 3) and math.isclose(summary['distance_ratio'], (4.3 * 3 - 1) / (4.3 * 3))
     assert summary['sync_loads'] == 0 and summary['sync_load_max_ms'] == 0.0 and summary['unready_ticks'] == 0
+    # 原版自己（流体 tick 等）造成的同步加载单列，只记录（11-09 冒烟里看到，真实玩家的服务器也会有）
+    assert summary['sync_loads_world'] == 3 and summary['sync_load_world_max_ms'] == 5.0 and summary['sync_load_world_total_ms'] == 9.0
 
 
 def test_compose_latency_and_censoring(tmp_path):

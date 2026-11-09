@@ -49,10 +49,12 @@ public class ProvenanceGameTest implements FabricGameTest {
             FlightGameTest.check(vanilla == delta.get("full_generated").getAsLong() + delta.get("full_resumed").getAsLong(),
                     "原版事件 " + vanilla + " 不等于计数增量 " + delta);
             for (JsonObject e : events) FlightGameTest.check(e.has("t_ms"), "事件缺 t_ms：" + e);
-            // 守护计数：主线程上同步生成新 chunk（这里的 getChunk）一定被记下，栈里能看到是谁调的
+            // 守护计数：主线程上同步生成新 chunk（这里的 getChunk）一定被记下，栈里能看到是谁调的。
+            // 它不是玩家实体 tick 引起的，记在 world 里；玩家引起的 count 不受影响
             JsonObject sync = FlightGameTest.field(done, "sync_loads").getAsJsonObject();
-            FlightGameTest.check(FlightGameTest.field(sync, "count").getAsInt() >= 1 && FlightGameTest.field(sync, "max_ms").getAsDouble() >= 1
-                    && FlightGameTest.field(sync, "stack").getAsString().contains("ProvenanceGameTest"), "主线程同步加载没被记下：" + sync);
+            JsonObject world = FlightGameTest.field(sync, "world").getAsJsonObject();
+            FlightGameTest.check(FlightGameTest.field(world, "count").getAsInt() >= 1 && FlightGameTest.field(world, "max_ms").getAsDouble() >= 1
+                    && FlightGameTest.field(world, "stack").getAsString().contains("ProvenanceGameTest"), "主线程同步加载没被记下：" + sync);
             FlightGameTest.delete(h, run);
         });
     }
