@@ -312,7 +312,8 @@ final class CoordinatorServer {
             long[] w = mcdonate.common.TaskTiming.read(r.tile());
             resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, c.lastWireBytes,
                     tasks.enqueuedAt(r.taskId()), leasedAt > 0 ? leasedAt : -1, got,
-                    w == null ? -1 : w[0], w == null ? -1 : w[1], w == null ? -1 : w[2], w == null ? -1 : w[3]});
+                    w == null ? -1 : w[0], w == null ? -1 : w[1], w == null ? -1 : w[2], w == null ? -1 : w[3],
+                    tasks.slackAtLease(r.taskId())});
         }
         if (r.ok() && leasedAt > 0) {
             // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
@@ -396,6 +397,7 @@ final class CoordinatorServer {
                         + ",\"written\":" + (res.written() + res.overwritten())
                         + ",\"bytes\":" + (meta == null ? -1 : meta[0]) + ",\"wire_bytes\":" + (meta == null ? -1 : meta[2])
                         + ",\"ms\":" + (meta == null ? -1 : meta[1])
+                        + ",\"slack_ms\":" + (meta == null ? -1 : meta[10])
                         + ",\"seg\":" + (meta == null ? "null" : TaskTimeline.json(meta[3], meta[4],
                                 meta[6] < 0 ? null : new long[] {meta[6], meta[7], meta[8], meta[9]},
                                 meta[5], importStart, System.currentTimeMillis())) + "}");

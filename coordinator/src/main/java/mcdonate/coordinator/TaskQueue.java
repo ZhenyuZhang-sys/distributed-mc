@@ -85,6 +85,8 @@ public final class TaskQueue {
         long importBy = Long.MAX_VALUE;
         /** 入队时间（分段耗时用）。 */
         long enqueuedAt = -1;
+        /** 派出时离截止（importBy，不知道时 due）还有多少毫秒；不知道是 -1。 */
+        long slackAtLease = -1;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -337,6 +339,8 @@ public final class TaskQueue {
         }
         t.state = State.LEASED;
         t.leasedAt = clock.getAsLong();
+        long key = deadlineKey(t);
+        t.slackAtLease = key == Long.MAX_VALUE ? -1 : key - t.leasedAt;
         t.worker = worker;
         t.deadline = clock.getAsLong() + leaseMs;
         leaseAdd(worker, t.id);
@@ -360,6 +364,12 @@ public final class TaskQueue {
             t.importBy = importBy;
             t.scored = true;
         }
+    }
+
+    /** 派出时离截止还有多少毫秒（截止不知道、不认识的任务是 -1）。 */
+    public synchronized long slackAtLease(long taskId) {
+        Task t = tasks.get(taskId);
+        return t == null ? -1 : t.slackAtLease;
     }
 
     /** 入队时间（毫秒时间戳），不认识的任务是 -1。 */

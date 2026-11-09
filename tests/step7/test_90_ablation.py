@@ -179,6 +179,10 @@ def segments(imports: list) -> dict:
                        ("discarded", [r for r in imports if not r.get("accepted")])):
         segs = [r["seg"] for r in rows if r.get("seg")]
         out[kind] = {k: spread([g.get(k) for g in segs]) for k in SEG_KEYS}
+        # 11-09：排队时间按"派出时有没有截止时间"分开（slack_ms 是 -1 的没有 deadline：侧面、玩家不朝那边走的）
+        out[kind]["queue_with_deadline"] = spread([r["seg"].get("queue") for r in rows if r.get("seg") and r.get("slack_ms", -1) >= 0])
+        out[kind]["queue_no_deadline"] = spread([r["seg"].get("queue") for r in rows if r.get("seg") and r.get("slack_ms", -1) < 0])
+        out[kind]["slack_ms"] = spread([r.get("slack_ms") for r in rows])
     return out
 
 
