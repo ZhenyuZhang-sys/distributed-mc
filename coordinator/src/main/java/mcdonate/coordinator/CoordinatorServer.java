@@ -267,7 +267,7 @@ final class CoordinatorServer {
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
                         est.add(new TaskQueue.DonorEstimate(throughput.latencyMs(c.workerId), throughput.ratePerMs(c.workerId),
-                                tasks.inFlight(c.workerId), slots(c)));
+                                tasks.inFlight(c.workerId), throughput.lanes(c.workerId)));
                     }
                 }
                 List<Long> hopeless = tasks.pruneHopeless(est);
@@ -314,11 +314,11 @@ final class CoordinatorServer {
     private void dispatch(Connection c, long now) {
         // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
         // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
-        // 11-09（正式服 hopeless 398）：还有空名额的马上开始，不按"前面几个 ÷ 速率"排队估
+        // 11-09（正式服 hopeless 398）：实测能并行的几个马上开始，不按"前面几个 ÷ 速率"排队估（codex-audit 第十五节：按实测并行度，不按租约名额）
         int max = slots(c);
         boolean thr = features.on(Features.THROUGHPUT);
         java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
-                ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), max, now, due) : due -> true;
+                ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
         Optional<TaskQueue.Assignment> a;
         while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
             TaskQueue.Assignment x = a.get();
@@ -326,6 +326,13 @@ final class CoordinatorServer {
             // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
             c.currentTask = x.taskId();
             c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
+            if (c.closed) {
+                // codex-audit 第十五节 V3：查过连接还在、派出之前连接被关了，close 那边已经收回过，这一个没人收：自己收回。
+                // closed 在 close 收回之前就置上，所以这里看到 false 的，之后 close 的收回一定能收到它
+                List<Long> back = tasks.workerGone(c.workerId);
+                LOG.info("worker {} 派活时断开，任务 {} 回到队首", c.workerId, back);
+                return;
+            }
         }
     }
 
@@ -372,10 +379,13 @@ final class CoordinatorServer {
                     w == null ? -1 : w[0], w == null ? -1 : w[1], w == null ? -1 : w[2], w == null ? -1 : w[3],
                     tasks.slackAtLease(r.taskId())});
         }
-        if (r.ok() && leasedAt > 0) {
-            // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
+        long sampleAt = tasks.sampleLeasedAt(c.workerId, r.taskId());
+        if (r.ok() && sampleAt > 0) {
+            // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的。只取这个 worker 手上、只派过一次的（codex-audit 第十五节 V4）。
+            // 同时记下在途表读数（这个任务还算在途），速率按实测并行度算
             long nowMs = System.currentTimeMillis();
-            throughput.record(c.workerId, nowMs - leasedAt, nowMs);
+            long[] load = tasks.load(c.workerId);
+            throughput.record(c.workerId, nowMs - sampleAt, nowMs, load[0], load[1]);
         }
         if (r.ok()) {
             String world = r.tile().getString("worldId");
@@ -584,9 +594,10 @@ final class CoordinatorServer {
                     // 11-09（正式服 hopeless 398）：派活怎么估这个 donor
                     .append(",\"latencyMs\":").append(throughput.latencyMs(c.workerId))
                     .append(",\"ratePerSec\":").append(Math.round(throughput.ratePerMs(c.workerId) * 1e5) / 100.0)
-                    .append(",\"busyMs\":").append(throughput.busyMs(c.workerId))
+                    .append(",\"busyMs\":").append(tasks.load(c.workerId)[0])
                     .append(",\"slots\":").append(slots(c))
-                    .append(",\"capacityPerSec\":").append(Math.round(throughput.capacityPerMs(c.workerId, slots(c)) * 1e5) / 100.0)
+                    .append(",\"parallelism\":").append(Math.round(throughput.parallelism(c.workerId) * 100) / 100.0)
+                    .append(",\"lanes\":").append(throughput.lanes(c.workerId))
                     .append('}');
         }
         return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())

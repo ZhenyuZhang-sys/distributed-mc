@@ -130,6 +130,11 @@ class DonorThroughputTest {
 
     /** 按真实的租期喂：在途表按开始、结束事件走，每个完成时记下在途表的读数。 */
     static void feed(DonorThroughput t, List<long[]> intervals) {
+        feed(t, intervals, Long.MAX_VALUE);
+    }
+
+    /** 同上，只喂到 until 为止（之后的开始、结束都还没发生：那时还在做的照样算在途）。 */
+    static void feed(DonorThroughput t, List<long[]> intervals, long until) {
         LoadMeter meter = new LoadMeter();
         List<long[]> ev = new ArrayList<>();
         for (int i = 0; i < intervals.size(); i++) {
@@ -138,6 +143,9 @@ class DonorThroughputTest {
         }
         ev.sort((x, y) -> x[0] != y[0] ? Long.compare(x[0], y[0]) : Long.compare(x[1], y[1]));
         for (long[] e : ev) {
+            if (e[0] > until) {
+                break;
+            }
             if (e[1] == 1) {
                 meter.start(e[0]);
             } else {
@@ -195,20 +203,20 @@ class DonorThroughputTest {
 
     @Test
     void steadyPipelineIsOnePerSecond() {
-        // 手上一直 4 个、每秒交回一个、每个 4 秒：1 个/秒（窗口左边的预热不能把它压低）
+        // 手上一直 4 个、每秒交回一个、每个 4 秒：1 个/秒（窗口左边的预热不能把它压低）。看到第 20 个交回为止，后面的还在做
         DonorThroughput t = new DonorThroughput();
         List<long[]> iv = new ArrayList<>();
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 30; i++) {
             iv.add(new long[] {10_000 + i * 1_000L, 14_000 + i * 1_000L});
         }
-        feed(t, iv);
+        feed(t, iv, 33_000);
         assertEquals(1.0, t.ratePerMs(1) * 1000, 0.05);
         assertEquals(4, t.lanes(1));
     }
 
     @Test
     void measuredLanesStartNow() {
-        // 实测能并行 4 个（延迟 700 ms）：手上 2 个时再给一个，马上开始，0.7 秒做完；手上 4 个才排队
+        // 实测能并行 4 个（延迟 700 ms）：手上 2 个时再给一个，马上开始，0.7 秒做完；手上 4 个才排队（约 0.9 秒）
         DonorThroughput t = new DonorThroughput();
         List<long[]> iv = new ArrayList<>();
         for (int k = 0; k < 3; k++) {
@@ -219,8 +227,8 @@ class DonorThroughputTest {
         feed(t, iv);
         assertEquals(4, t.lanes(1));
         long now = 100_000;
-        assertTrue(t.canMeet(1, 2, now, now + 1_000));
-        assertFalse(t.canMeet(1, 4, now, now + 1_000), "实测的并行都占满了才排队");
+        assertTrue(t.canMeet(1, 2, now, now + 800));
+        assertFalse(t.canMeet(1, 4, now, now + 800), "实测的并行都占满了才排队");
     }
 
     @Test

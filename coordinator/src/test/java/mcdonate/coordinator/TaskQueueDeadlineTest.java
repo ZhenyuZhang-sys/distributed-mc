@@ -438,10 +438,13 @@ class TaskQueueDeadlineTest {
     @Test
     void dispatchAndPruneAgree() {
         // codex-audit F2：同一组数据，canMeet 说做得完的，剪枝不能剪掉。速率 1 个/秒、延迟 4 秒、手上 3 个在做
+        // 11-09（codex-audit 第十五节）：速率按实测并行度，喂真实的在途：手上一直 4 个、每秒交回一个
         DonorThroughput t = new DonorThroughput();
-        for (int i = 0; i < 10; i++) {
-            t.record(1, 4_000, 10_000 + i * 1_000L);
+        List<long[]> iv = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            iv.add(new long[] {6_000 + i * 1_000L, 10_000 + i * 1_000L});
         }
+        DonorThroughputTest.feed(t, iv, 19_000);
         TaskQueue q = queue("deadline");
         for (int i = 0; i < 3; i++) {
             q.enqueue(9, i);
@@ -498,9 +501,9 @@ class TaskQueueDeadlineTest {
         TaskQueue q = queue("deadline");
         for (int i = 0; i < 5; i++) {
             q.enqueue(i * 2, 0);
-            q.setDue(i * 2, 0, now.get() + 3_000, now.get() + 2_000, 1);   // 留出 1 秒余量后限 1 秒
+            q.setDue(i * 2, 0, now.get() + 3_000, now.get() + 1_800, 1);   // 留出 1 秒余量后限 0.8 秒
         }
-        // donor 延迟 0.7 秒、实测能并行 4 个（速率 4/0.7 秒）、手上 0 个
+        // donor 延迟 0.7 秒、实测能并行 4 个（速率 4/0.7 秒）、手上 0 个：前 4 个 0.7 秒，第 5 个排队约 0.9 秒
         List<Long> dropped = q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(700, 4.0 / 700, 0, 4)));
         assertEquals(1, dropped.size(), "前 4 个马上能开始、0.7 秒做完，不剪；第 5 个要排队才剪：" + dropped);
         assertEquals(q.find(8, 0), dropped.get(0));
