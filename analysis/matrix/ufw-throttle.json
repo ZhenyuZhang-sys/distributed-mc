@@ -1,0 +1,107 @@
+{
+ "name": "ufw-throttle",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09：玩家票节流（codex-server：前方空白约 87% 是原版玩家票排队，DistanceManager 写死同时 4 个名额）。fish-throttle 7f48ebe（+kexu 实验工具），-Dmcdonate.playerTicketThrottle 4 对 16，k4 同槽位交替：1×8 donor 各 3 轮，原版各 1 轮；每轮用 /donor status 的 playerTicketThrottle.actual 核对。用户同款 2 核，扫描预算 2000，lookahead 16，corridor 6，demandForwardFirst 关，烟花直线 33.5 格/秒。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "thr",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "repeats": 1,
+    "ticket_throttle": [
+     4,
+     16
+    ]
+   },
+   {
+    "group": "thr",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "forward_first": [
+     0
+    ],
+    "ticket_throttle": [
+     4,
+     16
+    ]
+   }
+  ]
+ }
+}
