@@ -3,9 +3,9 @@
 一个 tile 正租给 donor 时，服务器第一次要这个 tile 区域的 chunk：先等 donor 的结果，读到的是 donor 的数据，
 服务器自己不跑 noise、features。
 
-场景按飞行来：假玩家先在离 tile 25 个 chunk 的地方站稳（那里加载好），派出 tile，再往前挪 9 个 chunk
-（新位置原来就在视距里，已经加载好，不会同步卡）。这时 tile 进入服务器的依赖范围（视距 + 约 11 圈），
-开始异步加载，碰到闸门。不直接把假玩家放在 tile 上：出生点那个 chunk 是主线程同步加载的，
+场景按飞行来：假玩家先在离 tile 32 个 chunk 的地方站稳（那里加载好），派出 tile，再往前挪 9 个 chunk
+（新位置原来就在视距里，已经加载好，不会同步卡）。这时 tile 进入服务器的依赖范围（视距 + 约 11 圈，
+低阶段还要更远一点；起点 25 圈时派任务前就有 tile 区域的 chunk 开始加载，导入被整个丢弃），开始异步加载，碰到闸门。不直接把假玩家放在 tile 上：出生点那个 chunk 是主线程同步加载的，
 按设计会放弃闸门（主线程同步要 chunk 时不能等 donor，原型第一版这样做时 rcon 卡了 2.9 秒）。
 
 1. donor 正常：闸门等到结果，tile 的 chunk 是 donor 的（服务器上 noise、features 都是 0）。
@@ -92,12 +92,14 @@ def ready(server, worker):
 def test_waits_for_donor_while_approaching(server, ready):
     tile = (950, -950)
     cx, cz = tile[0] * N + 2, tile[1] * N + 2
-    stand(server, "waitbot", cx - 25, cz)
+    stand(server, "waitbot", cx - 32, cz)
     before = len(donor_imports(server))
     w0 = status(server)["waitdonor"]
     try:
         assign_and_wait_leased(server, tile, ready)
-        server.rcon(f"tp waitbot {(cx - 16) * 16 + 8} 200 {cz * 16 + 8}")
+        for d in (23, 16):
+            server.rcon(f"tp waitbot {(cx - d) * 16 + 8} 200 {cz * 16 + 8}")
+            time.sleep(0.3)  # 一步一步走，不是等条件
         slow = poke(server, 3)
         r = wait_import(server, tile, before)
         w1 = status(server)["waitdonor"]
@@ -135,7 +137,7 @@ def test_donor_stuck_times_out(server, worker, ready):
     # donor 主线程卡住，结果回不来：最多等 2 秒就超时，原版照常生成，rcon 一直有回应
     tile = (980, -980)
     cx, cz = tile[0] * N + 2, tile[1] * N + 2
-    stand(server, "stuckbot", cx - 25, cz)
+    stand(server, "stuckbot", cx - 32, cz)
     w0 = status(server)["waitdonor"]
     stuck = threading.Thread(target=lambda: worker.rcon("donor sleep 6"), daemon=True)
     try:
@@ -143,7 +145,9 @@ def test_donor_stuck_times_out(server, worker, ready):
         stuck.start()
         time.sleep(0.5)  # 让 sleep 命令先到 worker，不是等条件
         assign_and_wait_leased(server, tile, ready)
-        server.rcon(f"tp stuckbot {(cx - 16) * 16 + 8} 200 {cz * 16 + 8}")
+        for d in (23, 16):
+            server.rcon(f"tp stuckbot {(cx - d) * 16 + 8} 200 {cz * 16 + 8}")
+            time.sleep(0.3)  # 一步一步走，不是等条件
         slow = poke(server, 4)
         w1 = status(server)["waitdonor"]
         print("donor 卡住：", w0, "→", w1, "rcon 最慢", slow)

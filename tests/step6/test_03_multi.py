@@ -37,12 +37,14 @@ def test_two_donors_share_and_survive_kill(server, worker, worker2):
     for tx, tz in TILES:
         assert server.rcon(f"donor enqueue {tx} {tz}").startswith("queued")
 
-    # 两个都领到活以后，kill 掉 worker2
-    def both_busy():
+    # worker2 做完至少一个、手上又正有任务时 kill 掉它（中途 kill）。
+    # 原来只等"领到任务"就 kill：它手上那个还没做完，重启要一分钟，worker 早把 12 个都做完了，
+    # 接受的结果只来自一个 donor 世界（11-09 完整回归里失败过一次，以前是碰巧它先做完了一个）。
+    def busy_after_one():
         ws = {w["id"]: w for w in status(server)["workers"]}
-        return w1 in ws and w2 in ws and (ws[w2]["task"] >= 0 or ws[w2]["done"] > 0)
+        return w1 in ws and w2 in ws and ws[w2]["done"] >= 1 and ws[w2]["task"] >= 0
 
-    wait_until(both_busy, timeout=120, interval=0.5, what="worker2 领到任务")
+    wait_until(busy_after_one, timeout=120, interval=0.2, what="worker2 做完一个、手上又有任务")
     compose("kill", "worker2")
     try:
         wait_until(lambda: all(w["id"] != w2 for w in status(server)["workers"]), timeout=30, interval=1,
