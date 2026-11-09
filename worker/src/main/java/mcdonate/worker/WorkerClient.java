@@ -183,6 +183,8 @@ final class WorkerClient {
     }
 
     private final OneAtATime<Task> generating;
+    /** 控制通道 STATUS 的累计数（11-09 overlay）。 */
+    private final WorkerStatus status = new WorkerStatus();
 
     private void generate(Task t) {
         if (cancelled.remove(t.taskId())) {
@@ -191,8 +193,10 @@ final class WorkerClient {
         }
         currentTask = t.taskId();
         Result r;
+        int chunkCount = 0;
         try {
             TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
+            chunkCount = g.file().chunks().size();
             r = Result.success(t.taskId(), g.file().toTag());
         } catch (RuntimeException e) {
             LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
@@ -204,6 +208,9 @@ final class WorkerClient {
             return;
         }
         deliver(r);
+        if (r.ok()) {
+            status.tileDone(chunkCount, 0); // 字节数在 send 里按帧记
+        }
     }
 
     /** 第 9 步：控制通道的一条命令（游戏经 worker 的标准输入发来）。STOP 由调用方处理（要停服务器）。 */
@@ -224,8 +231,9 @@ final class WorkerClient {
                     LOG.info("收到新 token");
                 }
             }
-            case STATUS -> controlOut.accept(ControlLine.out("STATUS {\"paused\":" + paused + ",\"task\":" + currentTask
-                    + ",\"connected\":" + (socket != null) + ",\"needToken\":" + tokens.needsNew() + "}"));
+            case STATUS -> controlOut.accept(ControlLine.out("STATUS " + status.json(
+                    !running ? WorkerStatus.State.STOPPING : paused ? WorkerStatus.State.PAUSED : WorkerStatus.State.RUNNING,
+                    currentTask, socket != null, tokens.needsNew(), WorkerStatus.Load.current())));
             case STOP -> { }
         }
     }
@@ -289,8 +297,10 @@ final class WorkerClient {
         }
         try {
             OutputStream out = s.getOutputStream();
-            out.write(Frame.encode(m));
+            byte[] frame = Frame.encode(m);
+            out.write(frame);
             out.flush();
+            status.sent(frame.length);
         } catch (IOException e) {
             closeSocket();
         }
