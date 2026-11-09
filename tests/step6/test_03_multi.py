@@ -30,21 +30,28 @@ def written(server, tile) -> bool:
     return all(server.rcon(f"donor peek {tx * 4 + dx} {tz * 4 + dz}") != "none" for dx in (0, 3) for dz in (0, 3))
 
 
+def busy_after_one(ws: dict, w1: int, w2: int, done0: int) -> bool:
+    """worker2 在这条测试里做完了至少一个（done 比开始时多）、手上又正有任务。
+    done 是连接累计的，前面测试做过的不算（11-09 kexu 完整回归：只看 done >= 1，等待立刻满足，12 个全由 worker 做完）。"""
+    return w1 in ws and w2 in ws and ws[w2]["done"] > done0 and ws[w2]["task"] >= 0
+
+
 def test_two_donors_share_and_survive_kill(server, worker, worker2):
     assert_fresh(server, TILES)
     w1, w2 = worker_id(server, "worker"), worker_id(server, "worker2")
     before = len(donor_imports(server))
-    for tx, tz in TILES:
+    done0 = {w["id"]: w["done"] for w in status(server)["workers"]}.get(w2, 0)
+    # 头两个直接派给 worker2（软认主，只给它）：负载下 worker2 慢的时候，worker 也可能把排队的 12 个全领走，
+    # "两个 donor 都干过活"就成了碰运气（11-09 kexu 完整回归时 k2 的演示矩阵在并行跑）。其余的排队，谁空谁领
+    for tx, tz in TILES[:2]:
+        assert server.rcon(f"donor assign {tx} {tz} {w2}") == "queued"
+    for tx, tz in TILES[2:]:
         assert server.rcon(f"donor enqueue {tx} {tz}").startswith("queued")
 
-    # worker2 做完至少一个、手上又正有任务时 kill 掉它（中途 kill）。
-    # 原来只等"领到任务"就 kill：它手上那个还没做完，重启要一分钟，worker 早把 12 个都做完了，
-    # 接受的结果只来自一个 donor 世界（11-09 完整回归里失败过一次，以前是碰巧它先做完了一个）。
-    def busy_after_one():
-        ws = {w["id"]: w for w in status(server)["workers"]}
-        return w1 in ws and w2 in ws and ws[w2]["done"] >= 1 and ws[w2]["task"] >= 0
-
-    wait_until(busy_after_one, timeout=120, interval=0.2, what="worker2 做完一个、手上又有任务")
+    # worker2 在这条测试里做完一个、手上又正有任务（第二个派给它的）时 kill 掉它（中途 kill）。
+    # 负载下一个 tile 可能要几十秒，给足时间
+    wait_until(lambda: busy_after_one({w["id"]: w for w in status(server)["workers"]}, w1, w2, done0),
+               timeout=300, interval=0.2, what="worker2 做完一个、手上又有任务")
     compose("kill", "worker2")
     try:
         wait_until(lambda: all(w["id"] != w2 for w in status(server)["workers"]), timeout=30, interval=1,

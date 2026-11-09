@@ -150,6 +150,13 @@ def test_ten_tiles_match_vanilla(match):
     # - 边界一圈、两圈（已知问题 7.8）：只测量写报告，设一个宽松护栏（analysis/mca/decor.py 的 seam_guard：5 倍、132 方块）
     bad = relative_check(acc["tile"], acc["not_imported"])
     assert not bad, ("tile 内部", bad, summary)
+
+
+@pytest.mark.slow
+def test_seam_guard(match):
+    # 导入边界一圈、两圈的宽松护栏（已知问题 7.8）。调度 11-09 定的规矩"统计类再因为噪声挂就挪到 slow"：
+    # kexu 合 main 前的完整回归里挂过（边界装饰类 0.0318% > 没导入部分的 5 倍 0.0250%），单独重跑过。判据不变，只是不进日常回归
+    acc, summary, _ = match
     seam = Diff(examples=[]).add(acc["ring1"]).add(acc["ring2"])
     guard = seam_guard(seam, acc["not_imported"])
     assert not guard, ("导入边界护栏", guard, summary)
