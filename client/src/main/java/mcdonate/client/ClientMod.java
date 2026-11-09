@@ -73,6 +73,22 @@ public final class ClientMod implements ClientModInitializer {
         PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
         PayloadTypeRegistry.playC2S().register(InviteRequest.TYPE, InviteRequest.CODEC);
         controller = new DonorController(new RealEnv());
+        // 游戏内来源上色和算力面板（docs/overlay-plan.md，kexu）：每秒经控制通道要一次 worker 的 STATUS
+        mcdonate.client.overlay.OverlayClient.install(new mcdonate.client.overlay.OverlayClient.WorkerLink() {
+            @Override
+            public boolean running() {
+                WorkerProcess w = worker;
+                return w != null && w.alive();
+            }
+
+            @Override
+            public void send(String line) {
+                WorkerProcess w = worker;
+                if (w != null) {
+                    w.send(line); // 每秒一次 STATUS，不记日志（RealEnv.sendToWorker 会记）
+                }
+            }
+        });
         ClientPlayNetworking.registerGlobalReceiver(DonorInvite.TYPE, (invite, context) -> onInvite(invite));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             for (ConsentDriver d : FabricLoader.getInstance().getEntrypoints("mcdonate:consent_driver", ConsentDriver.class)) {
@@ -237,7 +253,10 @@ public final class ClientMod implements ClientModInitializer {
                         s.memoryMb(), s.threads(), ProcessHandle.current().pid(), invite.host() + ":" + invite.port(), invite.seed());
                 worker = WorkerProcess.start(WorkerLaunch.command(o, System.getProperty("os.name")),
                         WorkerLaunch.environment(invite.token()), f.root(),
-                        line -> Minecraft.getInstance().execute(() -> controller.onWorkerLine(line)));
+                        line -> {
+                            mcdonate.client.overlay.OverlayClient.onWorkerLine(line); // 只存最新的 STATUS，哪个线程都行
+                            Minecraft.getInstance().execute(() -> controller.onWorkerLine(line));
+                        });
                 throttle = null;
                 lastError = "";
                 LOG.info("worker 起来了（pid {}，{} 个线程、{} MB，coordinator {}:{}）", worker.pid(), s.threads(), s.memoryMb(),
