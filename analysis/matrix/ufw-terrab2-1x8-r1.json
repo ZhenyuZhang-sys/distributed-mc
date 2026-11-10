@@ -1,0 +1,127 @@
+{
+ "name": "ufw-terrab2-1x8-r1",
+ "seed": 424242,
+ "repeats": 1,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  },
+  "2x4": {
+   "donors": 2,
+   "env": {
+    "WORKER_CPUS": "4"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-10：用户真机两人两 donor 时预生成区领地被交错切开、接缝落给服务器。验证\"territory 按连续大块分\"的测量，main adf2706（修之前）对 fish-territory d5f015b（块改成有时间时的偏好，紧任务按截止，块默认 4，codex-audit 第二十三节），同槽位按轮切代码交替。对照：1 个 donor 8 核（生成池 = 核数），1 个玩家，boost 开，不用 Chunky 缓存区（预生成全靠 donor）：站 60 秒预生成再直线 33.5；!warm 风格：只站 15 秒（只预生成起点一段）再边飞边算。各 2 轮。服务器用户同款 2 核，预算 2000，L16 C6。新指标：领地碎片数、接缝边、夹在 donor 之间由服务器补的 chunk、被打回的、整 tile 没被接受的、前方空白按接缝附近 / 其余。 第 1 轮。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "terrab2-stand60-r1",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     0
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "boost": [
+     1
+    ],
+    "stand_s": [
+     60
+    ],
+    "repeats": 1
+   },
+   {
+    "group": "terrab2-warm15-r1",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     0
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "boost": [
+     1
+    ],
+    "stand_s": [
+     15
+    ],
+    "repeats": 1
+   }
+  ]
+ }
+}
