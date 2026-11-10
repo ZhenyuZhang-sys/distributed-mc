@@ -309,9 +309,14 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60', title='后台导入
         L += ab(f'领地连续分块（fish-territory 40dd535）对 main 03eaa9e，{slot.replace("u1", "k4")}（同槽位按轮切代码）',
                 '用户真机两人两 donor 时预生成区领地被交错切开、夹缝落给服务器。2 个 donor 各 4 核（k2、k3）/ 对照 1 个 8 核（k4），生成池 = 核数；'
                 'boost 开，不用缓存区（预生成全靠 donor），站 60 秒或只站 15 秒（!warm 风格）再直线 33.5。领地按 tile、按 imports.jsonl 认主；'
-                '"夹在中间给服务器"= 没被 donor 接受、4 邻里有 ≥2 个不同 donor 的 tile；接缝附近 = 接缝 / 夹缝 tile 两格以内。只认同槽位比较。',
+                '"夹在中间给服务器"= 没被 donor 接受、4 邻里有 ≥2 个不同 donor 的 tile；接缝附近 = 接缝 / 夹缝 tile 两格以内。只认同槽位比较。'
+                '**未完成**：11-10 05:03 ET 用户决定收尾，按调度停掉。原计划每版每场景 2 轮（k4 1 轮），只跑完了表里的格数（看"几轮"）；'
+                'd5f015b（块改成有时间时的偏好）对 main 的那组排着、一轮都没开始。',
                 [f'{slot}-terrab-main', f'{slot}-terrab-40dd535'],
                 lambda r, n: f"{n.split('-')[-1]} · 站 {r.get('stand_s')} 秒", cols=TERR_COLS)
+    L += ['读法（未完成，2×4 每臂每场景只 1 轮，只作方向参考）：40dd535 让"夹在中间给服务器的 tile"从 53～59 降到 13～19、打回的 chunk 和整 tile '
+          '没被接受的也少了，这是它要修的；但前方空白反而变差（4.3～5.1 s 对 3.1～3.8 s）、前方已就绪变短（50～59 对 62～84 格），按 tile 连通的碎片数'
+          '反而多（30～35 对 18～24）。1×8 对照不受影响。d5f015b（块改成有时间时的偏好、紧任务按截止）正是针对"按块派活拖慢前方"的，没测到。', '']
     L += ab('领地接缝：修之前的基线（main 03eaa9e + kexu，k3 2×4、k4 1×8）', '同上一组条件。',
             ['k3-terr-ufw-terr-2x4', 'u1-terr-ufw-terr-1x8'],
             lambda r, n: f"{'2×4' if r.get('donors') == 2 else '1×8'} · 站 {r.get('stand_s')} 秒", cols=TERR_COLS)
