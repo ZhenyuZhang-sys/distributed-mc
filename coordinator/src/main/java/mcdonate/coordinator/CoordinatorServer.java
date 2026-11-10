@@ -397,7 +397,9 @@ final class CoordinatorServer {
             // 同时记下在途表读数（这个任务还算在途），速率按实测并行度算
             long nowMs = System.currentTimeMillis();
             long[] load = tasks.load(c.workerId);
-            throughput.record(c.workerId, nowMs - sampleAt, nowMs, load[0], load[1], tasks.inFlightAtLease(r.taskId()));
+            // 11-10：后台 tile 的延迟不拿来判断并行（地形贵），照样算进实测并行度
+            throughput.record(c.workerId, nowMs - sampleAt, nowMs, load[0], load[1], tasks.inFlightAtLease(r.taskId()),
+                    tasks.currentlyBackground(r.taskId()));
         }
         if (r.ok()) {
             String world = r.tile().getString("worldId");

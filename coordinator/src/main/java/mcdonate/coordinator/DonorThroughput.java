@@ -48,17 +48,26 @@ final class DonorThroughput {
      * 11-09（codex-audit 第十五节）：速率按这两个量算实测并行度，不按完成间隔（空档、批次边界都会估偏）。
      */
     synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs) {
-        record(worker, durationMs, completedAtMs, busyMs, loadMs, -1);
+        record(worker, durationMs, completedAtMs, busyMs, loadMs, -1, false);
     }
 
     /** 同上，再带派出时这个 worker 手上一共几个（含这个，不知道是 -1）：往上探 lanes 用。 */
     synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs, int inFlightAtLease) {
+        record(worker, durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, false);
+    }
+
+    /**
+     * 同上，background：这是加速模式的后台 tile。它照样算进实测并行度和速率（是真做了的活），但它的延迟不拿来往上探、回退、
+     * 估"单独做一个要多久"和"马上开始的延迟"（11-10 kexu k4：后台 tile 离得远、单独做，比前方相邻的贵一倍，慢样本把 lanes 退到 1）。
+     */
+    synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs, int inFlightAtLease,
+            boolean background) {
         Deque<long[]> d = samples.computeIfAbsent(worker, k -> new ArrayDeque<>());
-        d.addLast(new long[] {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease});
+        d.addLast(new long[] {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0});
         while (d.size() > WINDOW) {
             d.pollFirst();
         }
-        if (inFlightAtLease > 0) {
+        if (inFlightAtLease > 0 && !background) {
             probe(worker, durationMs, inFlightAtLease);
         }
     }
@@ -66,10 +75,10 @@ final class DonorThroughput {
     /**
      * 往上探（调度 11-09）：实测并行度只是"我们派了多少"，估低了只派 1～2 个，测出来也就 1～2，会自我强化。
      * 每个 worker 记一个探路的 lanes：在 lanes 个都占着时做完的，延迟不超过单独做时的 1.2 倍，连续 3 个就 +1（最多 MAX_CONCURRENCY）；
-     * 超过 1.5 倍就退到"派出时手上的个数 − 1"（不比现在高），之后 20 个结果里不再往上探（一个一个做的 donor 不来回试）。
+     * 超过 1.5 倍就退到"派出时手上的个数 − 1"（不比现在高），之后 30 个结果里不再往上探（一个一个做的 donor 不来回试）。
      */
     static final double PROBE_OK = 1.2, PROBE_BAD = 1.5;
-    static final int PROBE_GOOD = 3, PROBE_HOLD = 20;
+    static final int PROBE_GOOD = 3, PROBE_HOLD = 30, PROBE_SLOW = 2;
 
     /** worker → {lanes, 连续好的个数, 还要等几个结果才能再往上探}。 */
     private final Map<Integer, int[]> probes = new HashMap<>();
@@ -77,21 +86,29 @@ final class DonorThroughput {
     private void probe(int worker, long durationMs, int k) {
         if (k == 1) {
             // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
-            long[] solo = samples.get(worker).stream().filter(s -> s[4] == 1).mapToLong(s -> s[0]).sorted().toArray();
+            long[] solo = samples.get(worker).stream().filter(s -> s[4] == 1 && s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
             soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
         }
-        int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0, 0});
+        // {lanes, 连续好的个数, 冷却还剩几个结果, 连续慢的个数}
+        int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0, 0, 0});
         if (st[2] > 0) {
             st[2]--;
         }
         long base = soloLatencyMs(worker);
         if (k >= 2 && durationMs > PROBE_BAD * base) {
-            // 和别的一起做、明显慢了：不管当时占没占满 lanes 都退（codex-audit 第十六节：冷启动一次派 4 个、一个一个做的 donor，
-            // 原来只看占满的那一个，退到 3 就停了）。只往下退，退到派出时手上的个数 − 1
-            st[0] = Math.max(1, Math.min(st[0], k - 1));
+            // 和别的一起做、明显慢了：不管当时占没占满 lanes 都算（codex-audit 第十六节：冷启动一次派 4 个、一个一个做的 donor，
+            // 原来只看占满的那一个，退到 3 就停了）。连着两个才退（11-10：一个贵的 tile 不等于并行多了变慢）。
+            // 只往下退，退到派出时手上的个数 − 1
             st[1] = 0;
-            st[2] = PROBE_HOLD;
+            if (++st[3] >= PROBE_SLOW) {
+                st[0] = Math.max(1, Math.min(st[0], k - 1));
+                st[2] = PROBE_HOLD;
+                st[3] = 0;
+            }
             return;
+        }
+        if (k >= Math.max(2, st[0]) && durationMs <= PROBE_OK * base) {
+            st[3] = 0; // 占满 lanes 时也不慢：前面那个慢的是 tile 贵（没占满时的快样本不算，2 个并行的 donor 探到 3 时第 2 个总是快的）
         }
         if (k < st[0]) {
             return; // 没占满 lanes：看不出多一个行不行
@@ -136,7 +153,7 @@ final class DonorThroughput {
         // 派出时手上不超过 lanes 个、也不比单独做慢一半以上的（慢一半以上的是在 worker 上排了队，codex-audit 第十六节）
         int lanes = lanes(worker);
         long cap = (long) (PROBE_BAD * soloLatencyMs(worker));
-        long[] v = d.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap).mapToLong(s -> s[0]).sorted().toArray();
+        long[] v = d.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap && s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
         return v.length == 0 ? soloLatencyMs(worker) : v[v.length / 2];
     }
 
