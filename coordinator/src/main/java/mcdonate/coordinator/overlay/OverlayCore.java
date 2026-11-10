@@ -38,8 +38,15 @@ import mcdonate.common.net.ProvenanceUpdate.Summary;
  * </ul>
  */
 public final class OverlayCore {
-    /** stable：稳定名字（颜色按它算，比如 player:&lt;uuid&gt;）；display：显示名。 */
-    public record Name(String stable, String display) {}
+    /**
+     * stable：稳定名字（颜色按它算，比如 player:&lt;uuid&gt;）；display：显示名。provisional：显示名是占位的
+     * （导入账本里查不到玩家名，codex-audit 第二十二节 O1），以后有真名时换掉；不是占位的名字不会被占位名盖掉。
+     */
+    public record Name(String stable, String display, boolean provisional) {
+        public Name(String stable, String display) {
+            this(stable, display, false);
+        }
+    }
 
     /** 导入账本：这个 chunk 是哪个 donor 导入的（主线程上查）。没有记录是 empty。 */
     @FunctionalInterface
@@ -71,6 +78,9 @@ public final class OverlayCore {
     private final Long2IntOpenHashMap state = new Long2IntOpenHashMap();   // chunk → 来源编码，见 code()
     private final LongOpenHashSet dirty = new LongOpenHashSet();
     private final List<Donor> donors = new ArrayList<>();
+    private final List<Boolean> provisional = new ArrayList<>();   // 和 donors 同下标：显示名是不是占位的
+    private final Set<Integer> renamed = new HashSet<>();          // 这一秒换了显示名的 donor：下一包带给所有订阅者
+    private final Set<Integer> knownWorkers = new HashSet<>();     // 见过的 worker 编号（refreshNames 用；donorByWorker 每秒清）
     private final Map<String, Integer> donorByStable = new HashMap<>();
     private final Map<Integer, Integer> donorByWorker = new HashMap<>();
     private final Map<String, Long> importedBy = new HashMap<>();
@@ -186,18 +196,42 @@ public final class OverlayCore {
         if (cached != null) {
             return cached;
         }
-        Name n = names.apply(worker).orElse(new Name("worker:" + worker, "#" + worker));
+        Name n = names.apply(worker).orElse(new Name("worker:" + worker, "#" + worker, true));
+        knownWorkers.add(worker);
         int idx = donorIndex(n);
         donorByWorker.put(worker, idx);
         return idx;
     }
 
-    /** 按稳定名字分配编号（在线的 worker 和导入账本里的 donor 共用：同一个人同一种颜色）。 */
+    /**
+     * 按稳定名字分配编号（在线的 worker 和导入账本里的 donor 共用：同一个人同一种颜色）。已有这个人时，拿到不是占位的名字
+     * （或者原来的是占位的）就把显示名换成新的，编号和颜色不变（codex-audit 第二十二节 O1：占位名不能冻住、改名也要跟上）。
+     */
     private int donorIndex(Name n) {
-        return donorByStable.computeIfAbsent(n.stable(), k -> {
+        Integer have = donorByStable.get(n.stable());
+        if (have == null) {
             donors.add(new Donor(donors.size(), clip(n.display(), 32), clip(n.stable(), 64)));
+            provisional.add(n.provisional());
+            donorByStable.put(n.stable(), donors.size() - 1);
             return donors.size() - 1;
-        });
+        }
+        Donor cur = donors.get(have);
+        String display = clip(n.display(), 32);
+        if ((!n.provisional() || provisional.get(have)) && !display.equals(cur.name())) {
+            donors.set(have, new Donor(have, display, cur.key()));
+            renamed.add(have);
+        }
+        if (!n.provisional()) {
+            provisional.set(have, false);
+        }
+        return have;
+    }
+
+    /** 主线程：重新查一遍认识的 worker 的名字（玩家进服、改名时由发送器调），换了的下一包带上。 */
+    public void refreshNames() {
+        for (Integer worker : List.copyOf(knownWorkers)) {
+            names.apply(worker).ifPresent(this::donorIndex);
+        }
     }
 
     private static String clip(String s, int max) {
@@ -240,6 +274,7 @@ public final class OverlayCore {
 
     /** 每秒一次：取出事件，给每个订阅了的在线玩家算要发的包。返回 玩家 → 包（没东西发的玩家不在里面）。 */
     public Map<UUID, List<ProvenanceUpdate>> tick(List<View> views) {
+        donorByWorker.clear();   // 每秒重新查一次名字（不然 worker 编号缓存会挡住改名和占位名的刷新）
         Event e;
         while ((e = queue.poll()) != null) {
             apply(e);
@@ -281,6 +316,7 @@ public final class OverlayCore {
                     referenced.add(en.donor());
                 }
             }
+            referenced.addAll(renamed);   // 换了显示名的：这一秒没有 chunk 提到它也带上（客户端按编号换图例）
             List<Donor> newDonors = new ArrayList<>();
             for (int d : referenced) {
                 newDonors.add(donors.get(d));
@@ -288,7 +324,7 @@ public final class OverlayCore {
             Summary summary = (sub.flags & OverlaySubscribe.HUD) != 0
                     ? new Summary(Math.max(0, donorsOnline.getAsInt()), importedTotal, importedBy.getOrDefault("player:" + v.player(), 0L))
                     : null;
-            if (!full && entries.isEmpty() && summary == null) {
+            if (!full && entries.isEmpty() && summary == null && newDonors.isEmpty()) {
                 continue;
             }
             List<ProvenanceUpdate> ups = ProvenanceUpdate.split(full, v.cx(), v.cz(), newDonors, entries, summary);
@@ -297,6 +333,7 @@ public final class OverlayCore {
             out.put(v.player(), ups);
         }
         dirty.clear();
+        renamed.clear();
         return out;
     }
 }

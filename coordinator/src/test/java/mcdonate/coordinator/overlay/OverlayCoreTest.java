@@ -255,4 +255,65 @@ class OverlayCoreTest {
         assertEquals(0, asked[0]);
         assertEquals(1, ups.get(0).summary().importedTotal());
     }
+
+    /** 每包里这个编号的 donor 叫什么（没有就 null）。 */
+    static String donorName(List<ProvenanceUpdate> ups, int index) {
+        return ups == null ? null : ups.stream().flatMap(u -> u.donors().stream()).filter(d -> d.index() == index)
+                .map(ProvenanceUpdate.Donor::name).reduce((a, b) -> b).orElse(null);
+    }
+
+    /** codex-audit 第二十二节 O1：账本先用占位名补上，这个 donor 后来在线、真名出来了，图例要换成真名（同编号、同颜色）。 */
+    @Test
+    void aLaterLiveNameRefreshesTheLedgerFallbackLabel() {
+        Map<Integer, OverlayCore.Name> live = new java.util.HashMap<>();
+        OverlayCore c = new OverlayCore(id -> Optional.ofNullable(live.get(id)), () -> 1,
+                (cx, cz) -> cx == 40 ? Optional.of(new OverlayCore.Name("player:" + ALICE, "donor w-1", true)) : Optional.empty());
+        c.subscribe(BOB, new OverlaySubscribe(true, false));
+        c.onEvent(40, 0, Provenance.Kind.RESUMED, -1);
+        List<ProvenanceUpdate> first = c.tick(List.of(new OverlayCore.View(BOB, 40, 0, 2))).get(BOB);
+        int idx = first.stream().flatMap(u -> u.chunks().stream()).filter(e -> e.cx() == 40).findFirst().orElseThrow().donor();
+        assertEquals("donor w-1", donorName(first, idx));
+        live.put(7, new OverlayCore.Name("player:" + ALICE, "Alice"));
+        c.onEvent(41, 0, Provenance.Kind.DONOR, 7);
+        List<ProvenanceUpdate> next = c.tick(List.of(new OverlayCore.View(BOB, 40, 0, 2))).get(BOB);
+        assertEquals("Alice", donorName(next, idx));
+        assertEquals(idx, next.stream().flatMap(u -> u.chunks().stream()).filter(e -> e.cx() == 41).findFirst().orElseThrow().donor());
+    }
+
+    /** 在线时改了名（同一个稳定名字）：下一包换成新名字；worker 编号缓存不能把刷新挡住。 */
+    @Test
+    void liveRenameIsPickedUp() {
+        String[] name = {"Alice"};
+        OverlayCore c = new OverlayCore(id -> Optional.of(new OverlayCore.Name("player:" + ALICE, name[0])), () -> 1);
+        c.subscribe(BOB, new OverlaySubscribe(true, false));
+        c.onEvent(0, 0, Provenance.Kind.DONOR, 7);
+        c.tick(List.of(new OverlayCore.View(BOB, 0, 0, 2)));
+        name[0] = "Alicia";
+        c.onEvent(1, 0, Provenance.Kind.DONOR, 7);
+        assertEquals("Alicia", donorName(c.tick(List.of(new OverlayCore.View(BOB, 0, 0, 2))).get(BOB), 0));
+    }
+
+    /** 占位名不盖掉真名：Alice 先在线，后来账本只能给出占位名的 chunk，图例照样是 Alice。 */
+    @Test
+    void ledgerFallbackNeverOverwritesARealName() {
+        OverlayCore c = new OverlayCore(id -> Optional.of(new OverlayCore.Name("player:" + ALICE, "Alice")), () -> 1,
+                (cx, cz) -> Optional.of(new OverlayCore.Name("player:" + ALICE, "donor w-1", true)));
+        c.subscribe(BOB, new OverlaySubscribe(true, false));
+        c.onEvent(0, 0, Provenance.Kind.DONOR, 7);
+        c.onEvent(1, 0, Provenance.Kind.RESUMED, -1);
+        assertEquals("Alice", donorName(c.tick(List.of(new OverlayCore.View(BOB, 0, 0, 2))).get(BOB), 0));
+    }
+
+    /** 名字换了但这一秒没有新的 chunk 提到它：也要发一包带上新名字（客户端按编号替换图例）。 */
+    @Test
+    void renamedDonorIsSentEvenWithoutNewChunks() {
+        String[] name = {"Alice"};
+        OverlayCore c = new OverlayCore(id -> Optional.of(new OverlayCore.Name("player:" + ALICE, name[0])), () -> 1);
+        c.subscribe(BOB, new OverlaySubscribe(true, false));
+        c.onEvent(0, 0, Provenance.Kind.DONOR, 7);
+        c.tick(List.of(new OverlayCore.View(BOB, 0, 0, 2)));
+        name[0] = "Alicia";
+        c.refreshNames();   // 玩家进服、改名时由发送器调
+        assertEquals("Alicia", donorName(c.tick(List.of(new OverlayCore.View(BOB, 0, 0, 2))).get(BOB), 0));
+    }
 }
