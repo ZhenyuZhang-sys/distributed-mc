@@ -45,6 +45,21 @@ public final class TaskQueue {
      * 服务器只有 2 核时自己只够做最近的，donor 要先包下路线）。
      */
     static final int CORRIDOR_CHUNKS = Config.getInt("corridorChunks", 6);
+    /**
+     * 11-10：领地按 TERRITORY_BLOCK × TERRITORY_BLOCK 个 tile 的块认主（开 territory 时；0 是不按块）。
+     * 用户两人一起飞（M5 + Windows，1 核服务器）："两人一起跑前面一段比一个人还卡"：两个 donor 交错领 tile，领地切成很多片，
+     * 夹在两个 donor 中间的 tile 全落给服务器。按块认主、先长自己的块、新开的块不挨着别人的，领地就是连续的大块，
+     * 接缝只在块和块之间（沿飞行方向一段一段）。默认 4 个 tile = 16 个 chunk：codex-audit 第二十三节的路线模型里
+     * 直飞、45 度斜飞、沿块边界飞、慢 donor 先拿块都比不按块好（按时 183～189/192，不按块 138～186）；8 在沿边界飞时没改善。
+     * 块只管"有时间的"：离截止不到 TERRITORY_URGENT_MS 的谁能做谁做（见下）。
+     */
+    static final int TERRITORY_BLOCK = Config.getInt("territoryBlock", 4);
+    /**
+     * 离截止（importBy，不知道时 due）不到这么多毫秒的是"紧的"：紧的只按截止先后，谁能做谁做，别人的块也能领
+     * （codex-audit 第二十三节 T1/T2：块被慢 donor 或后台占着时前方紧任务没人能派、剪枝却按快 donor 估；块优先压过截止）。
+     * 有时间的才按块：不进别人的块，先自己的。
+     */
+    static final long TERRITORY_URGENT_MS = Config.getLong("territoryUrgentMs", 4_000);
 
     /** 11-09：找需求算过、没有截止时间的 tile（侧后方）不派。false 退回原来的（donor 空着时也派它们），对照用。 */
     static final boolean SKIP_NO_DEADLINE = !"false".equalsIgnoreCase(Config.get("skipNoDeadline", "true"));
@@ -162,6 +177,66 @@ public final class TaskQueue {
                 backgroundAccepted.merge(t.backgroundWorker, 1, Integer::sum);
             }
         }
+    }
+
+    /** 块 → 认主的 donor（ownerKey）。 */
+    private final Map<Long, String> blockOwners = new HashMap<>();
+
+    private static long blockOf(int tx, int tz) {
+        return tileKey(Math.floorDiv(tx, TERRITORY_BLOCK), Math.floorDiv(tz, TERRITORY_BLOCK));
+    }
+
+    private boolean blocksOn(Task c) {
+        return features.on(Features.TERRITORY) && TERRITORY_BLOCK > 0 && c.hardWorld == null;
+    }
+
+    /**
+     * 这个 worker 领 c 的先后：0 自己的块（或真实相邻导入只有自己，T3）；1 没人的块、挨着自己的块；2 没人的块、不挨着别人的块；
+     * 3 没人的块、挨着别人的；4 别人的块（只有紧的才领）。不按块时都是 0。
+     */
+    private int blockTier(Task c, int worker, Set<String> owners) {
+        if (!blocksOn(c)) {
+            return 0;
+        }
+        String me = ownerKey(worker);
+        int bx = Math.floorDiv(c.tx, TERRITORY_BLOCK), bz = Math.floorDiv(c.tz, TERRITORY_BLOCK);
+        String o = blockOwners.get(tileKey(bx, bz));
+        if (o != null) {
+            if (!o.equals(me) && owners != null && owners.size() == 1 && owners.contains(me) && mineInBlock(c, worker)) {
+                // 真实的 tile 亲缘高于别人的粗块（T3：硬认主的 tile 导入进了别人的块，旁边排着的只能给它）。
+                // 只看同一块里自己的：从自己块的边上挨过来的不算（不然一格一格吃进别人的块）
+                return 0;
+            }
+            return o.equals(me) ? 0 : 4;
+        }
+        boolean mine = false, other = false;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                String n = dx == 0 && dz == 0 ? null : blockOwners.get(tileKey(bx + dx, bz + dz));
+                if (n != null) {
+                    if (n.equals(me)) {
+                        mine = true;
+                    } else {
+                        other = true;
+                    }
+                }
+            }
+        }
+        return mine ? 1 : !other ? 2 : 3;
+    }
+
+    /** c 旁边、同一块里有没有这个 worker 正租着的或它的世界导入的 tile。 */
+    private boolean mineInBlock(Task c, int worker) {
+        long block = blockOf(c.tx, c.tz);
+        String world = workerWorlds.get(worker);
+        for (Task a : tasks.values()) {
+            if (adjacent(a, c) && blockOf(a.tx, a.tz) == block
+                    && ((a.state == State.LEASED && a.worker == worker)
+                        || (a.state == State.DONE && world != null && world.equals(a.doneWorld)))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 一个 worker 在领地上的名字：知道它的世界就用世界，否则用它的编号。 */
@@ -328,7 +403,23 @@ public final class TaskQueue {
 
     /** 记下 worker 的 donor 世界（收到它的结果时调）。 */
     public synchronized void setWorkerWorld(int worker, String world) {
+        String before = ownerKey(worker);
+        boolean wasKnown = workerWorlds.containsKey(worker);
         workerWorlds.put(worker, world);
+        String after = ownerKey(worker);
+        if (before.equals(after)) {
+            return;
+        }
+        if (!wasKnown) {
+            blockOwners.replaceAll((b, o) -> o.equals(before) ? after : o);   // 知道世界之前领的块（worker:N）归这个世界
+        } else if (!worldOnline(before, worker)) {
+            blockOwners.values().removeIf(before::equals);   // 换了世界（T5）：旧世界没别人在线了才放它的块，不整组改名
+        }
+    }
+
+    /** 除了 except，还有没有在线的 worker 是这个 ownerKey（"world:W"）。 */
+    private boolean worldOnline(String key, int except) {
+        return workerWorlds.entrySet().stream().anyMatch(e -> e.getKey() != except && key.equals("world:" + e.getValue()));
     }
 
     private boolean eligible(Task t, int worker) {
@@ -367,12 +458,16 @@ public final class TaskQueue {
         }
         boolean byDue = features.on(Features.DEADLINE);
         Task t = null;
+        long tKey1 = Long.MAX_VALUE, tKey2 = Long.MAX_VALUE;
         Task bg = null;
+        int bgTier = Integer.MAX_VALUE;
+        long nowMs = clock.getAsLong();
         for (var it = queue.iterator(); it.hasNext(); ) {
             Task c = tasks.get(it.next());
+            Set<String> owners = null;
             if (features.on(Features.TERRITORY) && c.hardWorld == null) {
                 // 7.1 按领地派任务：挨着某个 donor 的只派给它；挨着两个 donor 的不派，交给服务器
-                Set<String> owners = territoryOwners(c);
+                owners = territoryOwners(c);
                 if (owners.size() >= 2) {
                     c.state = State.DROPPED;
                     c.droppedAt = clock.getAsLong();
@@ -386,9 +481,11 @@ public final class TaskQueue {
             if (!eligible(c, worker)) {
                 continue;
             }
+            int tier = blockTier(c, worker, owners);
             if (backgroundTask(c, byDue)) {
-                if (boost && bg == null) {
-                    bg = c; // 后台的按入队顺序（一圈一圈往外排进来的），留到最后
+                if (boost && tier < 4 && tier < bgTier) {
+                    bg = c; // 后台的按入队顺序（一圈一圈往外排进来的），留到最后；同一档里先入队的（T6：也按块）
+                    bgTier = tier;
                 }
                 continue;
             }
@@ -400,12 +497,29 @@ public final class TaskQueue {
             if (limit != Long.MAX_VALUE && !dueOk.test(limit)) {
                 continue;
             }
-            if (!byDue) {
-                t = c; // 先进先出：第一个合适的
-                break;
+            // 11-10 按块：紧的（离截止不到 TERRITORY_URGENT_MS）只按截止、谁能做谁做；有时间的不进别人的块，
+            // 先自己的块、再挨着自己的、再不挨着别人的。同一档里照旧（先进先出，或走廊、截止）
+            long dk = deadlineKey(c);
+            boolean urgent = byDue && dk != Long.MAX_VALUE && dk - nowMs < TERRITORY_URGENT_MS;
+            if (!urgent && tier == 4) {
+                continue; // 别人的块、还有时间：留给它
             }
-            if (t == null || DISPATCH_ORDER.compare(c, t) < 0) {
+            if (!byDue) {
+                if (t == null || tier < tKey1) {
+                    t = c; // 先进先出：同一档里第一个合适的
+                    tKey1 = tier;
+                }
+                if (tier == 0) {
+                    break;
+                }
+                continue;
+            }
+            // 排序键：紧的在前、按截止（和 pruneHopeless 一样）；有时间的按块档次
+            long k1 = urgent ? -1 : tier, k2 = urgent ? dk : 0;
+            if (t == null || k1 < tKey1 || (k1 == tKey1 && (k2 < tKey2 || (k2 == tKey2 && DISPATCH_ORDER.compare(c, t) < 0)))) {
                 t = c; // 7.2：最急的先派（11-09：知道前沿时按 importBy，和 pruneHopeless 的顺序一致）
+                tKey1 = k1;
+                tKey2 = k2;
             }
         }
         if (t == null && bg != null && !holdsDeadlineTask(worker)
@@ -416,6 +530,9 @@ public final class TaskQueue {
             return Optional.empty();
         }
         t.leasedAsBackground = t == bg;
+        if (blocksOn(t)) {
+            blockOwners.putIfAbsent(blockOf(t.tx, t.tz), ownerKey(worker));
+        }
         if (t.leasedAsBackground) {
             backgroundLeased.merge(worker, 1, Integer::sum);
             t.backgroundWorker = worker;
@@ -701,6 +818,7 @@ public final class TaskQueue {
         tasks.clear();
         byTile.clear();
         queue.clear();
+        blockOwners.clear(); // T4：块也不带进下一轮（真实导入的归属在账本里，扫描照旧保护）
         long now = clock.getAsLong();
         leases.forEach((w, ids) -> ids.forEach(id -> meters.get(w).end(now))); // 在途表的累计量留着，只把在途数归零
         leases.clear();
@@ -932,6 +1050,11 @@ public final class TaskQueue {
     /** worker 断线：它手上的任务立刻回到队首。返回收回的任务。 */
     public synchronized List<Long> workerGone(int worker) {
         releaseSoft(worker);
+        // 它领的块放出来（别的 donor 接着做；挨着它导入过的 tile 照旧按 territoryOwners 判）
+        String key = ownerKey(worker);
+        if (!worldOnline(key, worker)) {
+            blockOwners.values().removeIf(key::equals);
+        }
         workerWorlds.remove(worker);
         List<Long> ids = new ArrayList<>(leases.getOrDefault(worker, Set.of()));
         for (int i = ids.size() - 1; i >= 0; i--) {
@@ -1023,6 +1146,12 @@ public final class TaskQueue {
             t.state = State.QUEUED;
             queue.addFirst(t.id);
         }
+    }
+
+    /** 导入被接受时来自哪个 donor 世界（没导入或整个丢弃是 null）。 */
+    public synchronized String doneWorld(long taskId) {
+        Task t = tasks.get(taskId);
+        return t == null ? null : t.doneWorld;
     }
 
     public synchronized State state(long taskId) {
