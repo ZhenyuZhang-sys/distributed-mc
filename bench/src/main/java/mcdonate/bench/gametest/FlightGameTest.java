@@ -291,4 +291,23 @@ public class FlightGameTest implements FabricGameTest {
             delete(h, run);
         });
     }
+
+    /**
+     * 站着也朝路线方向看（调度 11-10 加速演示）：coordinator 的后台扫描站着时按视线 yaw 往前铺，假玩家的朝向要跟着当前这一段，
+     * 包括速度 0 的那段（原来 place 一直保留出生时的朝向）。
+     */
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
+    public void routeFacesSegmentYawEvenWhileStanding(GameTestHelper h) {
+        ServerPlayer p = player(h);
+        p.setYRot(0);
+        String run = newRun("face");
+        check(run(h, "bench fly route " + p.getStringUUID() + " " + run + " -90,0,3;-90,8,1") == 1, "fly route 失败");
+        h.runAfterDelay(20, () -> {   // 还在站着那一段（前 3 秒）
+            check(Math.abs(net.minecraft.util.Mth.wrapDegrees(p.getYRot() + 90)) < 1e-3, "站着时朝向应该是 -90（东）：" + p.getYRot());
+            h.succeedWhen(() -> {
+                done(h, run);
+                delete(h, run);
+            });
+        });
+    }
 }
