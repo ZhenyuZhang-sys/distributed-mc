@@ -408,6 +408,7 @@ def test_driver_stands_before_flying_and_snapshots_status(tmp_path):
     import json
     runner, ctl, flyer, fly, drive = real_rig(tmp_path)
     runner.status['workers'] = [dict(id=7, name='w', done=0, boost=True, backgroundLeased=5, backgroundAccepted=4)]
+    runner.status['importQueue'] = dict(foreground=0, background=2, backgroundImported=3)   # f9d27c0：后台结果单独排队
     cell = rcell('firework')
     cell['params']['stand_s'] = 1
     out = drive(cell, tmp_path / 'c16')
@@ -419,6 +420,7 @@ def test_driver_stands_before_flying_and_snapshots_status(tmp_path):
     snap = json.loads((tmp_path / 'c16' / 'donor-status-stand.json').read_text())
     assert snap['workers'][0]['backgroundLeased'] == 5
     assert out['stand_bg_leased'] == 5 and out['stand_bg_accepted'] == 4
+    assert out['stand_bg_imported'] == 3 and out['bg_imported'] == 3 and out['bg_pending'] == 2
     assert out['stand_accepted'] == snap['accepted']   # 这一轮开始前是 0（假飞行一下就飞完，所以快照里已经有飞行时的）
 
 

@@ -318,7 +318,11 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             ws = st.get('workers', [])
             result.update(stand_accepted=st.get('accepted', 0) - (counts_before or {}).get('imports_accepted', 0),
                           stand_bg_leased=sum(w.get('backgroundLeased', 0) for w in ws),
-                          stand_bg_accepted=sum(w.get('backgroundAccepted', 0) for w in ws))
+                          stand_bg_accepted=sum(w.get('backgroundAccepted', 0) for w in ws),
+                          stand_bg_imported=(st.get('importQueue') or {}).get('backgroundImported'))
+        if status_after is not None and status_after.get('importQueue'):   # f9d27c0：后台结果导过几个、飞完时还排着几个
+            result['bg_imported'] = status_after['importQueue'].get('backgroundImported')
+            result['bg_pending'] = status_after['importQueue'].get('background')
         if p.get('boost') is not None and status_after is not None:
             bs = {w.get('boost') for w in status_after.get('workers', [])}
             result['boost_effective'] = bs.pop() if len(bs) == 1 else None
