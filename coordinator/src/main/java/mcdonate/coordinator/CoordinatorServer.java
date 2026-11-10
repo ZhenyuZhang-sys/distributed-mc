@@ -525,7 +525,7 @@ final class CoordinatorServer {
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
                 + ",\"maxLeaseTotalMs\":" + TaskQueue.MAX_LEASE_TOTAL_MS + ",\"importBudgetMs\":" + IMPORT_BUDGET_MS
-                + ",\"corridorChunks\":" + TaskQueue.CORRIDOR_CHUNKS + ",\"skipNoDeadline\":" + TaskQueue.SKIP_NO_DEADLINE
+                + ",\"corridorChunks\":" + TaskQueue.CORRIDOR_CHUNKS + ",\"demandForwardFirst\":" + DemandScanner.FORWARD_FIRST + ",\"skipNoDeadline\":" + TaskQueue.SKIP_NO_DEADLINE
                 + ",\"importFrontier\":" + DemandScanner.IMPORT_FRONTIER + ",\"importMarginMs\":" + TaskQueue.IMPORT_MARGIN_MS
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
@@ -551,7 +551,7 @@ final class CoordinatorServer {
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
                     .append('}');
         }
-        return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
+        return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"playerTicketThrottle\":").append(PlayerTicketThrottle.json(server)).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
                 .append(",\"discarded_conflict\":").append(discardedConflict.get())
                 .append(",\"discard_ratio\":").append(discardRatio())
                 .append(",\"discarded\":{\"late\":").append(discardedBy.get(RegionRules.Discard.LOADED).get())

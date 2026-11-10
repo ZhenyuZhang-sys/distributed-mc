@@ -44,6 +44,8 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `importFrontier` | true | 开 deadline 时实测服务器前沿（玩家前进方向上最远有 holder 的圈数，/donor status 的 scan.frontier），按它算每个 tile 的 importBy；派之前问 donor 能不能在 importBy 之前做完，做不完的不派，importBy 过了的丢掉 | 11-09 kexu 演示里前沿约 14 圈，比 inner（22）近 8 圈。false 退回只按 due（玩家看到的时间）|
 | `importMarginMs` | 1000 | importBy 前面再留多少毫秒（结果在主线程排队、前沿每秒才测一次） | 看 /donor imports 的 seg.main_wait |
 | `corridorChunks` | 6 | 开 deadline 时，tile 中心离飞行线不超过这么多 chunk 的先派（前方走廊），其余后派 | 11-09 kexu 烟花直线：donor 写入只有 26% 在前方；服务器只有 2 核时 donor 要先包下路线 |
+| `demandForwardFirst` | 0 | 1：找需求时每个玩家的候选先扫前方走廊里的（在飞行方向前面、离飞行线不超过 corridorChunks），再按远近扫其余的。前方组的时间片和读盘额度按玩家平分（一共一半）。不记游标，每次扫描从头来。/donor status 的 `scan.forward` 报前方组候选数（`candidates` 最近一次、`avgCandidates` 平均）和看完的比例（`visitedRatio`），关着也算 | 11-09 直线 A/B 用：直飞时前方空白大多在 chunk 自己 FULL 之前，待齐邻居里 39% 的 tile 整轮没派过（codex-pipe）；扫描按远近、预算用完就停，正前方远处的轮不到。默认关，A/B 后再定 |
+| `playerTicketThrottle` | 不改（原版 4） | 原版 DistanceManager 的玩家票节流（ticketThrottler）同时在途的名额：每张玩家票等这个 chunk 能 entity tick（5×5 都 FULL）才放名额。配了就换成这个数（mixin，每个维度都改）。不改票的级别和占用范围，不碰接缝规则；原版自己的生成也跟着放宽。/donor status 的 `playerTicketThrottle.actual` 读回各维度实际的值 | 11-09 直线 A/B 用（4/8/16）：烟花直飞每秒约 44 个新 chunk 进视野，4 个名额约 20～27 个/秒，donor 早就导入好的 chunk 也要排几秒队（codex-server：进视距→票够 p50 3.5 秒，拿到票到 FULL 0.15 秒）。看前方空白时长和 MSPT p95/max 再定 |
 | `skipNoDeadline` | true | 开 deadline 时，找需求算过、玩家不会去的 tile（侧后方，没有截止时间）不派 | false 退回原来的（donor 空着时也派），对照用 |
 | `maxLeaseTotalMs` | 120000 | 一个任务从派出起，心跳最多续租到多久，过了收回重派 | 11-09：worker 卡死时心跳照发，原来能无限续租 |
 | `importBudgetMs` | 10 | 软预算：每个 tick 结束时导入用到这么多毫秒就停，其余留到下个 tick。每个 tick 至少提交 1 个 tile，单个 tile 本身就可能超过 10 ms，所以**不保证导入那一 tick 的 MSPT 在 10 ms 以内**，只是不再几个 tile 挤在同一 tick 里 | 11-09 codex-audit A10：几个结果一起到时同一 tick 里做完，MSPT 最大 305 ms |
