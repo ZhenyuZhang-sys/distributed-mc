@@ -5,3 +5,6 @@
 # 网络慢会超时，只影响皮肤显示，和生成无关。后面跟着的堆栈行由 mcd.check_log_text 一起放过。
 Failed to read from https://sessionserver\.mojang\.com/session/minecraft/profile/.* due to Read timed out
 ^Caused by: java\.net\.SocketTimeoutException: Read timed out$
+# worker 等 chunk 超时、任务报失败（11-09 起 worker 自己等、有超时）。tests/step7/test_11_worker_stall.py 用 /donor stallnext
+# 故意让一个 tile 等不到，会出现这两行（coordinator 记失败、worker 记生成失败）；真实运行里出现说明 worker 卡住过，这时任务会重派。
+等 tile TilePos\[x=-?\d+, z=-?\d+\] 的 16 个 chunk 超过 \d+ 秒，放弃这个任务

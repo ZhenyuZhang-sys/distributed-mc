@@ -1,6 +1,5 @@
 package mcdonate.coordinator;
 
-import it.unimi.dsi.fastutil.ints.IntArrays;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -49,6 +48,9 @@ public final class DemandScanner {
     static final long BUDGET_NANOS = Config.getLong("demandScanBudgetMicros", 500) * 1000;
     private final LongArrayList toRead = new LongArrayList();
     static final int INNER_MARGIN = Config.getInt("demandInnerMargin", 1);
+
+    /** 11-09：开 deadline 时实测服务器前沿（Frontier），按它算 importBy，来不及导入的不派。false 退回只按 due。 */
+    static final boolean IMPORT_FRONTIER = !"false".equalsIgnoreCase(Config.get("importFrontier", "true"));
     private static final int PENDING = Integer.MIN_VALUE;
     private static final int ABSENT = -1;
     private static final int UNKNOWN = Integer.MIN_VALUE + 1;
@@ -90,6 +92,23 @@ public final class DemandScanner {
     }
 
     private final Features features;
+
+    /**
+     * 11-09 找需求先看正前方：每个玩家的候选先扫前方走廊里的（在飞行方向前面、离线不超过 corridorChunks），再扫其余的。
+     * 直线飞时前方远处的 tile 按远近排在后面，扫描预算用完就轮不到（codex-pipe：待齐邻居里 39% 的 tile 整轮没派过）。
+     * 不记游标，每次扫描从头来；前方组的时间片和读盘额度按玩家平分。
+     * 11-09 起默认开（kexu 1×8 三轮：前方空白中位 4.6→4.2 秒、前方就绪 57→62 格；codex-bench ABABAB 3 对：43.2→47.4 格；MSPT 不变）。
+     * -Dmcdonate.demandForwardFirst=0 关（对照用）。
+     */
+    static final boolean FORWARD_FIRST = on(Config.get("demandForwardFirst", "1"));
+
+    private static boolean on(String v) {
+        return v.equals("1") || v.equalsIgnoreCase("true");
+    }
+
+    /** 最近一次扫描的前方组候选数、实际看完的个数；累计的（status 里给平均和比例）。 */
+    private int lastFwdCandidates, lastFwdVisited;
+    private long totalFwdCandidates, totalFwdVisited;
     /** 7.2：每个玩家最近几秒的位置（估速度用）。 */
     private final java.util.Map<java.util.UUID, Motion> motions = new java.util.HashMap<>();
 
@@ -160,7 +179,9 @@ public final class DemandScanner {
         ChunkMap chunkMap = level.getChunkSource().chunkMap;
         ChunkMapAccessor access = (ChunkMapAccessor) chunkMap;
         int inner = innerRadius(), outer = inner + lookahead;
-        int queued = tasks.count(TaskQueue.State.QUEUED);
+        // 11-09：只算有截止时间（或还没算过）的排队任务：侧面的（玩家不朝那边走、不派）原来占满上限后就不再扫描，
+        // 前方的新 tile 进不来、已有的也不再重算截止时间，donor 闲着（kexu 三臂：8 核 donor 只用 1.2 核）
+        int queued = tasks.queuedCountingTowardCap();
         readsLeft = READS_PER_SCAN;
         drainEvents();
         long now = System.currentTimeMillis();
@@ -172,20 +193,46 @@ public final class DemandScanner {
             motions.computeIfAbsent(p.getUUID(), k -> new Motion()).record(now, p.getX(), p.getZ());
         }
         motions.keySet().retainAll(present);
+        // 11-09：每个玩家前进方向上服务器占住的最远圈数（前沿），算 importBy 用
+        java.util.Map<Motion, Integer> fronts = new java.util.HashMap<>();
+        if (deadline && IMPORT_FRONTIER) {
+            for (ServerPlayer p : level.players()) {
+                Motion mo = motions.get(p.getUUID());
+                double[] v = mo.velocity();
+                int f = Frontier.ahead(p.chunkPosition().x, p.chunkPosition().z, v[0], v[1], inner,
+                        k -> access.mcdonate$getUpdatingChunkIfPresent(k) != null);
+                if (f >= 0) {
+                    fronts.put(mo, f);
+                }
+            }
+            lastFrontier = fronts.isEmpty() ? -1 : java.util.Collections.min(fronts.values());
+        }
         long[] at0 = new long[level.players().size()];
         for (int i = 0; i < at0.length; i++) {
             at0[i] = level.players().get(i).chunkPosition().toLong();
         }
         lastPlayers = at0;
         lastOuter = outer;
-        for (ServerPlayer p : level.players()) {
+        List<ServerPlayer> players = level.players();
+        int np = players.size();
+        int[][] ptx = new int[np][], ptz = new int[np][], pidx = new int[np][];
+        boolean[][] pfwd = new boolean[np][];
+        int[] pm = new int[np], pos = new int[np], pfc = new int[np];
+        int fwdCandidates = 0, fwdVisited = 0;
+        for (int i = 0; i < np; i++) {
+            ServerPlayer p = players.get(i);
             ChunkPos at = p.chunkPosition();
+            Motion mo = motions.get(p.getUUID());
+            // 每个玩家只算一次位置和两个窗口的速度
+            double[] mp = mo == null ? null : mo.position();
+            double[] vs = mo == null ? null : mo.velocity(Motion.SHORT_WINDOW_MS), vl = mo == null ? null : mo.velocity(Motion.LONG_WINDOW_MS);
             // 先按距离筛掉 inner 以内（服务器自己会碰到的范围，不交给 donor），再按离玩家远近排序。
             // 和 Demand.tilesAround / nearestFirst 同样的范围和顺序，只是不新建 TilePos、不装箱。
             TilePos a = TilePos.ofChunk(at.x - outer, at.z - outer), b = TilePos.ofChunk(at.x + outer, at.z + outer);
             int w = b.x() - a.x() + 1, n = w * (b.z() - a.z() + 1);
-            int[] tx = new int[n], tz = new int[n], idx = new int[n];
+            int[] tx = new int[n], tz = new int[n];
             double[] d2 = new double[n];
+            boolean[] fwd = new boolean[n];
             int m = 0;
             for (int x = a.x(); x <= b.x(); x++) {
                 for (int z = a.z(); z <= b.z(); z++) {
@@ -198,45 +245,63 @@ public final class DemandScanner {
                     tx[m] = x;
                     tz[m] = z;
                     d2[m] = cx * cx + cz * cz;
-                    idx[m] = m;
+                    // 11-09：前方走廊里的候选（开关关着也算，status 里对照看候选够不够）
+                    if (mo != null) {
+                        TilePos tp = new TilePos(x, z);
+                        fwd[m] = Motion.forward(tp, mp[0], mp[1], vs, TaskQueue.CORRIDOR_CHUNKS)
+                                || Motion.forward(tp, mp[0], mp[1], vl, TaskQueue.CORRIDOR_CHUNKS);
+                    }
+                    if (fwd[m]) {
+                        pfc[i]++;
+                    }
                     m++;
                 }
             }
-            IntArrays.quickSort(idx, 0, m, (i, j) -> {
-                int c = Double.compare(d2[i], d2[j]);
-                if (c != 0) {
-                    return c;
+            ptx[i] = tx;
+            ptz[i] = tz;
+            pfwd[i] = fwd;
+            pm[i] = m;
+            pidx[i] = Demand.scanOrder(m, tx, tz, d2, fwd, FORWARD_FIRST);
+            fwdCandidates += pfc[i];
+        }
+        scanQueued = queued;
+        if (FORWARD_FIRST) {
+            // 第一遍：每个玩家先扫自己的前方组，时间片和读盘额度按玩家平分（一共一半），一个玩家用不完的留给后面的。
+            // 时间片从第一遍开始时算：前面准备（前沿、候选）偶尔就超过半个预算，从扫描开始算前方组会一个都轮不到
+            // （f3 直飞实测：开着时前方组也只看完 83%）。第二遍仍按整次扫描的预算
+            long p0 = System.nanoTime();
+            for (int i = 0; i < np; i++) {
+                long sliceEnd = forwardSliceEnd(BUDGET_NANOS, i, np);
+                int share = Math.min(readsLeft, forwardReadShare(READS_PER_SCAN, np));
+                int rest = readsLeft - share;
+                readsLeft = share;
+                while (pos[i] < pfc[i] && System.nanoTime() - p0 <= sliceEnd) {
+                    visit(ptx[i][pidx[i][pos[i]]], ptz[i][pidx[i][pos[i]]], deadline, now, view, fronts, chunkMap, access);
+                    fwdVisited++;
+                    pos[i]++;
                 }
-                c = Integer.compare(tx[i], tx[j]);
-                return c != 0 ? c : Integer.compare(tz[i], tz[j]);
-            });
-            for (int k = 0; k < m && queued < QUEUE_CAP; k++) {
+                readsLeft += rest;
+            }
+        }
+        // 第二遍（关着时只有这一遍，和原来一样）：每个玩家从上次停下的地方接着，按顺序扫到预算用完
+        scan:
+        for (int i = 0; i < np; i++) {
+            for (; pos[i] < pm[i]; pos[i]++) {
                 if (System.nanoTime() - t0 > BUDGET_NANOS) {
-                    break; // 这次扫描的时间用完了，剩下的（离玩家较远的）下一秒再查
+                    break scan; // 这次扫描的时间用完了，剩下的（离玩家较远的）下一秒再查
                 }
-                int x = tx[idx[k]], z = tz[idx[k]];
-                long tk = ChunkPos.asLong(x, z);
-                if (serverTiles.contains(tk)) {
-                    continue;
-                }
-                boolean known = tasks.find(x, z) >= 0;
-                if (!known) {
-                    RegionRules.Enqueue e = decide(new TilePos(x, z), tk, chunkMap, access);
-                    if (e.enqueue() && tasks.enqueue(x, z, e.world())) {
-                        queued++;
-                        known = true;
-                    }
-                }
-                if (deadline && known) {
-                    // 7.2：玩家（取最快看到它的那个）什么时候看到这个 tile
-                    double best = Double.POSITIVE_INFINITY;
-                    for (Motion mo : motions.values()) {
-                        best = Math.min(best, mo.deadlineSecondsFast(new TilePos(x, z), view));
-                    }
-                    tasks.setDue(x, z, Double.isInfinite(best) ? Long.MAX_VALUE : now + (long) (best * 1000));
+                int j = pidx[i][pos[i]];
+                visit(ptx[i][j], ptz[i][j], deadline, now, view, fronts, chunkMap, access);
+                if (pfwd[i][j]) {
+                    fwdVisited++;
                 }
             }
         }
+        lastFwdCandidates = fwdCandidates;
+        lastFwdVisited = fwdVisited;
+        totalFwdCandidates += fwdCandidates;
+        totalFwdVisited += fwdVisited;
+        background(at0, outer, chunkMap, access);
         if (!toRead.isEmpty()) {
             long[] keys = toRead.toLongArray();
             toRead.clear();
@@ -259,6 +324,147 @@ public final class DemandScanner {
         long cpu = THREADS.getCurrentThreadCpuTime() - c0;
         totalCpuNanos += cpu;
         recent.addLast("[" + dt / 1000 + "," + cpu / 1000 + "," + (READS_PER_SCAN - readsLeft) + "]");
+    }
+
+    /** 这次扫描里已入队、算上限的排队任务数（visit 入队时加）。 */
+    private int scanQueued;
+
+    // ---- 11-09 加速模式：开了加速的 donor 空着时做的后台 tile ----
+
+    /** 后台 tile 离玩家（或预设中心）最多几圈 chunk；0 关。找需求的 outer 以内的照旧归找需求。 */
+    static final int BACKGROUND_RADIUS = Config.getInt("backgroundRadius", 48);
+    /** 最多排着几个后台 tile。 */
+    static final int BACKGROUND_QUEUE_CAP = Config.getInt("backgroundQueueCap", 64);
+    /** 后台这一段每次扫描最多占主线程多久（在找需求之后，单独算）。 */
+    static final long BACKGROUND_BUDGET_NANOS = Config.getLong("backgroundScanBudgetMicros", 300) * 1000;
+    /** 后台这一段每次扫描最多发起几次读存档。 */
+    static final int BACKGROUND_READS = Config.getInt("backgroundReadsPerScan", 64);
+    /** 预设中心（chunk 坐标 "x,z"，空串不用）：没有玩家在附近也一圈一圈往外做。 */
+    static final int[] BACKGROUND_CENTER = parseCenter(Config.get("backgroundCenter", ""));
+
+    static int[] parseCenter(String v) {
+        if (v == null || v.isBlank()) {
+            return null;
+        }
+        String[] p = v.trim().split("\\s*,\\s*");
+        if (p.length != 2) {
+            throw new IllegalArgumentException("backgroundCenter 要写成 x,z（chunk 坐标）：" + v);
+        }
+        return new int[] {Integer.parseInt(p[0]), Integer.parseInt(p[1])};
+    }
+
+    /** 有没有开了加速、没暂停的 donor 连着（CoordinatorServer 每秒设）。没有就不做后台扫描。 */
+    private volatile boolean boostActive;
+
+    void setBoostActive(boolean on) {
+        boostActive = on;
+    }
+
+    /** 上一次后台扫描的中心 {cx, cz, 起始圈}（inBackground 用；别的线程读）。 */
+    private volatile int[][] lastBackgroundCenters = new int[0][];
+    private long backgroundScans, backgroundEnqueued, backgroundNanos;
+
+    /** 这个 tile 在不在后台范围里（离某个中心不超过 BACKGROUND_RADIUS 圈）。 */
+    boolean inBackground(int tx, int tz) {
+        TilePos t = new TilePos(tx, tz);
+        for (int[] c : lastBackgroundCenters) {
+            if (Demand.minChunkDistance(t, c[0], c[1]) <= BACKGROUND_RADIUS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 后台扫描：找需求之后，有开了加速的 donor 时，从每个玩家的 outer 圈外（和预设中心）一圈一圈往外，
+     * 按找需求同样的规则（接缝规则、存档状态）把 tile 当后台任务排上，排着的最多 BACKGROUND_QUEUE_CAP 个。单独的时间和读盘额度。
+     */
+    private void background(long[] players, int outer, ChunkMap chunkMap, ChunkMapAccessor access) {
+        int n = players.length + (BACKGROUND_CENTER == null ? 0 : 1);
+        int[][] centers = new int[n][];
+        for (int i = 0; i < players.length; i++) {
+            centers[i] = new int[] {(int) players[i], (int) (players[i] >>> 32), outer};
+        }
+        if (BACKGROUND_CENTER != null) {
+            centers[n - 1] = new int[] {BACKGROUND_CENTER[0], BACKGROUND_CENTER[1], -1};
+        }
+        lastBackgroundCenters = centers;
+        if (!boostActive || BACKGROUND_RADIUS <= 0 || n == 0) {
+            return;
+        }
+        int room = BACKGROUND_QUEUE_CAP - tasks.backgroundQueued();
+        if (room <= 0) {
+            return;
+        }
+        long b0 = System.nanoTime();
+        backgroundScans++;
+        int saved = readsLeft;
+        readsLeft = BACKGROUND_READS;
+        try {
+            for (TilePos t : BoostPolicy.backgroundOrder(centers, BACKGROUND_RADIUS)) {
+                if (room <= 0 || System.nanoTime() - b0 > BACKGROUND_BUDGET_NANOS) {
+                    break;
+                }
+                long tk = ChunkPos.asLong(t.x(), t.z());
+                if (serverTiles.contains(tk) || (tasks.find(t.x(), t.z()) >= 0 && !tasks.canEnqueueAgain(t.x(), t.z()))) {
+                    continue;
+                }
+                RegionRules.Enqueue e = decide(t, tk, chunkMap, access);
+                if (e.enqueue() && tasks.enqueueBackground(t.x(), t.z(), e.world())) {
+                    room--;
+                    backgroundEnqueued++;
+                }
+            }
+        } finally {
+            readsLeft = saved;
+            backgroundNanos += System.nanoTime() - b0;
+        }
+    }
+
+    /** 看一个候选 tile：没入队的判断能不能入队，开 deadline 时算截止时间。只在 scan 里调。 */
+    private void visit(int x, int z, boolean deadline, long now, int view, java.util.Map<Motion, Integer> fronts,
+            ChunkMap chunkMap, ChunkMapAccessor access) {
+        long tk = ChunkPos.asLong(x, z);
+        if (serverTiles.contains(tk)) {
+            return;
+        }
+        // 11-09（codex-audit F6）：丢掉过、冷却过了的 tile 需求重新成立时可以重新入队
+        boolean known = tasks.find(x, z) >= 0 && !tasks.canEnqueueAgain(x, z);
+        if (!known && scanQueued < QUEUE_CAP) {
+            RegionRules.Enqueue e = decide(new TilePos(x, z), tk, chunkMap, access);
+            if (e.enqueue() && tasks.enqueue(x, z, e.world())) {
+                scanQueued++;
+                known = true;
+            }
+        }
+        if (deadline && known) {
+            // 7.2：玩家（取最快看到它的那个）什么时候看到这个 tile
+            double best = Double.POSITIVE_INFINITY, by = Double.POSITIVE_INFINITY, lat = Double.POSITIVE_INFINITY;
+            TilePos tp = new TilePos(x, z);
+            for (Motion mo : motions.values()) {
+                // 11-09：短窗口、长窗口两个方向的并集（转弯时新旧路线都算）
+                best = Math.min(best, mo.deadlineSecondsUnion(tp, view));
+                lat = Math.min(lat, mo.lateralChunksUnion(tp));
+                Integer f = fronts.get(mo);
+                if (f != null) {
+                    // 区域比 tile 多一圈：tile 进 f+1 圈时区域碰到前沿
+                    by = Math.min(by, mo.deadlineSecondsUnion(tp, f + 1));
+                }
+            }
+            tasks.setDue(x, z, Double.isInfinite(best) ? Long.MAX_VALUE : now + (long) (best * 1000),
+                    Double.isInfinite(by) ? Long.MAX_VALUE : now + (long) (by * 1000),
+                    Double.isInfinite(lat) ? Integer.MAX_VALUE : (int) Math.round(lat));
+        }
+    }
+
+    /** 第一遍（前方组）第 i 个玩家的时间片到哪里为止（从第一遍开始算的纳秒）：一共给前方组半个预算，按玩家平分、依次排开。 */
+    static long forwardSliceEnd(long budget, int i, int players) {
+        return budget * (i + 1) / (2L * players);
+    }
+
+    /** 第一遍每个玩家能发起几次读存档：一共一半，按玩家平分，至少 1 次。 */
+    static int forwardReadShare(int reads, int players) {
+        return Math.max(1, reads / (2 * players));
     }
 
     /**
@@ -304,6 +510,9 @@ public final class DemandScanner {
     }
 
     /** 离玩家这么多圈以内的 tile 不交给 donor（见类注释）。 */
+    /** 上一次扫描实测的前沿（各玩家取最小；没测是 -1），写进 /donor status。 */
+    private volatile int lastFrontier = -1;
+
     int innerRadius() {
         return server.getPlayerList().getViewDistance() + ChunkLevel.RADIUS_AROUND_FULL_CHUNK + INNER_MARGIN;
     }
@@ -314,6 +523,15 @@ public final class DemandScanner {
         return "{\"count\":" + scans + ",\"avgMicros\":" + avgMicros + ",\"maxMicros\":" + maxNanos / 1000
                 + ",\"avgCpuMicros\":" + (scans == 0 ? 0 : totalCpuNanos / scans / 1000)
                 + ",\"recent\":[" + String.join(",", recent) + "]"
-                + ",\"inner\":" + inner + ",\"outer\":" + (inner + lookahead) + ",\"lookahead\":" + lookahead + "}";
+                + ",\"inner\":" + inner + ",\"outer\":" + (inner + lookahead) + ",\"lookahead\":" + lookahead
+                + ",\"frontier\":" + lastFrontier
+                + ",\"background\":{\"active\":" + boostActive + ",\"scans\":" + backgroundScans
+                + ",\"enqueued\":" + backgroundEnqueued + ",\"queued\":" + tasks.backgroundQueued()
+                + ",\"avgMicros\":" + (backgroundScans == 0 ? 0 : backgroundNanos / backgroundScans / 1000) + "}"
+                + ",\"forward\":{\"on\":" + FORWARD_FIRST + ",\"candidates\":" + lastFwdCandidates
+                + ",\"visited\":" + lastFwdVisited
+                + ",\"avgCandidates\":" + (scans == 0 ? 0 : totalFwdCandidates / scans)
+                + ",\"visitedRatio\":" + (totalFwdCandidates == 0 ? 1.0 : Math.round(1000.0 * totalFwdVisited / totalFwdCandidates) / 1000.0)
+                + "}}";
     }
 }

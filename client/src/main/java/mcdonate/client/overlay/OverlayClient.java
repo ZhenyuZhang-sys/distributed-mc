@@ -42,6 +42,8 @@ public final class OverlayClient {
         boolean running();
 
         void send(String line);
+
+        default String error() { return ""; }
     }
 
     private static OverlaySettings settings = new OverlaySettings(false, false);
@@ -176,7 +178,10 @@ public final class OverlayClient {
         }
         if (settings.hud()) {
             int y = 6;
-            for (String line : HudLines.of(latestStatus, SOURCES.summary())) {
+            String error = link == null ? "" : link.error();
+            List<String> lines = error.isEmpty() ? HudLines.of(latestStatus, SOURCES.summary())
+                    : List.of("mc-donate：" + error);
+            for (String line : lines) {
                 g.drawString(mc.font, line, 6, y, 0xFFFFFFFF, true);
                 y += 10;
             }

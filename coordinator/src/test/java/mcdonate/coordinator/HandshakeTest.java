@@ -72,4 +72,29 @@ class HandshakeTest {
         assertEquals(Welcome.BAD_VERSION,
                 CoordinatorServer.handshake(new Hello(Protocol.VERSION + 1, "w"), 4, 1L, 2, false).workerId());
     }
+
+    // ---- 11-09 kexu 审 hello.worldId：格式、冒认 ----
+
+    private static final UUID ALICE = UUID.fromString("00000000-0000-0000-0000-00000000000a");
+    private static final UUID BOB = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+
+    @Test
+    void helloWorldValidated() {
+        assertEquals("49a89f99-0fa6-4a70-ae24-0b6ec4aa23cb",
+                CoordinatorServer.helloWorld("49a89f99-0fa6-4a70-ae24-0b6ec4aa23cb", ALICE, java.util.Map.of()));
+        assertEquals("", CoordinatorServer.helloWorld("", ALICE, java.util.Map.of()), "没报");
+        assertEquals("", CoordinatorServer.helloWorld("a b\n", ALICE, java.util.Map.of()), "有空白、换行：不收");
+        assertEquals("", CoordinatorServer.helloWorld("x".repeat(65), ALICE, java.util.Map.of()), "超过 64 个字符：不收");
+    }
+
+    @Test
+    void helloWorldCannotClaimAnotherPlayersOnlineWorld() {
+        // 这个世界已经绑在一个在线的、别的玩家的 worker 上：hello 里报的不算数（防冒认，拿走别人认主的任务）
+        java.util.Map<String, UUID> online = new java.util.HashMap<>();
+        online.put("w1", ALICE);
+        assertEquals("", CoordinatorServer.helloWorld("w1", BOB, online));
+        assertEquals("w1", CoordinatorServer.helloWorld("w1", ALICE, online), "同一个玩家的（重连）可以");
+        online.put("w2", null);   // 本地 worker（没有玩家）占着
+        assertEquals("", CoordinatorServer.helloWorld("w2", null, online), "两个都没有玩家：也不算数，等结果");
+    }
 }

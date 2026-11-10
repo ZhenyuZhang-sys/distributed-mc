@@ -47,6 +47,24 @@ class WorkerProcessTest {
         assertFalse(p.alive());
     }
 
+    @Test
+    void fullStdinCannotBlockStopDeadline(@TempDir Path dir) throws Exception {
+        WorkerProcess p = WorkerProcess.start(List.of("sh", "-c", "sleep 60"), Map.of(), dir, l -> {});
+        Thread writer = new Thread(() -> p.send("x".repeat(1_000_000)));
+        writer.setDaemon(true); writer.start();
+        Thread.sleep(100); // 子进程不读stdin，超过管道容量的写会挂住。
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r); t.setDaemon(true); return t;
+        });
+        try {
+            assertFalse(executor.submit(() -> p.stop(200, TimeUnit.MILLISECONDS)).get(3, TimeUnit.SECONDS));
+            assertFalse(p.alive());
+        } finally {
+            ProcessHandle.of(p.pid()).ifPresent(ProcessHandle::destroyForcibly);
+            executor.shutdownNow();
+        }
+    }
+
     private static boolean waitFor(java.util.function.BooleanSupplier c) throws InterruptedException {
         for (int i = 0; i < 100; i++) {
             if (c.getAsBoolean()) {

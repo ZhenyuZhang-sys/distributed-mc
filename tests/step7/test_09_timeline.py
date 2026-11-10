@@ -1,0 +1,65 @@
+"""11-09 调度：派出到交回要 7～9 秒，worker 生成一个 tile 只要约 1.2 秒，拆开看时间去哪了。
+/donor imports 每条带 seg：入队→派出→worker 收到→开始生成→生成完→打包完→coordinator 收到→主线程开始导入→导入完，
+共 8 段（毫秒）。worker 和服务器在同一台机器上（同一个时钟），各段不为负，worker 上几段加起来等于派出到收到。
+"""
+
+import json
+import os
+
+from mcd import donor_imports, wait_until, worker_id
+
+KEYS = ["queue", "to_worker", "wait", "gen", "pack", "back", "main_wait", "import"]
+
+
+def test_import_has_segments(server, worker):
+    n = json.loads(server.rcon("donor status"))["config"]["tileSize"]
+    tile = (-3100 // n, 3100 // n)   # 离其他测试远
+    wid = worker_id(server, "worker")
+    before = len(donor_imports(server))
+    assert server.rcon(f"donor assign {tile[0]} {tile[1]} {wid}") == "queued"
+    wait_until(lambda: len(donor_imports(server)) > before, timeout=180, interval=2, what="结果回来")
+    r = donor_imports(server)[-1]
+    print(f"导入记录 {r}")
+    seg = r["seg"]
+    assert sorted(seg) == sorted(KEYS), seg
+    for k in KEYS:
+        # queue：手动 assign 的也是先入队再派，知道入队时间
+        assert seg[k] >= 0, (k, seg)
+    assert seg["gen"] > 0, seg
+    worker_side = seg["to_worker"] + seg["wait"] + seg["gen"] + seg["pack"] + seg["back"]
+    assert abs(worker_side - r["ms"]) <= 5, (worker_side, r["ms"], seg)
+
+
+def test_status_reports_frontier(server):
+    s = json.loads(server.rcon("donor status"))
+    assert "frontier" in s["scan"], s["scan"]
+    assert {"importFrontier", "importMarginMs"} <= set(s["config"]), s["config"]
+    assert "import_late" in s["stale"], s["stale"]
+
+
+def test_status_reports_forward_scan(server):
+    # 11-09 找需求先看正前方：默认开（A/B 后定），开关和前方组计数写进 /donor status（直线 A/B 看候选够不够）
+    s = json.loads(server.rcon("donor status"))
+    off = "-Dmcdonate.demandForwardFirst=0" in os.environ.get("MCD_JVM_EXTRA", "")
+    assert s["config"]["demandForwardFirst"] is (not off), s["config"]
+    assert {"on", "candidates", "visited", "avgCandidates", "visitedRatio"} <= set(s["scan"]["forward"]), s["scan"]
+
+
+def test_status_reports_worker_rate(server, worker):
+    # 11-09 正式服 hopeless 398：每个 worker 的实测速率、延迟、在途、租约名额、实测并行度写进 /donor status，排查派活用
+    # （codex-audit 第十五节：不报 slots/延迟 这种乐观推算的"能力"）
+    worker_id(server, "worker")
+    w = json.loads(server.rcon("donor status"))["workers"][0]
+    assert {"ratePerSec", "latencyMs", "inFlight", "slots", "parallelism", "lanes", "busyMs"} <= set(w), w
+    assert w["slots"] >= 1 and w["lanes"] >= 1 and w["ratePerSec"] > 0, w
+
+
+def test_status_reports_boost(server, worker):
+    # 11-09 加速模式：每个 worker 开没开加速、线程数、后台领了几个、被接受几个；后台扫描的状态和配置
+    worker_id(server, "worker")
+    s = json.loads(server.rcon("donor status"))
+    w = s["workers"][0]
+    assert {"boost", "threads", "backgroundLeased", "backgroundAccepted"} <= set(w), w
+    assert w["boost"] is False, "测试里的 worker 默认不开加速"
+    assert {"active", "scans", "enqueued", "queued"} <= set(s["scan"]["background"]), s["scan"]
+    assert {"backgroundRadius", "backgroundQueueCap", "backgroundCenter", "boostMaxInFlight"} <= set(s["config"]), s["config"]

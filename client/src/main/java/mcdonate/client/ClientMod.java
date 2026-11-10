@@ -73,6 +73,28 @@ public final class ClientMod implements ClientModInitializer {
         PayloadTypeRegistry.playS2C().register(DonorInvite.TYPE, DonorInvite.CODEC);
         PayloadTypeRegistry.playC2S().register(InviteRequest.TYPE, InviteRequest.CODEC);
         controller = new DonorController(new RealEnv());
+        // 游戏内来源上色和算力面板（docs/overlay-plan.md，kexu）：每秒经控制通道要一次 worker 的 STATUS
+        mcdonate.client.overlay.OverlayClient.install(new mcdonate.client.overlay.OverlayClient.WorkerLink() {
+            @Override
+            public boolean running() {
+                WorkerProcess w = worker;
+                return w != null && w.alive();
+            }
+
+            @Override
+            public String error() {
+                WorkerProcess w = worker;
+                return w != null && !w.failureMessage().isEmpty() ? w.failureMessage() : lastError;
+            }
+
+            @Override
+            public void send(String line) {
+                WorkerProcess w = worker;
+                if (w != null) {
+                    w.send(line); // 每秒一次 STATUS，不记日志（RealEnv.sendToWorker 会记）
+                }
+            }
+        });
         ClientPlayNetworking.registerGlobalReceiver(DonorInvite.TYPE, (invite, context) -> onInvite(invite));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             for (ConsentDriver d : FabricLoader.getInstance().getEntrypoints("mcdonate:consent_driver", ConsentDriver.class)) {
@@ -113,6 +135,10 @@ public final class ClientMod implements ClientModInitializer {
 
     /** 设置变了（设置界面、同意界面调）。 */
     static void settingsChanged() {
+        FrameThrottle t = throttle;
+        if (t != null) {
+            t.setTargetMs(ClientSettings.load(settingsFile()).frameTargetMs()); // 帧时间目标改了马上生效
+        }
         Minecraft.getInstance().execute(controller::onSettingsChanged);
     }
 
@@ -127,6 +153,7 @@ public final class ClientMod implements ClientModInitializer {
             return "第一次准备中（下载服务器）…";
         }
         WorkerProcess w = worker;
+        if (w != null && !w.failureMessage().isEmpty()) return "出错：" + w.failureMessage();
         if (w != null && w.alive()) {
             return "worker 在跑" + (throttle != null && throttle.paused() ? "（帧率低，暂停中）" : "");
         }
@@ -204,6 +231,7 @@ public final class ClientMod implements ClientModInitializer {
             preparing = true;
             Thread t = new Thread(() -> {
                 try {
+                    WorkerProcess.preflight(files().root());
                     files().prepare(ClientMod::download, name -> ClientMod.class.getResourceAsStream("/mcdonate/worker-mods/" + name));
                     LOG.info("worker 准备好了：{}", files().root());
                     lastError = "";
@@ -231,13 +259,23 @@ public final class ClientMod implements ClientModInitializer {
                     port = probe.getLocalPort();
                 }
                 WorkerFiles f = files();
+                WorkerProcess.preflight(f.root()); // 占锁时连配置和mod也不覆盖。
                 f.writeServerProperties(port);
+                // 每次都按客户端 jar 里带的放 worker mod（客户端升级后不再用旧的）
+                f.syncMods(name -> ClientMod.class.getResourceAsStream("/mcdonate/worker-mods/" + name));
                 String exe = System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows") ? "java.exe" : "java";
                 WorkerLaunch.Options o = new WorkerLaunch.Options(Path.of(System.getProperty("java.home"), "bin", exe),
-                        s.memoryMb(), s.threads(), ProcessHandle.current().pid(), invite.host() + ":" + invite.port(), invite.seed());
+                        s.memoryMb(), s.threads(), ProcessHandle.current().pid(), invite.host() + ":" + invite.port(), invite.seed(),
+                        s.boost());
                 worker = WorkerProcess.start(WorkerLaunch.command(o, System.getProperty("os.name")),
                         WorkerLaunch.environment(invite.token()), f.root(),
-                        line -> Minecraft.getInstance().execute(() -> controller.onWorkerLine(line)));
+                        line -> {
+                            if (!line.startsWith("STATUS ")) {
+                                LOG.info("worker：{}", line); // CONNECTED、NEED_TOKEN 这类少见的记下来（STATUS 每秒一次，不记）
+                            }
+                            mcdonate.client.overlay.OverlayClient.onWorkerLine(line); // 只存最新的 STATUS，哪个线程都行
+                            Minecraft.getInstance().execute(() -> controller.onWorkerLine(line));
+                        });
                 throttle = null;
                 lastError = "";
                 LOG.info("worker 起来了（pid {}，{} 个线程、{} MB，coordinator {}:{}）", worker.pid(), s.threads(), s.memoryMb(),

@@ -37,7 +37,8 @@ def run_client(name: str, seconds: int, mods: Path, out: Path, env: dict | None 
     assert (out / "done").exists(), "客户端脚本没跑完"
     read = lambda f: (out / f).read_text(errors="replace") if (out / f).exists() else ""
     return {"log": read("latest.log"), "ps": read("ps.txt"), "gamedir": read("gamedir.txt"), "mods": read("mods.txt"),
-            "launcher": read("launcher.log"), "ps_after_kill": read("ps-after-kill.txt"), "killed": read("killed")}
+            "launcher": read("launcher.log"), "ps_after_kill": read("ps-after-kill.txt"), "killed": read("killed"),
+            "worker": read("worker.log")}
 
 
 TESTHOOKS_JAR = REPO_ROOT / "client-testhooks/build/libs/mcdonate-client-testhooks-0.1.0.jar"

@@ -13,6 +13,7 @@ import mcdonate.common.net.DonorInvite;
  *       客户端这边 10 秒最多要一次（服务器那边也限）。
  *   <li>退出世界、关掉设置：停 worker。用过的邀请作废。
  *   <li>帧率限速：PAUSE、RESUME 转给 worker。
+ *   <li>加速模式（11-09）：运行中改了设置里的开关，发 BOOST on / BOOST off（不重起）。
  * </ul>
  * 都在客户端主线程（渲染线程）上调。
  */
@@ -48,6 +49,8 @@ public final class DonorController {
     private long inviteAt;
     private boolean inviteUsed;
     private long lastRequest = Long.MIN_VALUE / 2;
+    /** worker 现在的加速开关（起 worker 时的设置，之后发过的 BOOST）。 */
+    private boolean workerBoost;
 
     public DonorController(Env env) {
         this.env = env;
@@ -84,6 +87,11 @@ public final class DonorController {
             }
             return;
         }
+        boolean boost = env.settings().boost();
+        if (env.workerRunning() && boost != workerBoost) {
+            env.sendToWorker("BOOST " + (boost ? "on" : "off"));
+            workerBoost = boost;
+        }
         tryStart();
     }
 
@@ -103,6 +111,7 @@ public final class DonorController {
             return;
         }
         inviteUsed = true;
+        workerBoost = env.settings().boost();
         env.startWorker(invite, env.settings());
     }
 

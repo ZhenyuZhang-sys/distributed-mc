@@ -188,7 +188,7 @@ Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，
 - [ ] 0 个 donor：和第 4 步的原版基线比，没有可测出的差别，即 mod 本身不拖慢服务器（粗测：第 7 步同批原版对照轮 33～43% 卡住，第 4 步原版 30～34%，大致一致；并行跑噪声大，部署机器上测）
 - [ ] 2 核服务器、1 个鞘翅假玩家：2 个 donor 时，虚空率和服务器 CPU 都明显低于 0 个 donor（5 次结果的置信区间不重叠）——冒烟 2 次，没有看到明显改善，见 docs/step6-report.md 第 7 节；改进在第 7 步（修好 7.2 后 deadline 卡住 24%、23%，同批原版 38%、43%）
 - [x] 运行中随机 kill、重启 donor：没有丢 chunk，日志里没有 ERROR（tests/step6/test_03_multi.py，11-09 完整回归 e0ab096 通过）
-- [ ] 连续跑 30 分钟：读取器扫描整个存档，没有读不出来的 chunk；随机抽 1% 的 chunk 和对照世界比，通过（11-09：之前三次"读不出来"查清是读取器把原版留下的 0 字节 region 当成坏的，存档没坏，读取器已修；修好后的浸泡在重跑）
+- [x] 连续跑 30 分钟：读取器扫描整个存档，没有读不出来的 chunk；随机抽 1% 的 chunk 和对照世界比，通过（**2 核，粗测**，f3 11-09 fd1afcc 那次的快照离线按 7399d46 之后的判法重算：75670 个 chunk 全部读得出；导入的抽 64 个严格层 0、装饰类 0.089%；服务器生成的只做统计层（被玩过的世界在流体、气泡柱上和刚生成的对照本来就不一样，大团地形互换只看导入一侧），原因见 docs/step6-report.md 第 6 节。之前三次"读不出来"是读取器把原版留下的 0 字节 region 当成坏的，已修）
 - [x] 实时地图上能看到 donor 生成的 chunk 走在玩家前面（按地图用的同一份来源事件算：v0 一轮一半在玩家前方 ≥10 个 chunk、中位数领先 11；也有几轮大部分写入时玩家已经飞过（v0 会做大量过时的任务），修了 7.2 以后开 deadline 时 100% 在前方。见 docs/step6-report.md 第 7 节、docs/step7-report.md）
 
 ## 第 7 步：调度优化
@@ -249,12 +249,12 @@ Carpet 的 `player` 命令默认只给 OP 用，RCON 控制台有这个权限，
 
 验收：
 
-- [ ] 没装 mod 的原版客户端照常进服
-- [ ] 装了 mod 但没同意：不启动任何进程，不下载任何东西
-- [ ] 同意后：worker 启动并出现在 coordinator 的注册表里；退出世界后 worker 停止
-- [ ] `kill -9` 游戏进程：worker 几秒内自己退出，不留进程
-- [ ] token 只能用一次；过期或被别人拿去用会被拒绝
-- [ ] 同一段固定场景，开 worker 前后 p99 帧时间的增加量定出 Z；再关掉限速对比一次，证明限速有用
+- [x] 没装 mod 的原版客户端照常进服（`tests/step9/test_01_vanilla_join.py::test_vanilla_client_joins`，无头真客户端）
+- [x] 装了 mod 但没同意：不启动任何进程，不下载任何东西（`tests/step9/test_02_client_noconsent.py`：test_no_worker_process、test_nothing_downloaded_or_created、test_no_download_attempt_without_consent，客户端放在没有外网的网络里，加 test_offline_network_really_blocks_downloads 正对照）
+- [x] 同意后：worker 启动并出现在 coordinator 的注册表里；退出世界后 worker 停止（`tests/step9/test_03_client_consent.py`：test_worker_started_and_registered（含客户端收到 CONNECTED）、test_worker_stops_after_leaving_world）
+- [x] `kill -9` 游戏进程：worker 几秒内自己退出，不留进程（`tests/step9/test_04_client_kill9.py`，5 秒内）
+- [x] token 只能用一次；过期或被别人拿去用会被拒绝（JUnit `TokenRegistryTest`：onlyOnce、expiresAfterSixtySeconds、reissueRevokesOld、revokeOnLeave；`HandshakeTest` 的 BAD_TOKEN；端到端 `tests/step9/test_05_client_reconnect.py`：用过的 token 不能再用，踢掉后经游戏要新 token 连回来，日志里没有 token 原文）
+- [ ] 同一段固定场景，开 worker 前后 p99 帧时间的增加量定出 Z；再关掉限速对比一次，证明限速有用（要真显卡，用户部署时测，见 docs/step9-plan.md 9.7；无头环境只做了定性：test_06_client_throttle）
 
 帧时间测试需要真实客户端和显卡，没法完全放进 Docker。做法是固定视角挂机，由 mod 把帧时间写进文件，脚本读文件判断。
 

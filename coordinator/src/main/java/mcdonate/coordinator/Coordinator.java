@@ -59,7 +59,11 @@ public final class Coordinator implements ModInitializer {
                                         .then(Commands.argument("tz", IntegerArgumentType.integer())
                                                 .executes(ctx -> enqueue(ctx.getSource(),
                                                         IntegerArgumentType.getInteger(ctx, "tx"),
-                                                        IntegerArgumentType.getInteger(ctx, "tz"))))))
+                                                        IntegerArgumentType.getInteger(ctx, "tz")))
+                                                // 按找需求的规则入队（区域里有某个 donor 世界导入的 chunk 就认主给它）：测试用
+                                                .then(Commands.literal("rules").executes(ctx -> enqueueByRules(ctx.getSource(),
+                                                        IntegerArgumentType.getInteger(ctx, "tx"),
+                                                        IntegerArgumentType.getInteger(ctx, "tz")))))))
                         .then(Commands.literal("assign")
                                 .then(Commands.argument("tx", IntegerArgumentType.integer())
                                         .then(Commands.argument("tz", IntegerArgumentType.integer())
@@ -92,6 +96,11 @@ public final class Coordinator implements ModInitializer {
                         .then(Commands.literal("waitimport")
                                 .then(Commands.literal("chunkcache").executes(ctx -> setWaitImport(ctx.getSource(), true)))
                                 .then(Commands.literal("server").executes(ctx -> setWaitImport(ctx.getSource(), false))))
+                        // 测试用：踢掉一个 worker（它用过的 token 不能再用，要经游戏再要一个；第 9 步重连测试）
+                        .then(Commands.literal("kick").requires(source -> source.hasPermission(4))
+                                .then(Commands.argument("worker", IntegerArgumentType.integer(0))
+                                        .executes(ctx -> reply(ctx.getSource(), network == null ? "not running"
+                                                : network.kick(IntegerArgumentType.getInteger(ctx, "worker")) ? "kicked" : "no such worker"))))
                         .then(Commands.literal("reset").executes(ctx -> reply(ctx.getSource(),
                                 network == null ? "not running" : "reset cancelled=" + network.reset())))
                         .then(Commands.literal("waitsync")
@@ -144,11 +153,18 @@ public final class Coordinator implements ModInitializer {
             if (server.getTickCount() % 100 == 0) {
                 flushLedger(server);
             }
+            // 11-09（A10）：按每 tick 预算做排着的导入
+            CoordinatorServer n = network;
+            if (n != null) {
+                n.drainImports();
+            }
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(Coordinator::flushLedger);
         // 游戏内来源上色（docs/overlay-plan.md，kexu）：订阅了的客户端收玩家附近 chunk 的来源。
-        // TODO(fish)：名字换成 Coordinator.workerName（fish-ov 分支），在线 donor 数换成 worker 注册表的大小；现在先用占位
-        mcdonate.coordinator.overlay.OverlaySender.install(id -> java.util.Optional.empty(), () -> 0);
+        // 名字：worker 编号 → 稳定名字和显示名（OverlayCore 在主线程的 tick 里调，workerName 要求主线程）；在线 donor 数：worker 注册表的大小
+        mcdonate.coordinator.overlay.OverlaySender.install(
+                id -> workerName(id).map(n -> new mcdonate.coordinator.overlay.OverlayCore.Name(n.stable(), n.display())),
+                Coordinator::donorsOnline);
         // 第 9 步：玩家进服时，装了客户端 mod 的（注册了 mcdonate:invite 频道）收到 coordinator 地址、一次性 token、seed；
         // 原版客户端不注册这个频道，canSend 为假，不发。没配公开地址（mcdonate.publicHost）就不发。玩家退出：作废没用过的 token，断开他的 worker。
         // 客户端可以再要一次（mcdonate:invite_request）：token 60 秒过期、邀请只在进服时发一次，玩家晚同意或 coordinator 重启后
@@ -205,6 +221,18 @@ public final class Coordinator implements ModInitializer {
     }
 
     private static volatile CoordinatorServer network;
+
+    /** 现在连着的 donor 个数（overlay 的算力面板用）；coordinator 没开是 0。 */
+    public static int donorsOnline() {
+        CoordinatorServer n = network;
+        return n == null ? 0 : n.workerCount();
+    }
+
+    /** worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；coordinator 没开或 worker 不在线返回空。在主线程上调。 */
+    public static java.util.Optional<WorkerName> workerName(int workerId) {
+        CoordinatorServer n = network;
+        return n == null ? java.util.Optional.empty() : n.workerName(workerId);
+    }
 
     static final long INVITE_REQUEST_MIN_MS = Config.getLong("inviteRequestMinMs", 10_000);
     private static final InviteLimiter INVITE_LIMITER = new InviteLimiter(INVITE_REQUEST_MIN_MS);
@@ -330,6 +358,33 @@ public final class Coordinator implements ModInitializer {
         }
         boolean added = network.tasks.enqueue(tx, tz);
         String msg = added ? "queued " + tx + " " + tz : "already queued or done " + tx + " " + tz;
+        source.sendSuccess(() -> Component.literal(msg), false);
+        return added ? 1 : 0;
+    }
+
+    /** 按 RegionRules.enqueue 入队（和找需求一样认主）。回 "queued tx tz world=<认主的世界，没有是空>"。 */
+    private static int enqueueByRules(CommandSourceStack source, int tx, int tz) {
+        if (network == null) {
+            source.sendFailure(Component.literal("coordinator network not running"));
+            return 0;
+        }
+        net.minecraft.server.level.ServerLevel level = source.getServer().overworld();
+        net.minecraft.server.level.ChunkMap chunkMap = level.getChunkSource().chunkMap;
+        mcdonate.coordinator.mixin.ChunkMapAccessor access = (mcdonate.coordinator.mixin.ChunkMapAccessor) chunkMap;
+        mcdonate.common.TilePos tile = new mcdonate.common.TilePos(tx, tz);
+        java.util.List<RegionRules.ChunkInfo> region = new java.util.ArrayList<>();
+        for (int x = tile.minChunkX() - 1; x <= tile.maxChunkX() + 1; x++) {
+            for (int z = tile.minChunkZ() - 1; z <= tile.maxChunkZ() + 1; z++) {
+                region.add(TileImporter.chunkInfo(chunkMap, access, net.minecraft.world.level.ChunkPos.asLong(x, z)));
+            }
+        }
+        RegionRules.Enqueue e = RegionRules.enqueue(region);
+        if (!e.enqueue()) {
+            source.sendFailure(Component.literal("not enqueued: " + e.reason()));
+            return 0;
+        }
+        boolean added = network.tasks.enqueue(tx, tz, e.world());
+        String msg = (added ? "queued " : "already queued or done ") + tx + " " + tz + " world=" + (e.world() == null ? "" : e.world());
         source.sendSuccess(() -> Component.literal(msg), false);
         return added ? 1 : 0;
     }

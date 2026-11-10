@@ -74,17 +74,36 @@ public final class WorkerFiles {
         }
         Files.writeString(root.resolve("fabric-server-launcher.properties"), "serverJar=server.jar\n");
         // 3. worker mod 和 Fabric API（客户端 jar 里带着）
-        for (String name : bundledNames(bundled)) {
+        syncMods(bundled);
+        // 4. 玩家已在同意界面上本人同意了 Minecraft EULA
+        Files.writeString(root.resolve("eula.txt"),
+                "# 玩家在 mc-donate 的同意界面上同意了 Minecraft EULA（https://aka.ms/MinecraftEULA）\neula=true\n");
+    }
+
+    /**
+     * 按客户端 jar 里带的放 worker mod：同名的覆盖，mods/ 里不在清单上的 jar 删掉，别的文件不动。
+     * 每次起 worker 前都调（11-09：原来只在第一次准备时放，客户端升级以后 worker 还用旧 mod）。
+     */
+    public void syncMods(Bundled bundled) throws IOException {
+        Path mods = root.resolve("mods");
+        Files.createDirectories(mods);
+        List<String> names = bundledNames(bundled);
+        for (String name : names) {
             try (InputStream in = bundled.open(name)) {
                 if (in == null) {
                     throw new IOException("客户端 jar 里缺 " + name);
                 }
-                Files.copy(in, root.resolve("mods").resolve(name), StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(in, mods.resolve(name), StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        // 4. 玩家已在同意界面上本人同意了 Minecraft EULA
-        Files.writeString(root.resolve("eula.txt"),
-                "# 玩家在 mc-donate 的同意界面上同意了 Minecraft EULA（https://aka.ms/MinecraftEULA）\neula=true\n");
+        try (var files = Files.list(mods)) {
+            for (Path p : files.toList()) {
+                String n = p.getFileName().toString();
+                if (n.endsWith(".jar") && !names.contains(n)) {
+                    Files.delete(p);
+                }
+            }
+        }
     }
 
     private static List<String> bundledNames(Bundled bundled) throws IOException {

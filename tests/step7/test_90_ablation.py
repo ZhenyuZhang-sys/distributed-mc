@@ -26,7 +26,11 @@ from bench import layer2
 from mcd import SCRIPTS, compose, data_root, donor_imports, limits, run, wait_until, worker_id
 
 ALL = ["territory", "deadline", "throughput", "hedge", "waitdonor"]
-ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"], "vanilla": []}
+ROUNDS = {"v0": [], "all": ALL, **{f: [f] for f in ALL}, "slow-v0": [], "slow-throughput": ["throughput"],
+          "slow-deadline": ["deadline"], "slow-territory-deadline": ["territory", "deadline"],
+          "deploy": ["territory", "deadline", "throughput"], "vanilla": []}
+# slow-deadline：第三个 donor 加 deadline。worker3 默认 0.5 核（慢 donor）；当成第三个正常 donor 用时
+# 外面设 WORKER3_CPUS=4 WORKER3_CPUSET=<4 个核>（11-09 调度：2 个和 3 个 donor 各跑 2 轮）
 # vanilla：原版对照（0 个 donor，worker 容器停掉，不找需求），同一组核、同样航线长度和时长（调度 11-09：
 # 有效轮的卡住比例比 kexu 的原版基线高，要在同一批里看 donor 加进来是不是更差）
 DEFAULT = "vanilla,v0,v0,territory,deadline,throughput,slow-v0,slow-throughput,hedge,waitdonor,all,vanilla,all"
@@ -85,6 +89,10 @@ def counters(s: dict) -> dict:
         "waitdonor_hits": s["waitdonor"]["hits"], "waitdonor_timeouts": s["waitdonor"]["timeouts"],
         "waitdonor_abandoned": s["waitdonor"]["abandoned"],
         "stale_dropped": s.get("stale", {}).get("dropped", 0), "stale_cancelled": s.get("stale", {}).get("cancelled", 0),
+        # 11-09：区域已进服务器前沿、还没派出去就丢掉的（交回也会被整个丢弃）
+        "import_late": s.get("stale", {}).get("import_late", 0),
+        # 11-09：按实测吞吐算排队来不及、提前丢掉的
+        "hopeless": s.get("stale", {}).get("hopeless", 0),
         "donor_tiles": {w["name"]: w["done"] for w in s["workers"]},
         # 主线程上导入用了多久（coordinator 11-09 加的计时；旧版没有就是 0）
         "import_ms": s.get("import", {}).get("totalMs", 0), "imports_timed": s.get("import", {}).get("count", 0),
@@ -108,9 +116,16 @@ def slow_donor(server, up: bool):
                    interval=1, what="worker3 停了")
 
 
-def donors(server, up: bool):
-    """vanilla 轮停掉全部 donor 并确认不在跑；其他轮把 worker、worker2 起来并连上。"""
-    if up:
+def donors(server, up: bool, solo: bool = False):
+    """vanilla 轮停掉全部 donor 并确认不在跑；其他轮把 worker、worker2 起来并连上。
+    solo（"one-" 开头的轮，11-09 用户定先 1 个 donor）：只要 worker，worker2 停掉。"""
+    if up and solo:
+        compose("stop", "worker2", timeout=300)
+        wait_until(lambda: "worker2" not in compose("ps", "--format", "{{.Service}}").split(), timeout=60, interval=1,
+                   what="worker2 停了")
+        compose("up", "-d", "--wait", "--wait-timeout", "600", "worker", timeout=660)
+        worker_id(server, "worker")
+    elif up:
         compose("up", "-d", "--wait", "--wait-timeout", "600", "worker", "worker2", timeout=660)
         worker_id(server, "worker")
         worker_id(server, "worker2")
@@ -127,7 +142,7 @@ NET_SERVER = ("35ms", "0%")
 
 
 def base_name(name: str) -> str:
-    return name.removesuffix("+net")
+    return name.removesuffix("+net").removeprefix("one-")
 
 
 def netem(svc: str, *args: str):
@@ -161,6 +176,27 @@ def spread(values: list) -> dict:
     return {"n": len(v), "p50": v[len(v) // 2], "p90": v[int(len(v) * 0.9)], "max": v[-1]}
 
 
+SEG_KEYS = ["queue", "to_worker", "wait", "gen", "pack", "back", "main_wait", "import"]
+
+
+def segments(imports: list) -> dict:
+    """分段耗时的分布（coordinator 11-09 起在 /donor imports 的 seg），被接受的和被丢的分开：
+    时间花在 coordinator 队列、worker 上排队、生成、回传还是等主线程。"""
+    out = {}
+    for kind, rows in (("accepted", [r for r in imports if r.get("accepted")]),
+                       ("discarded", [r for r in imports if not r.get("accepted")])):
+        segs = [r["seg"] for r in rows if r.get("seg")]
+        out[kind] = {k: spread([g.get(k) for g in segs]) for k in SEG_KEYS}
+        # 11-09：排队时间按"派出时有没有截止时间"分开（slack_ms 是 -1 的没有 deadline：侧面、玩家不朝那边走的）
+        out[kind]["queue_with_deadline"] = spread([r["seg"].get("queue") for r in rows if r.get("seg") and r.get("slack_ms", -1) >= 0])
+        out[kind]["queue_no_deadline"] = spread([r["seg"].get("queue") for r in rows if r.get("seg") and r.get("slack_ms", -1) < 0])
+        out[kind]["slack_ms"] = spread([r.get("slack_ms") for r in rows])
+        # 11-09：主线程导入的三段（毫秒）
+        for k in ("parse", "check", "write"):
+            out[kind][f"imp_{k}"] = spread([r["imp"][k] for r in rows if r.get("imp")])
+    return out
+
+
 def set_features(server, on: list[str]):
     for f in ALL:
         server.rcon(f"donor feature {f} {'on' if f in on else 'off'}")
@@ -188,7 +224,8 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
             slow = name.startswith("slow-")
             vanilla = name == "vanilla"
             net = name.endswith("+net")
-            donors(server, not vanilla)
+            solo = name.startswith("one-")
+            donors(server, not vanilla, solo)
             slow_donor(server, slow)
             set_features(server, ROUNDS[base_name(name)])
             before_imports = len(donor_imports(server))
@@ -239,10 +276,11 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "result_bytes": spread([r.get("bytes") for r in imports]), "result_ms": spread([r.get("ms") for r in imports]),
                 # 线上字节（gzip 后的帧，限速卡的是它）和按 20 Mbps 估的传输毫秒数，和实测的派出到收到对照
                 "wire_bytes": spread([r.get("wire_bytes") for r in imports]),
+                "seg": segments(imports),
                 "wire_ms_at_20mbps": spread([r["wire_bytes"] * 8 / 20_000 for r in imports if r.get("wire_bytes", -1) >= 0]),
                 "donors": [{"name": s, "cpuset": lim.get(f"{s.upper()}_CPUSET"),
                             "cpus": float(lim.get("WORKER3_CPUS", 0.5)) if s == "worker3" else None}
-                           for s in ([] if vanilla else ["worker", "worker2", *(["worker3"] if slow else [])])],
+                           for s in ([] if vanilla else ["worker", *([] if solo else ["worker2"]), *(["worker3"] if slow else [])])],
                 "server_cpus": lim.get("MC_CPUS"), "server_cpuset": lim.get("MC_CPUSET"),
                 "bots": 1, "speed": "elytra",
                 "imports_accepted": sum(1 for r in imports if r["accepted"]),
@@ -252,7 +290,7 @@ def test_ablation_rounds(server, worker, worker2, tmp_path_factory):
                 "ring_overhead": (n + 2) ** 2 / n ** 2 - 1,
                 **{k: d[k] for k in ("hedge_cancelled", "hedge_wasted_tiles", "waitdonor_hits", "waitdonor_timeouts",
                                      "waitdonor_abandoned", "donor_tiles", "import_ms", "imports_timed",
-                                     "stale_dropped", "stale_cancelled")},
+                                     "stale_dropped", "stale_cancelled", "import_late", "hopeless")},
                 "main": main_metrics(summary), "sync_loads": flight_guard(out), "lead": donor_lead(out),
                 # coordinator 这一轮报出的 donor / rejected 事件数（和飞行记录里的对照）
                 "coordinator_reports": {k: prov_after.get(k, {}).get("count", 0) - prov_before.get(k, {}).get("count", 0)

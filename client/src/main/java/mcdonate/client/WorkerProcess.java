@@ -29,6 +29,7 @@ public final class WorkerProcess {
 
     private final Process process;
     private final Writer stdin;
+    private volatile String failure = "";
 
     private WorkerProcess(Process process) {
         this.process = process;
@@ -37,9 +38,17 @@ public final class WorkerProcess {
 
     public static WorkerProcess start(List<String> command, Map<String, String> env, Path dir, Consumer<String> onLine)
             throws IOException {
+        preflight(dir);
         ProcessBuilder pb = new ProcessBuilder(command).directory(dir.toFile()).redirectErrorStream(true);
         pb.environment().putAll(env);
         WorkerProcess w = new WorkerProcess(pb.start());
+        try {
+            WorkerResidue.record(dir, w.process);
+        } catch (IOException e) {
+            w.process.descendants().forEach(ProcessHandle::destroyForcibly);
+            w.process.destroyForcibly();
+            throw e;
+        }
         Path log = dir.resolve("worker.log");
         Thread reader = new Thread(() -> w.pump(log, onLine), "mcdonate-worker-output");
         reader.setDaemon(true);
@@ -52,6 +61,9 @@ public final class WorkerProcess {
              OutputStream out = Files.newOutputStream(log, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
             String line;
             while ((line = r.readLine()) != null) {
+                if (line.contains("session.lock") && line.contains("already locked")) {
+                    failure = WorkerResidue.LOCKED;
+                }
                 out.write((line + "\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 if (line.startsWith(PREFIX)) {
@@ -77,6 +89,14 @@ public final class WorkerProcess {
         return process.isAlive();
     }
 
+    public static void preflight(Path dir) throws IOException {
+        WorkerResidue.check(dir);
+    }
+
+    public String failureMessage() {
+        return failure;
+    }
+
     public long pid() {
         return process.pid();
     }
@@ -86,13 +106,33 @@ public final class WorkerProcess {
         if (!process.isAlive()) {
             return true;
         }
-        send("STOP");
-        if (process.waitFor(grace, unit)) {
-            return true;
+        java.util.concurrent.atomic.AtomicBoolean forced = new java.util.concurrent.atomic.AtomicBoolean();
+        long nanos = unit.toNanos(grace);
+        long deadline = System.nanoTime() + nanos;
+        Runnable force = () -> {
+            if (process.isAlive()) {
+                forced.set(true);
+                try { process.descendants().forEach(ProcessHandle::destroyForcibly); }
+                finally { process.destroyForcibly(); }
+            }
+        };
+        Thread timer = new Thread(() -> {
+            try { TimeUnit.NANOSECONDS.sleep(Math.max(0, nanos)); }
+            catch (InterruptedException cancelled) { return; }
+            force.run();
+        }, "mcdonate-worker-stop-deadline");
+        timer.setDaemon(true);
+        timer.start(); // STOP写入或另一个send持锁也可能堵住，必须先限时。
+        try {
+            send("STOP");
+            if (!process.waitFor(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) force.run();
+            process.waitFor(5, TimeUnit.SECONDS);
+            return !forced.get() && !process.isAlive();
+        } catch (InterruptedException e) {
+            force.run();
+            throw e;
+        } finally {
+            timer.interrupt();
         }
-        process.descendants().forEach(ProcessHandle::destroyForcibly);
-        process.destroyForcibly();
-        process.waitFor(5, TimeUnit.SECONDS);
-        return false;
     }
 }

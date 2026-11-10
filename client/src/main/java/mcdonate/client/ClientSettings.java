@@ -17,14 +17,20 @@ import java.util.Properties;
  *   <li>enabled：帮服务器生成地形（默认关）。打开要先同意（第一次打开时弹出同意界面）。
  *   <li>threads：worker 用几个生成线程（1～{@link #MAX_THREADS}，默认 2）。worker 运行中改不了，下次启动生效。
  *   <li>memoryMb：worker 最多用多少内存（{@link #MIN_MEMORY_MB}～8192，默认 2048）。
- *   <li>frameTargetMs：帧时间目标（默认 50 ms，就是 20 帧/秒），p99 超过它 2 秒就暂停 worker。
+ *   <li>frameTargetMs：帧时间目标（默认 50 ms，就是 20 帧/秒），最近 10 秒帧时间的中位数超过它 5 秒就暂停 worker。
+ *   <li>boost：加速模式（11-09，默认关）：空闲时也一直算（coordinator 给它派后台 tile）。改了马上告诉 worker，不用重起。
  * </ul>
  */
-public record ClientSettings(boolean enabled, int threads, int memoryMb, int frameTargetMs) {
+public record ClientSettings(boolean enabled, int threads, int memoryMb, int frameTargetMs, boolean boost) {
     public static final int MAX_THREADS = 8;
     public static final int MIN_MEMORY_MB = 1024;
     public static final int MAX_MEMORY_MB = 8192;
-    public static final ClientSettings DEFAULTS = new ClientSettings(false, 2, 2048, 50);
+    public static final ClientSettings DEFAULTS = new ClientSettings(false, 2, 2048, 50, false);
+
+    /** 不带加速（旧的 4 个参数）。 */
+    public ClientSettings(boolean enabled, int threads, int memoryMb, int frameTargetMs) {
+        this(enabled, threads, memoryMb, frameTargetMs, false);
+    }
 
     public ClientSettings {
         threads = Math.clamp(threads, 1, MAX_THREADS);
@@ -33,15 +39,26 @@ public record ClientSettings(boolean enabled, int threads, int memoryMb, int fra
     }
 
     public ClientSettings withEnabled(boolean v) {
-        return new ClientSettings(v, threads, memoryMb, frameTargetMs);
+        return new ClientSettings(v, threads, memoryMb, frameTargetMs, boost);
     }
 
     public ClientSettings withThreads(int v) {
-        return new ClientSettings(enabled, v, memoryMb, frameTargetMs);
+        return new ClientSettings(enabled, v, memoryMb, frameTargetMs, boost);
+    }
+
+    /** 设置界面里帧时间目标的选项（毫秒）：33（30 帧）、50（20 帧，默认）、100、200。 */
+    public static final java.util.List<Integer> FRAME_TARGETS = java.util.List.of(33, 50, 100, 200);
+
+    public ClientSettings withFrameTargetMs(int v) {
+        return new ClientSettings(enabled, threads, memoryMb, v, boost);
     }
 
     public ClientSettings withMemoryMb(int v) {
-        return new ClientSettings(enabled, threads, v, frameTargetMs);
+        return new ClientSettings(enabled, threads, v, frameTargetMs, boost);
+    }
+
+    public ClientSettings withBoost(boolean v) {
+        return new ClientSettings(enabled, threads, memoryMb, frameTargetMs, v);
     }
 
     /** 读设置；没有文件、读不懂的项用默认值。 */
@@ -54,7 +71,7 @@ public record ClientSettings(boolean enabled, int threads, int memoryMb, int fra
         }
         return new ClientSettings(Boolean.parseBoolean(p.getProperty("enabled", "false")),
                 intOr(p, "threads", DEFAULTS.threads), intOr(p, "memoryMb", DEFAULTS.memoryMb),
-                intOr(p, "frameTargetMs", DEFAULTS.frameTargetMs));
+                intOr(p, "frameTargetMs", DEFAULTS.frameTargetMs), Boolean.parseBoolean(p.getProperty("boost", "false")));
     }
 
     private static int intOr(Properties p, String key, int def) {
@@ -71,6 +88,7 @@ public record ClientSettings(boolean enabled, int threads, int memoryMb, int fra
         p.setProperty("threads", Integer.toString(threads));
         p.setProperty("memoryMb", Integer.toString(memoryMb));
         p.setProperty("frameTargetMs", Integer.toString(frameTargetMs));
+        p.setProperty("boost", Boolean.toString(boost));
         Path dir = file.toAbsolutePath().getParent();
         Files.createDirectories(dir);
         Path tmp = dir.resolve(file.getFileName() + ".tmp");

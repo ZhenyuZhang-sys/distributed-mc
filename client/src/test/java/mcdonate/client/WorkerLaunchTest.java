@@ -30,6 +30,15 @@ class WorkerLaunchTest {
     }
 
     @Test
+    void pinsBirthOfCurrentGame() {
+        long pid = ProcessHandle.current().pid();
+        long born = ProcessHandle.current().info().startInstant().orElseThrow().toEpochMilli();
+        WorkerLaunch.Options own = new WorkerLaunch.Options(Path.of("/jre/bin/java"), 2048, 2,
+                pid, "localhost:25580", 424242);
+        assertTrue(WorkerLaunch.command(own, "Mac OS X").contains("-Dmcdonate.parentStartMillis=" + born));
+    }
+
+    @Test
     void windowsUsesStartLow() {
         List<String> c = WorkerLaunch.command(opts, "Windows 11");
         assertEquals(List.of("cmd", "/c", "start", "\"mc-donate worker\"", "/low", "/b", "/wait"), c.subList(0, 7));

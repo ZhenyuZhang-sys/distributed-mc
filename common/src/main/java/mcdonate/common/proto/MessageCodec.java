@@ -15,6 +15,7 @@ public final class MessageCodec {
                 t.putInt("protocol", h.protocol());
                 t.putString("name", h.name());
                 t.putString("token", h.token());
+                t.putString("worldId", h.worldId());
             }
             case Welcome w -> {
                 t.putString("type", "welcome");
@@ -47,6 +48,8 @@ public final class MessageCodec {
                 t.putLong("sentAtMs", b.sentAtMs());
                 t.putLong("taskId", b.taskId());
                 t.putBoolean("paused", b.paused());
+                t.putBoolean("boost", b.boost());
+                t.putInt("threads", b.threads());
             }
         }
         return t;
@@ -60,13 +63,14 @@ public final class MessageCodec {
         String type = str(t, "type");
         try {
             return switch (type) {
-                case "hello" -> new Hello(i(t, "protocol"), str(t, "name"), optionalStr(t, "token"));
+                case "hello" -> new Hello(i(t, "protocol"), str(t, "name"), optionalStr(t, "token"), optionalStr(t, "worldId"));
                 case "welcome" -> new Welcome(i(t, "protocol"), i(t, "workerId"), l(t, "seed"), i(t, "dataVersion"));
                 case "task" -> new Task(l(t, "taskId"), i(t, "tx"), i(t, "tz"), l(t, "leaseMs"),
                         t.contains("kind") ? Task.Kind.fromWire(str(t, "kind")) : Task.Kind.GENERATE);
                 case "result" -> new Result(l(t, "taskId"), bool(t, "ok"), str(t, "error"), compound(t, "tile"));
                 case "cancel" -> new Cancel(l(t, "taskId"));
-                case "heartbeat" -> new Heartbeat(l(t, "sentAtMs"), l(t, "taskId"), t.contains("paused") && bool(t, "paused"));
+                case "heartbeat" -> new Heartbeat(l(t, "sentAtMs"), l(t, "taskId"), t.contains("paused") && bool(t, "paused"),
+                        t.contains("boost") && bool(t, "boost"), t.contains("threads") ? i(t, "threads") : 0);
                 default -> throw new ProtocolException("未知消息类型：" + type);
             };
         } catch (IllegalArgumentException e) {

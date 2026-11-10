@@ -51,6 +51,29 @@ final class Demand {
         return out;
     }
 
+    /**
+     * 找需求一个玩家的扫描顺序（m 个候选的下标）：按 d2（离玩家远近）、再按坐标。
+     * forwardFirst 时 fwd 为真的（前方走廊里的）整体排在前面，组内仍按远近（11-09 demandForwardFirst）。
+     */
+    static int[] scanOrder(int m, int[] tx, int[] tz, double[] d2, boolean[] fwd, boolean forwardFirst) {
+        int[] idx = new int[m];
+        for (int i = 0; i < m; i++) {
+            idx[i] = i;
+        }
+        it.unimi.dsi.fastutil.ints.IntArrays.quickSort(idx, 0, m, (i, j) -> {
+            if (forwardFirst && fwd[i] != fwd[j]) {
+                return fwd[i] ? -1 : 1;
+            }
+            int c = Double.compare(d2[i], d2[j]);
+            if (c != 0) {
+                return c;
+            }
+            c = Integer.compare(tx[i], tx[j]);
+            return c != 0 ? c : Integer.compare(tz[i], tz[j]);
+        });
+        return idx;
+    }
+
     /** 这个 tile 能不能入队、认不认主：看它的区域（tile 和外面一圈，36 个 chunk）。 */
     static RegionRules.Enqueue decide(TilePos tile, LongFunction<ChunkInfo> chunk) {
         List<ChunkInfo> region = new ArrayList<>(36);

@@ -38,6 +38,11 @@ def busy_after_one(ws: dict, w1: int, w2: int, done0: int) -> bool:
 
 def test_two_donors_share_and_survive_kill(server, worker, worker2):
     assert_fresh(server, TILES)
+    # 先清掉前面测试留下的任务（11-09 f3 step9：test_02 关了找需求，队里还压着约 70 个需求 tile。
+    # worker2 手上那个旧任务就满足了下面的"做完一个、手上又有"，还没碰到这条测试的 tile 就被 kill，
+    # 重启后的 worker2 把 12 个全做了，worker 一直在做旧任务）
+    assert server.rcon("donor reset").startswith("reset")
+    wait_until(lambda: status(server)["tasks"]["leased"] == 0, timeout=120, interval=1, what="旧任务撤完")
     w1, w2 = worker_id(server, "worker"), worker_id(server, "worker2")
     before = len(donor_imports(server))
     done0 = {w["id"]: w["done"] for w in status(server)["workers"]}.get(w2, 0)

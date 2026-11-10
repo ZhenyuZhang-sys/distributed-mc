@@ -13,7 +13,8 @@ import mcdonate.common.TilePos;
  * 不动、或者永远到不了（背向走）是正无穷，这时按距离排。
  */
 final class Motion {
-    static final long WINDOW_MS = Config.getLong("motionWindowMs", 3_000);
+    /** 11-09：3 秒 → 1.5 秒，转弯后方向跟得更快（codex-audit：32 格/秒时 3 秒要多飞约 6 个 chunk 才跟上）。 */
+    static final long WINDOW_MS = Config.getLong("motionWindowMs", 1_500);
     /** 最远预测多少秒。 */
     static final double HORIZON_S = Config.getDouble("motionHorizonS", 120);
     private static final double STEP_S = 0.25;
@@ -22,19 +23,52 @@ final class Motion {
 
     private final Deque<Sample> samples = new ArrayDeque<>();
 
+    /**
+     * 转弯（11-09，kexu 第二张表：转弯时 donor 没帮上）：短窗口看新方向、长窗口看旧方向，截止时间和离飞行线的距离取两者里小的。
+     * 直线时两个一样；刚转弯时新旧两条路线都算（并集），走廊也就跟着变宽。
+     */
+    static final long SHORT_WINDOW_MS = Config.getLong("motionShortWindowMs", 750);
+    static final long LONG_WINDOW_MS = Config.getLong("motionLongWindowMs", 3_000);
+
     void record(long nowMs, double x, double z) {
         samples.addLast(new Sample(nowMs, x, z));
-        while (samples.size() > 2 && nowMs - samples.peekFirst().t() > WINDOW_MS) {
+        long keep = Math.max(WINDOW_MS, LONG_WINDOW_MS);
+        while (samples.size() > 2 && nowMs - samples.peekFirst().t() > keep) {
             samples.pollFirst();
         }
     }
 
-    /** 速度（格/秒），{vx, vz}；样本不够时是 0。 */
+    /** 速度（格/秒），{vx, vz}，用最近 WINDOW_MS 的样本；样本不够时是 0。 */
     double[] velocity() {
+        return velocity(WINDOW_MS);
+    }
+
+    /** 用最近 windowMs 内最早的样本和最新的样本算速度。 */
+    double[] velocity(long windowMs) {
         if (samples.size() < 2) {
             return new double[] {0, 0};
         }
-        Sample a = samples.peekFirst(), b = samples.peekLast();
+        Sample b = samples.peekLast(), a = null;
+        for (Sample s : samples) {
+            if (b.t() - s.t() <= windowMs) {
+                a = s;
+                break;
+            }
+        }
+        if (a == b) {
+            // 窗口里只有最新一个样本（找需求约每秒记一次，短窗口 0.75 秒；codex-audit 审 3132230）：用前一个样本
+            Sample prev = null;
+            for (Sample s : samples) {
+                if (s == b) {
+                    break;
+                }
+                prev = s;
+            }
+            a = prev;
+        }
+        if (a == null || a == b) {
+            return new double[] {0, 0};
+        }
         double dt = (b.t() - a.t()) / 1000.0;
         if (dt <= 0) {
             return new double[] {0, 0};
@@ -53,6 +87,26 @@ final class Motion {
         int dx = Math.max(0, Math.max(tile.minChunkX() - cx, cx - tile.maxChunkX()));
         int dz = Math.max(0, Math.max(tile.minChunkZ() - cz, cz - tile.maxChunkZ()));
         return Math.max(dx, dz) - view;
+    }
+
+    /**
+     * tile 中心离飞行线（过玩家、沿速度方向的直线）多少个 chunk（11-09：派活先做前方走廊）。不动时是正无穷。纯函数。
+     *
+     * @param x 玩家的方块坐标
+     */
+    static double lateralChunks(TilePos tile, double x, double z, double vx, double vz) {
+        double len = Math.hypot(vx, vz);
+        if (len == 0) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double cx = tile.minChunkX() + (TilePos.SIZE - 1) / 2.0 - x / 16, cz = tile.minChunkZ() + (TilePos.SIZE - 1) / 2.0 - z / 16;
+        return Math.abs(cx * vz - cz * vx) / len;
+    }
+
+    /** tile 离这个玩家飞行线多少个 chunk（见上）。 */
+    double lateralChunks(TilePos tile) {
+        double[] p = position(), v = velocity();
+        return lateralChunks(tile, p[0], p[1], v[0], v[1]);
     }
 
     /** 按现在的速度直线走，多少秒后 tile 进入视距。 */
@@ -78,7 +132,41 @@ final class Motion {
      * [16(min−view), 16(max+view+1)) 这个区间（两个方向都要），求直线运动第一次同时落进两个区间的时间。
      */
     double deadlineSecondsFast(TilePos tile, int view) {
-        double[] p = position(), v = velocity();
+        return deadlineSecondsFast(tile, view, velocity());
+    }
+
+    /** 短窗口和长窗口两个方向里先到的那个（转弯时新旧路线的并集）。 */
+    double deadlineSecondsUnion(TilePos tile, int view) {
+        return Math.min(deadlineSecondsFast(tile, view, velocity(SHORT_WINDOW_MS)),
+                deadlineSecondsFast(tile, view, velocity(LONG_WINDOW_MS)));
+    }
+
+    /** 离短窗口、长窗口两条飞行线里近的那条多少个 chunk。 */
+    double lateralChunksUnion(TilePos tile) {
+        double[] p = position(), vs = velocity(SHORT_WINDOW_MS), vl = velocity(LONG_WINDOW_MS);
+        return Math.min(lateralChunks(tile, p[0], p[1], vs[0], vs[1]), lateralChunks(tile, p[0], p[1], vl[0], vl[1]));
+    }
+
+    /**
+     * 11-09 找需求先看正前方：tile 在短窗口或长窗口的飞行方向前方（中心在玩家前面），且离那条飞行线不超过 corridor 个 chunk。
+     * 不动时是 false。
+     */
+    boolean forward(TilePos tile, int corridor) {
+        double[] p = position();
+        return forward(tile, p[0], p[1], velocity(SHORT_WINDOW_MS), corridor)
+                || forward(tile, p[0], p[1], velocity(LONG_WINDOW_MS), corridor);
+    }
+
+    static boolean forward(TilePos tile, double x, double z, double[] v, int corridor) {
+        if (v[0] == 0 && v[1] == 0) {
+            return false;
+        }
+        double cx = tile.minChunkX() + (TilePos.SIZE - 1) / 2.0 - x / 16, cz = tile.minChunkZ() + (TilePos.SIZE - 1) / 2.0 - z / 16;
+        return cx * v[0] + cz * v[1] > 0 && lateralChunks(tile, x, z, v[0], v[1]) <= corridor;
+    }
+
+    double deadlineSecondsFast(TilePos tile, int view, double[] v) {
+        double[] p = position();
         if (chunkDistanceBeyondView(tile, p[0], p[1], view) <= 0) {
             return 0;
         }

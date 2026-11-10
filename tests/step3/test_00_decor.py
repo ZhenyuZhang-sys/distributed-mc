@@ -178,3 +178,14 @@ def test_seam_guard_decor_and_empty_outside():
     assert seam_guard(Diff(blocks=200 * BLOCKS_PER_CHUNK, terrain_positions=blob(0, 3)),
                       Diff(blocks=664 * BLOCKS_PER_CHUNK, terrain_positions=[])) == []
     assert SEAM_GUARD_FACTOR == 5.0
+
+
+def test_relative_check_big_clusters_only_inside():
+    # 11-09 浸泡：服务器那一侧是玩了 30 分钟的世界，流水、岩浆会冲出几百个方块的地形互换（运行时变的，和导入无关）。
+    # big_only_inside=True 时，超过上限的"处"只看碰到导入部分的；默认照旧两边一起看
+    inside = Diff(blocks=1_000_000, terrain_positions=[(0, 0, 0)])
+    outside = Diff(blocks=1_000_000, terrain_positions=[(1000 + i, 0, 0) for i in range(200)])
+    assert any("超过" in b for b in relative_check(inside, outside))
+    assert not any("超过" in b for b in relative_check(inside, outside, big_only_inside=True))
+    big_inside = Diff(blocks=1_000_000, terrain_positions=[(i, 0, 0) for i in range(200)])
+    assert any("超过" in b for b in relative_check(big_inside, outside, big_only_inside=True)), "导入部分的大团照样算"

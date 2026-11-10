@@ -27,7 +27,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `demandInnerMargin` | 1 | inner = 视距 + 原版占内存的圈数（约 11）+ 这个数 | 看 `/donor status` 的 `discarded.late`：来晚了的多，说明 inner 太靠里，调大 |
 | `demandQueueCap` | 256 | 找需求时队列里最多放几个 tile | 玩家多时调大 |
 | `demandReadsPerScan` | 256 | 每次找需求最多发起几次读存档（查 chunk 在存档里的状态） | 刚开始或玩家传送后，周围几千个 chunk 状态未知；调大会让那几次扫描变慢，调小要多扫几次才能派活 |
-| `demandScanBudgetMicros` | 500 | 每次找需求最多占主线程多少微秒，没查完的 tile 下一次再查（近的先查） | 服务器 MSPT 紧时调小；调小后离玩家远的 tile 要多等几秒才入队 |
+| `demandScanBudgetMicros` | 500 | 每次找需求最多占主线程多少微秒，没查完的 tile 下一次再查（近的先查） | **deploy/ 的 `.env.example` 设 2000**（11-09 codex-server 同 2 核、1 个 4 核 donor 烟花直飞 A/B：卡住 17.2% → 3.8%，前方就绪 21 → 50 格；转弯 22.3% → 11.7%，1 轮）。服务器 MSPT 紧时调小；调小后离玩家远的 tile 要多等几秒才入队 |
 | `scanTicks` | 20 | 每隔几个 tick 找一次需求（20 = 1 秒） | `scan` 里扫描耗时大、服务器 MSPT 紧时调大 |
 | `leaseMs` | 30000 | 任务租约，超时收回重派 | 比最慢的 donor 做一个 tile 的时间长几倍 |
 | `heartbeatMs` | 5000 | 心跳间隔（donor 端同名配置也要一致） | 一般不动 |
@@ -37,14 +37,36 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `maxConcurrency` | 4 | 一个 donor 最多同时领几个任务 | donor 核多、网络延迟大时调大 |
 | `tileDefaultMs` | 3000 | 没测过的 donor 预计做一个 tile 要多久 | 用部署机器上 donor 的实测平均值 |
 | `throughputWindow` | 10 | donor 耗时按最近几个任务平均 | |
-| `motionWindowMs` | 3000 | 估玩家速度用最近多久的位置 | |
+| `motionWindowMs` | 1500 | 估玩家速度用最近多久的位置 | |
+| `motionShortWindowMs` | 750 | 转弯：短窗口估的方向（新方向） | 截止时间、离飞行线距离取短、长两个方向里小的（转弯时新旧路线的并集；11-09 kexu：转弯时 donor 没帮上） |
+| `motionLongWindowMs` | 3000 | 转弯：长窗口估的方向（旧方向） | 同上 |
 | `motionHorizonS` | 120 | 按玩家速度往前预测多少秒 | |
+| `importFrontier` | true | 开 deadline 时实测服务器前沿（玩家前进方向上最远有 holder 的圈数，/donor status 的 scan.frontier），按它算每个 tile 的 importBy；派之前问 donor 能不能在 importBy 之前做完，做不完的不派，importBy 过了的丢掉 | 11-09 kexu 演示里前沿约 14 圈，比 inner（22）近 8 圈。false 退回只按 due（玩家看到的时间）|
+| `importMarginMs` | 1000 | importBy 前面再留多少毫秒（结果在主线程排队、前沿每秒才测一次） | 看 /donor imports 的 seg.main_wait |
+| `corridorChunks` | 6 | 开 deadline 时，tile 中心离飞行线不超过这么多 chunk 的先派（前方走廊），其余后派 | 11-09 kexu 烟花直线：donor 写入只有 26% 在前方；服务器只有 2 核时 donor 要先包下路线 |
+| `demandForwardFirst` | 1（11-09 起） | 1：找需求时每个玩家的候选先扫前方走廊里的（在飞行方向前面、离飞行线不超过 corridorChunks），再按远近扫其余的。前方组的时间片和读盘额度按玩家平分（一共一半）。不记游标，每次扫描从头来。/donor status 的 `scan.forward` 报前方组候选数（`candidates` 最近一次、`avgCandidates` 平均）和看完的比例（`visitedRatio`），关着也算 | 11-09 直线 A/B 用：直飞时前方空白大多在 chunk 自己 FULL 之前，待齐邻居里 39% 的 tile 整轮没派过（codex-pipe）；扫描按远近、预算用完就停，正前方远处的轮不到。A/B 后默认开：kexu 1×8 三轮前方空白中位 4.6→4.2 秒、前方就绪 57→62 格；codex-bench ABABAB 3 对 43.2→47.4 格；MSPT、扫描 CPU 基本不变。0 关（对照用） |
+| `playerTicketThrottle` | 不改（原版 4） | 原版 DistanceManager 的玩家票节流（ticketThrottler）同时在途的名额：每张玩家票等这个 chunk 能 entity tick（5×5 都 FULL）才放名额。配了就换成这个数（mixin，每个维度都改）。不改票的级别和占用范围，不碰接缝规则；原版自己的生成也跟着放宽。/donor status 的 `playerTicketThrottle.actual` 读回各维度实际的值 | 11-09 直线 A/B 用（4/8/16）：烟花直飞每秒约 44 个新 chunk 进视野，4 个名额约 20～27 个/秒，donor 早就导入好的 chunk 也要排几秒队（codex-server：进视距→票够 p50 3.5 秒，拿到票到 FULL 0.15 秒）。看前方空白时长和 MSPT p95/max 再定 |
+| `backgroundRadius` | 48 | 加速模式（11-09）：后台 tile 离玩家（或预设中心）最多几圈 chunk；找需求的 outer 圈以内的照旧归找需求。0 关后台扫描 | 只在有开了加速、没暂停的 donor 连着时扫 |
+| `backgroundQueueCap` | 64 | 加速模式：最多排着几个后台 tile | |
+| `backgroundScanBudgetMicros` | 300 | 加速模式：后台扫描每次最多占主线程多久（在找需求之后，单独算） | |
+| `backgroundReadsPerScan` | 64 | 加速模式：后台扫描每次最多发起几次读存档 | |
+| `backgroundCenter` | 空 | 加速模式：预设中心（chunk 坐标 `x,z`）：没有玩家在附近也从这里一圈一圈往外做 | 比如出生点附近先铺开 |
+| `backgroundImportMaxMspt` | 30 | 加速模式：服务器平均 tick 超过这么多毫秒就不导后台结果（codex-audit 第十七节 B1：一个 tile 在 2 核上导入要 42～72 ms） | 后台结果和前方结果分两个队列，前方的先导 |
+| `backgroundImportEveryTicks` | 4 | 加速模式：后台结果最多每这么多 tick 导一个，而且只在那个 tick 没导前方的、前方没排着的时候 | |
+| `backgroundPendingCap` | 4 | 加速模式：等着导入的后台结果有这么多个时不再派新的后台任务 | 背压 |
+| `boostMaxInFlight` | 8 | 加速模式：开了加速的 donor 在途上限（按它报的生成线程数 ÷ `boostInFlightDivisor`，不比不开时少），lanes 往上探也到这里为止 | |
+| `boostInFlightDivisor` | 1 | 加速模式：在途上限 = 线程数 ÷ 这个数 | |
+| `importTrustDisk` | false | **只给演示服务器用，正式服不开**：导入时不读存档查旧状态（主线程上 36 次读盘），只看内存（照样拒收）和导入账本（服务器接手过的当服务器的；我们写的核心不被外圈覆盖；没有记录的当空的直接写） | 11-10 演示：开不开 donor 的差别要明显。代价：存档里服务器自己生成、没导入过的 chunk 认不出来，可能被覆盖 |
+| `skipNoDeadline` | true | 开 deadline 时，找需求算过、玩家不会去的 tile（侧后方，没有截止时间）不派 | false 退回原来的（donor 空着时也派），对照用 |
+| `maxLeaseTotalMs` | 120000 | 一个任务从派出起，心跳最多续租到多久，过了收回重派 | 11-09：worker 卡死时心跳照发，原来能无限续租 |
+| `importBudgetMs` | 10 | 软预算：每个 tick 结束时导入用到这么多毫秒就停，其余留到下个 tick。每个 tick 至少提交 1 个 tile，单个 tile 本身就可能超过 10 ms，所以**不保证导入那一 tick 的 MSPT 在 10 ms 以内**，只是不再几个 tile 挤在同一 tick 里 | 11-09 codex-audit A10：几个结果一起到时同一 tick 里做完，MSPT 最大 305 ms |
+| `requeueCooldownMs` | 5000 | 丢掉的 tile 过多久、需求重新成立时才能重新入队 | 11-09 codex-audit F6 |
 | `tokenTtlMs` | 60000 | 发给客户端的一次性 token 多久作废 | |
 | `allowTokenless` | false | 没带 token 的 worker 放不放进来。测试的 compose 里设 true（Docker 里的本地 worker 没有玩家）；正式部署保持 false | 第 9 步 |
 | `publicHost` | 空 | 发给玩家客户端的 coordinator 地址（主机名或 IP）。空就不发邀请，玩家的 worker 起不来 | 第 9 步 |
 | `inviteRequestMinMs` | 10000 | 每个玩家多久最多再要一次邀请（`mcdonate:invite_request`），超了忽略并记 WARN | 第 9 步 |
 | `publicPort` | 同 `port` | 发给玩家客户端的 coordinator 端口（端口转发时和监听端口不一样） | 第 9 步 |
-| `features` | 空 | 第 7 步的功能开关，逗号分隔 | 见 docs/step7-plan.md |
+| `features` | 空 | 第 7 步的功能开关，逗号分隔（territory、deadline、throughput、hedge、waitdonor） | 空是 v0（先来先服务，测试的对照组）。**部署推荐 `territory,deadline,throughput`**（deploy/ 的默认；deadline 带实测前沿和排队剪枝；throughput 一次给一个 donor 几个任务，worker 几个 tile 同时生成。真机上 1 个 donor 时开 throughput 收下的比例从 52% 涨到 82%）。deploy/ 的 demandLookahead 默认 16，见 docs/step7-report.md 开头 |
 | `demand` | on | `off` 关掉自动找需求（测试里手动派任务时用） | |
 | `port` | 25580 | donor 连进来的端口 | |
 | `waitDonorMaxMs` | 2000 | 原版要生成的 chunk 正在 donor 上做时，最多等多久（7.6，做好后生效） | 越大服务器省的越多，但 donor 不回时玩家多等；不超过 donor 做一个 tile 的时间 |

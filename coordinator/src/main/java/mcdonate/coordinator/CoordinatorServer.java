@@ -127,7 +127,29 @@ final class CoordinatorServer {
         } catch (IOException ignored) {
             // 关服时不管
         }
-        workers.values().forEach(Connection::close);
+        workers.values().forEach(c -> c.close("coordinator 停止"));
+    }
+
+    private static final java.util.regex.Pattern WORLD_ID = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,64}");
+
+    /**
+     * hello 里报的 donor 世界算不算数（11-09，kexu 审）：格式不对（只许字母数字、下划线、横线，最长 64）不收；
+     * 这个世界已经绑在另一个在线的 worker 上，而两边不是同一个玩家（或都没有玩家）时不收——防冒认，拿走别人认主的任务。
+     * 不收就是空串：照旧等它交第一个结果时再从结果里认。纯函数。
+     *
+     * @param online 现在在线的 worker：世界 → 它的玩家（没有玩家是 null）
+     */
+    static String helloWorld(String worldId, java.util.UUID player, java.util.Map<String, java.util.UUID> online) {
+        if (worldId == null || !WORLD_ID.matcher(worldId).matches()) {
+            return "";
+        }
+        if (online.containsKey(worldId)) {
+            java.util.UUID owner = online.get(worldId);
+            if (owner == null || !owner.equals(player)) {
+                return "";
+            }
+        }
+        return worldId;
     }
 
     /** 握手：版本对就分配编号回 welcome，不对回 workerId = -1。纯函数，单元测试用。 */
@@ -183,7 +205,7 @@ final class CoordinatorServer {
         for (Connection c : workers.values()) {
             if (player.equals(c.player)) {
                 LOG.info("玩家 {} 退出，断开他的 worker {}", player, c.workerId);
-                c.close();
+                c.close("玩家退出");
             }
         }
     }
@@ -204,8 +226,15 @@ final class CoordinatorServer {
     /** 每秒：收回到期租约，给空闲 worker 派任务，断开 15 秒没动静的连接。 */
     private void tick() {
         try {
-            for (long id : tasks.expire()) {
-                LOG.info("任务 {} 租约到期，回到队首", id);
+            // 11-09 加速模式：有开了加速、没暂停的 donor 才做后台扫描
+            demand.setBoostActive(workers.values().stream().anyMatch(c -> c.boost && !c.paused));
+            for (TaskQueue.Cancelled x : tasks.expireLeases()) {
+                // 11-09（A4）：收回的任务给原来的 worker 发 cancel（它可能卡住了，之后的结果作废也不要再做）
+                LOG.info("任务 {} 在 worker {} 上租约到期，收回（{}）", x.taskId(), x.worker(), tasks.state(x.taskId()));
+                Connection old = workers.get(x.worker());
+                if (old != null) {
+                    old.send(new Cancel(x.taskId()));
+                }
             }
             java.util.Set<String> worlds = new java.util.HashSet<>();
             workers.values().forEach(c -> {
@@ -224,7 +253,7 @@ final class CoordinatorServer {
                     LOG.info("任务 {} 玩家已经看到了还没派出去，丢掉，交给服务器", late);
                 }
                 // 7.2（11-09 补的漏洞）：玩家已经飞过、又不在任何玩家需求范围里的：删掉，派出去的撤回
-                TaskQueue.Stale stale = tasks.dropPassed(demand::inDemand);
+                TaskQueue.Stale stale = tasks.dropPassed(demand::inDemand, demand::inBackground);
                 for (TaskQueue.Cancelled c : stale.cancelled()) {
                     waitDonor.release(c.taskId());
                     Connection conn = workers.get(c.worker());
@@ -234,6 +263,18 @@ final class CoordinatorServer {
                 }
                 if (!stale.dropped().isEmpty() || !stale.cancelled().isEmpty()) {
                     LOG.info("玩家已经飞过的 tile：删掉排队的 {} 个，撤回派出的 {} 个", stale.dropped().size(), stale.cancelled().size());
+                }
+                // 11-09：按每个在线、没暂停的 donor 的实测延迟、速率、在途数，估每个排队任务最早什么时候做完，来不及的现在就丢掉（G5）
+                List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
+                for (Connection c : workers.values()) {
+                    if (!c.paused) {
+                        est.add(new TaskQueue.DonorEstimate(throughput.laneLatencyMs(c.workerId), throughput.ratePerMs(c.workerId),
+                                tasks.inFlight(c.workerId), throughput.lanes(c.workerId)));
+                    }
+                }
+                List<Long> hopeless = tasks.pruneHopeless(est);
+                if (!hopeless.isEmpty()) {
+                    LOG.info("排队的 {} 个 tile 按现在的吞吐来不及，丢掉，交给服务器", hopeless.size());
                 }
             }
             if (features.on(Features.HEDGE)) {
@@ -250,31 +291,80 @@ final class CoordinatorServer {
                     }
                 }
             }
-            boolean thr = features.on(Features.THROUGHPUT);
             for (Connection c : workers.values()) {
                 if (now - c.lastSeen > DEAD_MS) {
                     LOG.info("worker {} 15 秒没有消息，断开", c.workerId);
-                    c.close();
+                    c.close("15 秒没有消息（心跳超时）");
                     continue;
                 }
                 if (c.paused) {
                     continue; // 第 9 步：玩家那边帧率低、worker 暂停了：不派新任务，手上的照常续租、等结果
                 }
-                // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个
-                int max = thr ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
-                java.util.function.LongPredicate canMeet = thr
-                        ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
-                Optional<TaskQueue.Assignment> a;
-                while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
-                    TaskQueue.Assignment x = a.get();
-                    LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
-                    // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
-                    c.currentTask = x.taskId();
-                    c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
-                }
+                dispatch(c, now);
             }
         } catch (RuntimeException e) {
             LOG.warn("定时任务出错：{}", e.toString());
+        }
+    }
+
+    /** 这个 worker 同时能领几个：开 throughput 时按实测耗时（租约内能做完的个数，最多 maxConcurrency），关着时 1 个。 */
+    private int slots(Connection c) {
+        return features.on(Features.THROUGHPUT) ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
+    }
+
+    /** 给一个 worker 派到名额满（或者没有它能做的）。只在定时线程上调。 */
+    private void dispatch(Connection c, long now) {
+        // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
+        // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
+        // 11-09（正式服 hopeless 398）：实测能并行的几个马上开始，不按"前面几个 ÷ 速率"排队估（codex-audit 第十五节：按实测并行度，不按租约名额）
+        // 11-09 加速模式：开了加速的按它报的线程数放宽在途上限；11-10：再不超过实测能同时做的个数（lanes），不只用来估
+        int boostMax = BoostPolicy.maxInFlight(slots(c), c.boost, c.threads);
+        throughput.setCeiling(c.workerId, Math.max(DonorThroughput.MAX_CONCURRENCY, boostMax));
+        int max = BoostPolicy.dispatchCap(throughput.inFlightCap(c.workerId, boostMax), c.boost, boostMax);
+        boolean thr = features.on(Features.THROUGHPUT);
+        java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
+                ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
+        Optional<TaskQueue.Assignment> a;
+        // codex-audit 第十七节 B2：上限变小时超过一半的后台收回，前方的有空位
+        for (TaskQueue.Cancelled x : tasks.revokeExcessBackground(c.workerId, max)) {
+            LOG.info("worker {} 的上限变成 {}，收回后台任务 {}", c.workerId, max, x.taskId());
+            c.send(new Cancel(x.taskId()));
+        }
+        // B1 背压：等着导入的后台结果多了就不再派后台
+        boolean boost = c.boost && importQueues.backgroundPending() < BoostPolicy.BACKGROUND_PENDING_CAP;
+        while ((a = tasks.assign(c.workerId, max, canMeet, boost)).isPresent()) {
+            TaskQueue.Assignment x = a.get();
+            LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
+            // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
+            c.currentTask = x.taskId();
+            c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
+            if (c.closed) {
+                // codex-audit 第十五节 V3：查过连接还在、派出之前连接被关了，close 那边已经收回过，这一个没人收：自己收回。
+                // closed 在 close 收回之前就置上，所以这里看到 false 的，之后 close 的收回一定能收到它
+                List<Long> back = tasks.workerGone(c.workerId);
+                LOG.info("worker {} 派活时断开，任务 {} 回到队首", c.workerId, back);
+                return;
+            }
+        }
+    }
+
+    /**
+     * 11-09（正式服 hopeless 398）：收到一个结果就马上给这个 worker 补派，不等下一秒的定时：
+     * 一个 tile 0.7 秒做完，等定时最多空 1 秒，空档又让实测速率偏低。在定时线程上做（和 tick 不并发）。
+     */
+    private void dispatchSoon(Connection c) {
+        try {
+            timer.execute(() -> {
+                try {
+                    if (workers.get(c.workerId) == c && !c.paused) {
+                        dispatch(c, System.currentTimeMillis());
+                    }
+                } catch (RuntimeException e) {
+                    LOG.warn("补派出错：{}", e.toString());
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // coordinator 在停
         }
     }
 
@@ -292,20 +382,37 @@ final class CoordinatorServer {
     private void onResult(Connection c, Result r) {
         long leasedAt = tasks.leasedAt(r.taskId());
         if (r.ok()) {
-            long ms = leasedAt > 0 ? System.currentTimeMillis() - leasedAt : -1;
-            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, c.lastWireBytes});
+            long got = System.currentTimeMillis();
+            long ms = leasedAt > 0 ? got - leasedAt : -1;
+            // 分段耗时（11-09）：入队、派出、收到，加上 worker 带来的 4 个时间点（没有是 -1）
+            long[] w = mcdonate.common.TaskTiming.read(r.tile());
+            resultMeta.put(r.taskId(), new long[] {r.tile().sizeInBytes(), ms, c.lastWireBytes,
+                    tasks.enqueuedAt(r.taskId()), leasedAt > 0 ? leasedAt : -1, got,
+                    w == null ? -1 : w[0], w == null ? -1 : w[1], w == null ? -1 : w[2], w == null ? -1 : w[3],
+                    tasks.slackAtLease(r.taskId())});
         }
-        if (r.ok() && leasedAt > 0) {
-            // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
-            throughput.record(c.workerId, System.currentTimeMillis() - leasedAt);
+        long sampleAt = tasks.sampleLeasedAt(c.workerId, r.taskId());
+        if (r.ok() && sampleAt > 0) {
+            // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的。只取这个 worker 手上、只派过一次的（codex-audit 第十五节 V4）。
+            // 同时记下在途表读数（这个任务还算在途），速率按实测并行度算
+            long nowMs = System.currentTimeMillis();
+            long[] load = tasks.load(c.workerId);
+            // 11-10：后台 tile 的延迟不拿来判断并行（地形贵），照样算进实测并行度
+            throughput.record(c.workerId, nowMs - sampleAt, nowMs, load[0], load[1], tasks.inFlightAtLease(r.taskId()),
+                    tasks.currentlyBackground(r.taskId()));
         }
         if (r.ok()) {
             String world = r.tile().getString("worldId");
             if (!world.isEmpty()) {
+                if (c.world != null && !c.world.equals(world)) {
+                    // 11-09（kexu）：hello 报的和结果里的不一样，以结果为准
+                    LOG.warn("worker {} 的结果来自 donor 世界 {}，和它 hello 里报的 {} 不一样，按结果算", c.workerId, world, c.world);
+                }
                 c.world = world;
                 tasks.setWorkerWorld(c.workerId, world);
             }
         }
+        long epoch = tasks.epoch(); // codex-audit G1：在做决定之前取代次，reset 夹在中间时导入前比得出来
         TaskQueue.Decision d = tasks.onResult(c.workerId, r.taskId(), r.ok());
         switch (d.action()) {
             case IMPORT -> {
@@ -318,7 +425,7 @@ final class CoordinatorServer {
                             : server;
                     ex.execute(() -> {
                         try {
-                            if (importResult(c, r)) {
+                            if (importResult(c, r, epoch)) {
                                 waitDonor.hits.incrementAndGet();
                             }
                         } finally {
@@ -326,7 +433,13 @@ final class CoordinatorServer {
                         }
                     });
                 } else {
-                    server.execute(() -> importResult(c, r));
+                    // 11-09（A10）：排进导入队列，每个 tick 结束时按预算做（drainImports），不再各自 server.execute
+                    // codex-audit 第十七节 B1：后台的单独排队，主线程闲时才导，前方的先导
+                    if (tasks.currentlyBackground(r.taskId())) {
+                        importQueues.addBackground(() -> importResult(c, r, epoch));
+                    } else {
+                        importQueues.addForeground(() -> importResult(c, r, epoch));
+                    }
                 }
             }
             case REQUEUE -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
@@ -337,13 +450,19 @@ final class CoordinatorServer {
             resultMeta.remove(r.taskId());
             waitDonor.release(r.taskId());
         }
+        dispatchSoon(c); // 空出一个名额：马上补派
     }
 
     /** 主线程上：校验 tile 并导入。出错就让任务回到队列。返回是否被接受。 */
-    private boolean importResult(Connection c, Result r) {
+    private boolean importResult(Connection c, Result r, long epoch) {
+        if (tasks.epoch() != epoch) {
+            LOG.info("任务 {} 的结果排着导入时 coordinator 重置了，作废", r.taskId());
+            resultMeta.remove(r.taskId());
+            return false;
+        }
         long t0 = System.nanoTime();
         try {
-            return importResultTimed(c, r);
+            return importResultTimed(c, r, System.currentTimeMillis());
         } finally {
             long ns = System.nanoTime() - t0;
             importCount.incrementAndGet();
@@ -352,10 +471,13 @@ final class CoordinatorServer {
         }
     }
 
-    private boolean importResultTimed(Connection c, Result r) {
+    /** importStart：主线程开始处理这个结果的时间（分段耗时用）。 */
+    private boolean importResultTimed(Connection c, Result r, long importStart) {
         int workerId = c.workerId;
         try {
+            long p0 = System.nanoTime();
             TileFile file = TileFile.fromTag(r.tile(), TileImporter.dataVersion(), server.overworld().getSeed());
+            long parseNs = System.nanoTime() - p0;
             String tile = "[" + file.tile().x() + "," + file.tile().z() + "]";
             if (strict) {
                 TileImporter.StrictResult res = TileImporter.importStrict(server.overworld(), file, workerId,
@@ -375,7 +497,14 @@ final class CoordinatorServer {
                 imports.add("{\"tile\":" + tile + ",\"world\":\"" + file.worldId() + "\",\"accepted\":" + res.accepted()
                         + ",\"written\":" + (res.written() + res.overwritten())
                         + ",\"bytes\":" + (meta == null ? -1 : meta[0]) + ",\"wire_bytes\":" + (meta == null ? -1 : meta[2])
-                        + ",\"ms\":" + (meta == null ? -1 : meta[1]) + "}");
+                        + ",\"ms\":" + (meta == null ? -1 : meta[1])
+                        + ",\"slack_ms\":" + (meta == null ? -1 : meta[10])
+                        // 主线程导入的三段（毫秒，小数）：解析 NBT、查区域（含读存档）、写入
+                        + ",\"imp\":{\"parse\":" + parseNs / 100_000 / 10.0 + ",\"check\":" + TileImporter.LAST_SPLIT_NS[0] / 100_000 / 10.0
+                        + ",\"write\":" + TileImporter.LAST_SPLIT_NS[1] / 100_000 / 10.0 + "}"
+                        + ",\"seg\":" + (meta == null ? "null" : TaskTimeline.json(meta[3], meta[4],
+                                meta[6] < 0 ? null : new long[] {meta[6], meta[7], meta[8], meta[9]},
+                                meta[5], importStart, System.currentTimeMillis())) + "}");
                 return res.accepted();
             } else {
                 TileImporter.Result res = TileImporter.importTile(server.overworld(), file, "task " + r.taskId());
@@ -390,6 +519,49 @@ final class CoordinatorServer {
             tasks.importFailed(r.taskId());
             return false;
         }
+    }
+
+    /**
+     * worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；不在线返回空。玩家名从在线玩家列表里找（玩家下线了用主机名）。
+     * 在主线程上调（玩家列表是主线程的）。
+     */
+    /** 测试用：断开一个 worker。不在线返回 false。 */
+    boolean kick(int workerId) {
+        Connection c = workers.get(workerId);
+        if (c == null) {
+            return false;
+        }
+        c.close("被 /donor kick 踢掉（测试用）");
+        return true;
+    }
+
+    /** 现在连着的 worker 个数。 */
+    public int workerCount() {
+        return workers.size();
+    }
+
+    public java.util.Optional<WorkerName> workerName(int workerId) {
+        Connection c = workers.get(workerId);
+        if (c == null) {
+            return java.util.Optional.empty();
+        }
+        java.util.UUID p = c.player;
+        net.minecraft.server.level.ServerPlayer sp = p == null ? null : server.getPlayerList().getPlayer(p);
+        return java.util.Optional.of(WorkerName.of(p, sp == null ? null : sp.getGameProfile().getName(), c.world, c.name));
+    }
+
+    /** 每个 tick 导入最多用多少毫秒（至少做一个）。 */
+    static final long IMPORT_BUDGET_MS = Config.getLong("importBudgetMs", 10);
+    private final ImportScheduler importQueues = new ImportScheduler();
+
+    /** 主线程上，每个 tick 结束时调：按预算做排着的导入。 */
+    void drainImports() {
+        importQueues.drain(IMPORT_BUDGET_MS * 1_000_000, System::nanoTime, server.getAverageTickTimeNanos() / 1e6);
+    }
+
+    /** 排队剪枝估一个 tile 要多久：最快那个 donor 的延迟；没有 donor 是 0。纯函数。 */
+    static long pruneTileMs(long[] latencies) {
+        return java.util.Arrays.stream(latencies).min().orElse(0);
     }
 
     /** 当前生效的配置项（docs/config.md），放进 /donor status。 */
@@ -413,7 +585,14 @@ final class CoordinatorServer {
                 + ",\"motionHorizonS\":" + Motion.HORIZON_S
                 + ",\"tokenTtlMs\":" + TokenRegistry.TTL_MS
                 + ",\"allowTokenless\":" + ALLOW_TOKENLESS + ",\"publicHost\":\"" + Coordinator.PUBLIC_HOST + "\",\"publicPort\":" + Coordinator.PUBLIC_PORT
+                + ",\"maxLeaseTotalMs\":" + TaskQueue.MAX_LEASE_TOTAL_MS + ",\"importBudgetMs\":" + IMPORT_BUDGET_MS
+                + ",\"corridorChunks\":" + TaskQueue.CORRIDOR_CHUNKS + ",\"demandForwardFirst\":" + DemandScanner.FORWARD_FIRST + ",\"skipNoDeadline\":" + TaskQueue.SKIP_NO_DEADLINE
+                + ",\"importFrontier\":" + DemandScanner.IMPORT_FRONTIER + ",\"importMarginMs\":" + TaskQueue.IMPORT_MARGIN_MS
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
+                + ",\"backgroundRadius\":" + DemandScanner.BACKGROUND_RADIUS + ",\"backgroundQueueCap\":" + DemandScanner.BACKGROUND_QUEUE_CAP
+                + ",\"backgroundCenter\":\"" + (DemandScanner.BACKGROUND_CENTER == null ? "" : DemandScanner.BACKGROUND_CENTER[0] + "," + DemandScanner.BACKGROUND_CENTER[1]) + "\""
+                + ",\"boostMaxInFlight\":" + BoostPolicy.MAX_IN_FLIGHT
+                + ",\"importTrustDisk\":" + TrustDisk.ON
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
                 + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))
                 + "}";
@@ -434,16 +613,33 @@ final class CoordinatorServer {
                     .append(",\"idleMs\":").append(now - c.lastSeen)
                     .append(",\"inFlight\":").append(tasks.inFlight(c.workerId))
                     .append(",\"paused\":").append(c.paused)
+                    // 11-09 加速模式：开没开、报的线程数、当后台任务领了几个、被接受几个
+                    .append(",\"boost\":").append(c.boost)
+                    .append(",\"threads\":").append(c.threads)
+                    .append(",\"backgroundLeased\":").append(tasks.backgroundLeased(c.workerId))
+                    .append(",\"backgroundAccepted\":").append(tasks.backgroundAccepted(c.workerId))
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
+                    // 11-09（正式服 hopeless 398）：派活怎么估这个 donor
+                    .append(",\"latencyMs\":").append(throughput.latencyMs(c.workerId))
+                    .append(",\"laneLatencyMs\":").append(throughput.laneLatencyMs(c.workerId))
+                    .append(",\"ratePerSec\":").append(Math.round(throughput.ratePerMs(c.workerId) * 1e5) / 100.0)
+                    .append(",\"busyMs\":").append(tasks.load(c.workerId)[0])
+                    .append(",\"slots\":").append(slots(c))
+                    .append(",\"parallelism\":").append(Math.round(throughput.parallelism(c.workerId) * 100) / 100.0)
+                    .append(",\"lanes\":").append(throughput.lanes(c.workerId))
                     .append('}');
         }
-        return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
+        return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"playerTicketThrottle\":").append(PlayerTicketThrottle.json(server)).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
                 .append(",\"discarded_conflict\":").append(discardedConflict.get())
                 .append(",\"discard_ratio\":").append(discardRatio())
                 .append(",\"discarded\":{\"late\":").append(discardedBy.get(RegionRules.Discard.LOADED).get())
                 .append(",\"other_world\":").append(discardedBy.get(RegionRules.Discard.OTHER_WORLD).get())
                 .append(",\"server\":").append(discardedBy.get(RegionRules.Discard.SERVER).get())
                 .append("},\"accepted\":").append(acceptedImports.get())
+                // codex-audit 第十七节 B1：等着导入的前方、后台结果，导过的后台结果
+                .append(",\"importQueue\":{\"foreground\":").append(importQueues.foregroundPending())
+                .append(",\"background\":").append(importQueues.backgroundPending())
+                .append(",\"backgroundImported\":").append(importQueues.backgroundImported()).append('}')
                 .append(",\"stale\":").append(tasks.staleJson())
                 .append(",\"hedge\":{\"cancelled\":").append(tasks.hedgeCancelled()).append(",\"wasted\":").append(tasks.hedgeWasted())
                 .append("},\"ledger\":").append(Ownership.LEDGER.size())
@@ -491,6 +687,9 @@ final class CoordinatorServer {
         volatile int lastWireBytes = -1;
         /** 第 9 步：worker 在心跳里报的暂停状态（限速），暂停时不派新任务。 */
         volatile boolean paused;
+        /** 11-09 加速模式：心跳里报的（愿意空闲时做后台 tile、生成线程数，不知道是 0）。 */
+        volatile boolean boost;
+        volatile int threads;
         /** 第 9 步：这个 worker 属于哪个玩家（token 换来的）；免 token 的本地 worker 是 null。 */
         volatile java.util.UUID player;
         /** 这个 worker 的 donor 世界（从它交的第一个结果里知道）。 */
@@ -525,7 +724,7 @@ final class CoordinatorServer {
                     }
                 }
             } catch (IOException | InterruptedException | ProtocolException e) {
-                close();
+                close("发送失败：" + e);
             }
         }
 
@@ -542,11 +741,12 @@ final class CoordinatorServer {
                     }
                 }
             } catch (SocketException e) {
-                // 断开
+                closeReason = closeReason != null ? closeReason : "连接断了：" + e.getMessage();
             } catch (IOException | ProtocolException e) {
+                closeReason = "连接出错：" + e;
                 LOG.warn("worker {} 的连接出错，断开：{}", workerId, e.toString());
             } finally {
-                close();
+                close(closeReason == null ? "对方关了连接" : closeReason);
             }
         }
 
@@ -554,7 +754,7 @@ final class CoordinatorServer {
             if (workerId < 0) {
                 if (!(m instanceof Hello hello)) {
                     LOG.warn("连接的第一条消息不是 hello，断开");
-                    close();
+                    close("第一条消息不是 hello");
                     return;
                 }
                 Admission adm = admit(hello, tokens, ALLOW_TOKENLESS);
@@ -575,9 +775,25 @@ final class CoordinatorServer {
                 workerId = w.workerId();
                 name = hello.name();
                 player = adm.player();
+                // 11-09：worker 一连上就报它的 donor 世界，认主给这个世界的任务马上能派，"认主的世界不在"也不会误报
+                // （原来要等它交出第一个结果；donor 世界跨会话复用时，新连上的 worker 领不到认主的任务，用户真机上空等了 83 秒）
+                java.util.Map<String, java.util.UUID> online = new java.util.HashMap<>();
+                for (Connection o : workers.values()) {
+                    if (o.world != null) {
+                        online.put(o.world, o.player);
+                    }
+                }
+                String hw = helloWorld(hello.worldId(), adm.player(), online);
+                if (!hello.worldId().isEmpty() && hw.isEmpty()) {
+                    LOG.warn("worker {} 在 hello 里报的 donor 世界不收（格式不对，或者已经绑在另一个在线的 worker 上）：{}", hello.name(),
+                            hello.worldId().length() > 80 ? hello.worldId().substring(0, 80) + "…" : hello.worldId());
+                } else if (!hw.isEmpty()) {
+                    world = hw;
+                    tasks.setWorkerWorld(w.workerId(), world);
+                }
                 workers.put(workerId, this);
                 send(w);
-                LOG.info("worker {}（{}）连上", workerId, name);
+                LOG.info("worker {}（{}）连上{}", workerId, name, world == null ? "" : "，donor 世界 " + world);
                 return;
             }
             switch (m) {
@@ -587,6 +803,11 @@ final class CoordinatorServer {
                         LOG.info("worker {} {}", workerId, h.paused() ? "暂停（玩家那边帧率低）" : "恢复");
                     }
                     paused = h.paused();
+                    if (boost != h.boost()) {
+                        LOG.info("worker {} 加速模式{}（{} 个生成线程）", workerId, h.boost() ? "打开" : "关闭", h.threads());
+                    }
+                    boost = h.boost();
+                    threads = h.threads();
                     if (h.taskId() >= 0) {
                         tasks.heartbeat(workerId, h.taskId());
                     }
@@ -607,13 +828,18 @@ final class CoordinatorServer {
             } catch (IOException ignored) {
                 // 反正要断
             }
-            close();
+            close("发完最后一条消息后断开");
         }
 
-        void close() {
+        /** 断开的原因（11-09：用户真机上 worker 反复断开，日志里只有"断开"，看不出为什么）。 */
+        private volatile String closeReason;
+        private final long openedAt = System.currentTimeMillis();
+
+        void close(String reason) {
             if (closed) {
                 return;
             }
+            closeReason = reason;
             closed = true;
             try {
                 socket.close();
@@ -623,7 +849,9 @@ final class CoordinatorServer {
             if (workerId >= 0 && workers.remove(workerId, this)) {
                 List<Long> back = tasks.workerGone(workerId);
                 throughput.forget(workerId);
-                LOG.info("worker {} 断开{}", workerId, back.isEmpty() ? "" : "，任务 " + back + " 回到队首");
+                long now = System.currentTimeMillis();
+                LOG.info("worker {} 断开（{}；连了 {} 秒，最后一条消息在 {} 秒前）{}", workerId, closeReason,
+                        (now - openedAt) / 1000, (now - lastSeen) / 1000, back.isEmpty() ? "" : "，任务 " + back + " 回到队首");
             }
         }
     }

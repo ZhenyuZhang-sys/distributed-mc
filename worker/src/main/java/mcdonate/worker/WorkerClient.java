@@ -48,6 +48,8 @@ final class WorkerClient {
     final TokenState tokens = new TokenState(System.getenv(WORKER_TOKEN_ENV));
     /** 第 9 步：玩家那边帧率低，暂停：心跳里报 paused，coordinator 不再派新任务；手上的照常做完。 */
     private volatile boolean paused;
+    /** 11-09 加速模式：愿意空闲时做后台 tile（心跳里报给 coordinator）。启动时取 -Dmcdonate.boost，游戏经 BOOST 控制行改。 */
+    private volatile boolean boost = Boolean.parseBoolean(mcdonate.common.Config.get("boost", "false"));
     /** 第 9 步：给客户端看的行（标准输出，带 MCDONATE 前缀）。 */
     private final java.util.function.Consumer<String> controlOut;
 
@@ -55,7 +57,7 @@ final class WorkerClient {
     static final String WORKER_TOKEN_ENV = "MCDONATE_TOKEN";
 
     WorkerClient(MinecraftServer server, String address) {
-        this(server, address, line -> System.out.println(line));
+        this(server, address, ControlOut.stdout()); // 不经过 System.out（原版会把它包成日志格式，见 ControlOut）
     }
 
     WorkerClient(MinecraftServer server, String address, java.util.function.Consumer<String> controlOut) {
@@ -106,8 +108,12 @@ final class WorkerClient {
             try (Socket s = new Socket()) {
                 s.connect(new InetSocketAddress(host, port), 5000);
                 s.setSoTimeout(READ_TIMEOUT_MS);
-                socket = s;
-                send(new Hello(Protocol.VERSION, hostName(), tokens.forHello()));
+                synchronized (this) {   // 和 send 同一把锁：换 socket 和换代一起（codex-audit G2）
+                    socket = s;
+                    generations.connected();
+                }
+                // 带上 donor 世界编号：coordinator 一连上就知道是哪个世界（11-09：原来要等第一个结果，认主的任务派不出去）
+                send(new Hello(Protocol.VERSION, hostName(), tokens.forHello(), WorldId.of(server)));
                 wait = 1000;
                 readLoop(s);
             } catch (IOException | ProtocolException e) {
@@ -115,8 +121,12 @@ final class WorkerClient {
                     LOG.info("和 coordinator 的连接断了（{}），{} 秒后重连", e.getMessage(), wait / 1000);
                 }
             } finally {
-                socket = null;
-                // 断线时手上的任务已被 coordinator 收回，做完也不发
+                // 断线时手上的任务已被 coordinator 收回，做完也不发。11-09（codex-audit A1）：这一代收到的全部作废，
+                // 不只是正在做的那一个（排着的不做；做完的不经新连接发回去）
+                synchronized (this) {
+                    socket = null;
+                    cancelled.addAll(generations.disconnected());
+                }
                 long t = currentTask;
                 if (t >= 0) {
                     cancelled.add(t);
@@ -178,22 +188,58 @@ final class WorkerClient {
             return;
         }
         currentTask = t.taskId();
-        // 一次只生成一个：主线程等 chunk 时会执行排着的任务，直接 server.execute 会让下一个 tile 嵌套在上一个里面跑（OneAtATime）
+        // codex-audit G3：租约到期时 coordinator 给原 worker 发了 Cancel(这个编号)，之后同一个编号可能再派过来，
+        // 是新的一次，清掉撤销标记（同一个连接上 Cancel 一定先到）
+        cancelled.remove(t.taskId());
+        received.put(t.taskId(), System.currentTimeMillis());
+        generations.received(t.taskId());
+        // 11-09：收到就把它的 chunk 排上生成（加票、不等，很快），前一个 tile 还在导出时它已经在生成线程池里了。
+        // 开 throughput 时 coordinator 一次给几个，这样几个 tile 同时做；导出（等、序列化）还是一个一个来
+        TilePos tile = new TilePos(t.tx(), t.tz());
+        server.execute(() -> TileExporter.prefetch(server.overworld(), tile));
+        // 一次只导出一个：主线程等 chunk 时会执行排着的任务，直接 server.execute 会让下一个 tile 嵌套在上一个里面跑（OneAtATime）
         generating.submit(t, this::generate);
     }
 
     private final OneAtATime<Task> generating;
+    /** 每个任务是哪一次连接收到的（A1）。 */
+    private final ConnectionGenerations generations = new ConnectionGenerations();
+    /** 任务 → 收到的时间（分段耗时，11-09）。 */
+    private final java.util.Map<Long, Long> received = new ConcurrentHashMap<>();
+    /** 控制通道 STATUS 的累计数（11-09 overlay）。 */
+    private final WorkerStatus status = new WorkerStatus();
 
     private void generate(Task t) {
+        Long got = received.remove(t.taskId());
         if (cancelled.remove(t.taskId())) {
             LOG.info("任务 {} 还没开始就被撤掉，不做", t.taskId());
+            TileExporter.release(server.overworld(), new TilePos(t.tx(), t.tz())); // 收到时加的票去掉
             return;
         }
         currentTask = t.taskId();
+        // 排在后面的任务也先排上生成（收到时 server.execute 的那次可能还在服务器队列里没轮到）：这个 tile 等的时候它们一起做
+        for (Task next : generating.pendingValues()) {
+            if (!cancelled.contains(next.taskId())) {
+                TileExporter.prefetch(server.overworld(), new TilePos(next.tx(), next.tz()));
+            }
+        }
         Result r;
+        int chunkCount = 0;
         try {
+            long g0 = System.currentTimeMillis();
             TileExporter.Generated g = TileExporter.generate(server.overworld(), new TilePos(t.tx(), t.tz()));
-            r = Result.success(t.taskId(), g.file().toTag());
+            chunkCount = g.file().chunks().size();
+            long g1 = System.currentTimeMillis();
+            net.minecraft.nbt.CompoundTag tag = g.file().toTag();
+            // 分段耗时：收到、开始生成、生成完、打包完（coordinator 写进 /donor imports 的 seg）
+            mcdonate.common.TaskTiming.stamp(tag, got == null ? g0 : got, g0, g1, System.currentTimeMillis());
+            r = Result.success(t.taskId(), tag);
+        } catch (Waits.Fatal e) {
+            // 11-09（codex-audit A5）：原版生成出了致命错误，这个世界的生成状态不可信了：报失败，停止 worker（游戏那边会看到它退出）
+            LOG.error("任务 {} 生成时原版出了致命错误，worker 退出", t.taskId(), e);
+            send(Result.failure(t.taskId(), truncate(e.toString())));
+            server.execute(() -> server.halt(false));
+            return;
         } catch (RuntimeException e) {
             LOG.warn("任务 {} 生成失败：{}", t.taskId(), e.toString());
             r = Result.failure(t.taskId(), truncate(e.toString()));
@@ -203,7 +249,17 @@ final class WorkerClient {
             LOG.info("任务 {} 已被撤掉，结果不发", t.taskId());
             return;
         }
-        deliver(r);
+        long gen = generations.generationOf(t.taskId());
+        boolean current = generations.isCurrent(t.taskId());
+        generations.finished(t.taskId());
+        if (!current) {
+            LOG.info("任务 {} 是上一次连接收到的，结果不发", t.taskId());
+            return;
+        }
+        deliver(r, gen);
+        if (r.ok()) {
+            status.tileDone(chunkCount, 0); // 字节数在 send 里按帧记
+        }
     }
 
     /** 第 9 步：控制通道的一条命令（游戏经 worker 的标准输入发来）。STOP 由调用方处理（要停服务器）。 */
@@ -211,23 +267,41 @@ final class WorkerClient {
         switch (c.kind()) {
             case PAUSE -> {
                 paused = true;
-                send(new Heartbeat(System.currentTimeMillis(), currentTask, true)); // 马上告诉 coordinator
+                send(heartbeat(true)); // 马上告诉 coordinator
                 LOG.info("暂停（玩家那边帧率低）：手上的做完，不领新的");
             }
             case RESUME -> {
                 paused = false;
-                send(new Heartbeat(System.currentTimeMillis(), currentTask, false));
+                send(heartbeat(false));
                 LOG.info("恢复");
             }
+            case BOOST -> setBoost(c.arg().equals("on"));
             case TOKEN -> {
                 if (tokens.offer(c.arg())) {
                     LOG.info("收到新 token");
                 }
             }
-            case STATUS -> controlOut.accept(ControlLine.out("STATUS {\"paused\":" + paused + ",\"task\":" + currentTask
-                    + ",\"connected\":" + (socket != null) + ",\"needToken\":" + tokens.needsNew() + "}"));
+            case STATUS -> controlOut.accept(ControlLine.out("STATUS " + status.json(
+                    !running ? WorkerStatus.State.STOPPING : paused ? WorkerStatus.State.PAUSED : WorkerStatus.State.RUNNING,
+                    currentTask, socket != null, tokens.needsNew(), WorkerStatus.Load.current())));
             case STOP -> { }
         }
+    }
+
+    /** 加速开关（BOOST 控制行、测试用的 /donor boost）：马上发一条心跳告诉 coordinator。 */
+    void setBoost(boolean on) {
+        boost = on;
+        send(heartbeat(paused));
+        LOG.info("加速模式{}", on ? "打开：空闲时做后台 tile" : "关闭");
+    }
+
+    boolean boost() {
+        return boost;
+    }
+
+    /** 心跳：手上的任务、暂停、加速、生成线程数。 */
+    private Heartbeat heartbeat(boolean paused) {
+        return new Heartbeat(System.currentTimeMillis(), currentTask, paused, boost, WorkerStatus.Load.current().threads());
     }
 
     boolean paused() {
@@ -244,6 +318,11 @@ final class WorkerClient {
     private boolean hold;
 
     private void deliver(Result r) {
+        deliver(r, generations.current());
+    }
+
+    /** gen：这个任务是哪一代连接收到的；发的时候还是这一代才发（codex-audit G2）。 */
+    private void deliver(Result r, long gen) {
         synchronized (held) {
             if (hold) {
                 held.add(r);
@@ -251,8 +330,16 @@ final class WorkerClient {
                 return;
             }
         }
-        send(r);
+        // 11-09：编码和压缩（Frame.encode：NBT 写出、gzip）放到发送线程上，不占主线程（主线程只有一条，序列化、调度都在上面）
+        // 排在发送线程里时断线重连了：不经新连接发（检查和写 socket 在同一把锁里，codex-audit G2）
+        SENDER.execute(() -> sendIfGeneration(r, gen));
     }
+
+    private static final java.util.concurrent.ExecutorService SENDER = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "mcdonate-worker-send");
+        t.setDaemon(true);
+        return t;
+    });
 
     /** 打开或放开扣结果；放开时把扣着的发出去，返回发了几个。 */
     int setHold(boolean on) {
@@ -277,7 +364,14 @@ final class WorkerClient {
     private void heartbeatLoop() {
         while (running) {
             sleep(HEARTBEAT_MS);
-            send(new Heartbeat(System.currentTimeMillis(), currentTask, paused));
+            send(heartbeat(paused));
+        }
+    }
+
+    /** 只有连接还是 gen 这一代时才发（和换 socket 同一把锁）。 */
+    private synchronized void sendIfGeneration(Message m, long gen) {
+        if (generations.current() == gen) {
+            send(m);
         }
     }
 
@@ -289,8 +383,10 @@ final class WorkerClient {
         }
         try {
             OutputStream out = s.getOutputStream();
-            out.write(Frame.encode(m));
+            byte[] frame = Frame.encode(m);
+            out.write(frame);
             out.flush();
+            status.sent(frame.length);
         } catch (IOException e) {
             closeSocket();
         }
