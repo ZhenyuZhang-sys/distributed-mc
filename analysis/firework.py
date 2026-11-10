@@ -391,10 +391,14 @@ def gc_max_ms(path):
 SPIKE_MS = 200
 
 
-def territory_metrics(prov):
-    """领地碎片和接缝（调度 11-10：两 donor 预生成区被交错切开、接缝 tile 落给 1 核服务器）。领地 = 每个 chunk 第一个 donor 事件的 donor。
-    fragments：各 donor 领地 4 邻接连通块数之和；seam_edges：相邻两个 chunk 属于不同 donor 的对数；seam_chunks / seam_keys：挨着别的 donor 的
-    donor chunk；server_between：不是 donor 做的（vanilla / rejected）、8 邻里有 2 个以上不同 donor 的 chunk；rejected：被打回的 chunk 数。"""
+def territory_metrics(prov, tile=4, imports=None):
+    """领地碎片和接缝（调度 11-10：两 donor 预生成区被交错切开、接缝 tile 落给 1 核服务器），按 tile（默认 4×4 chunk，和派活一样）算。
+    chunk 的主人 = 它第一个 donor 事件的 donor；tile 的主人 = 里面 donor chunk 最多的那个。fragments：各 donor 的 tile 4 邻接连通块数之和；
+    seam_edges：相邻两个 tile 属于不同 donor 的对数；server_between：没有 donor chunk、只有服务器做的 / 打回的 chunk、4 邻里有 2 个以上不同
+    donor 的 tile（"夹在中间给服务器"）；seam_keys / server_between_keys：这些 tile 里出现过的 chunk（给前方空白按接缝拆用）；
+    rejected：被打回的 chunk 数。
+    imports（imports.jsonl，每个导入的 tile 和送来它的 donor 世界）有的时候按它认主：导入连外圈一起写，外圈 chunk 的 donor 事件落在
+    邻居 tile 里，按 chunk 投票会把服务器做的 tile 也算给 donor；这时 imports_rejected 是没被接受的导入个数。"""
     owner, other = {}, {}
     for e in sorted(prov, key=lambda e: e['t_ms']):
         k = (e['cx'], e['cz'])
@@ -402,35 +406,47 @@ def territory_metrics(prov):
             owner.setdefault(k, e.get('donor'))
         elif e['kind'] in ('vanilla', 'rejected'):
             other.setdefault(k, e['kind'])
+    tof = lambda k: (k[0] // tile, k[1] // tile)
+    votes, chunks_of = {}, {}
+    for k, w in owner.items():
+        votes.setdefault(tof(k), {}).setdefault(w, 0)
+        votes[tof(k)][w] += 1
+    for k in list(owner) + [k for k in other if k not in owner]:
+        chunks_of.setdefault(tof(k), set()).add(k)
+    towner = {t: max(v, key=lambda w: (v[w], -w if isinstance(w, int) else 0)) for t, v in votes.items()}
+    if imports is not None:
+        towner = {}
+        for im in imports:
+            if im.get('accepted') and im.get('tile'):
+                towner.setdefault(tuple(im['tile']), im.get('world'))
     n4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
     seen, fragments = set(), 0
-    for k in owner:
-        if k in seen:
+    for t in towner:
+        if t in seen:
             continue
         fragments += 1
-        stack = [k]
-        seen.add(k)
+        stack, _ = [t], seen.add(t)
         while stack:
             x, z = stack.pop()
             for dx, dz in n4:
                 q = (x + dx, z + dz)
-                if q not in seen and owner.get(q) == owner[k]:
+                if q not in seen and towner.get(q) == towner[t]:
                     seen.add(q)
                     stack.append(q)
-    seam_keys, edges = set(), 0
-    for (x, z), w in owner.items():
+    seam_tiles, edges = set(), 0
+    for (x, z), w in towner.items():
         for dx, dz in ((1, 0), (0, 1)):
             q = (x + dx, z + dz)
-            if q in owner and owner[q] != w:
+            if q in towner and towner[q] != w:
                 edges += 1
-                seam_keys.update({(x, z), q})
-    between = sum(1 for (x, z), kind in other.items() if (x, z) not in owner and len(
-        {owner[(x + dx, z + dz)] for dx in (-1, 0, 1) for dz in (-1, 0, 1) if (x + dx, z + dz) in owner}) >= 2)
-    return dict(donors=len(set(owner.values())), donor_chunks=len(owner), fragments=fragments, seam_edges=edges,
-                seam_chunks=len(seam_keys), seam_keys=seam_keys, server_between=between,
-                server_between_keys={k for k in other if k not in owner and len({owner[(k[0] + dx, k[1] + dz)] for dx in (-1, 0, 1)
-                                                                                for dz in (-1, 0, 1) if (k[0] + dx, k[1] + dz) in owner}) >= 2},
-                rejected=sum(1 for v in other.values() if v == 'rejected'))
+                seam_tiles.update({(x, z), q})
+    server_tiles = ({tof(k) for k in other} if imports is not None else {tof(k) for k in other if k not in owner}) - set(towner)
+    between = {t for t in server_tiles if len({towner[(t[0] + dx, t[1] + dz)] for dx, dz in n4 if (t[0] + dx, t[1] + dz) in towner}) >= 2}
+    keys = lambda ts: {k for t in ts for k in chunks_of.get(t, ())}
+    return dict(donors=len(set(towner.values())), donor_chunks=len(owner), donor_tiles=len(towner), fragments=fragments,
+                imports_rejected=sum(1 for im in imports if not im.get('accepted')) if imports is not None else None,
+                seam_edges=edges, seam_chunks=len(keys(seam_tiles)), seam_keys=keys(seam_tiles), server_between=len(between),
+                server_between_keys=keys(between), rejected=sum(1 for v in other.values() if v == 'rejected'))
 
 
 def split_blank(times, near, radius=2):
@@ -472,13 +488,18 @@ def recompute(attempt_dir, params) -> dict:
         out.update(blank_summary(blank_times(ev, rows, run=run, view=view, cache_radius_blocks=radius, start=DEFAULT_START)))
         # 两个 donor 的领地和接缝（调度 11-10）：整段，和只算站着时（预生成区）导入的
         prov = [json.loads(l) for l in (raw / 'provenance.jsonl').read_text().splitlines() if l.strip()] if (raw / 'provenance.jsonl').exists() else []
+        imports = ([json.loads(l) for l in (Path(attempt_dir) / 'imports.jsonl').read_text().splitlines() if l.strip()]
+                   if (Path(attempt_dir) / 'imports.jsonl').exists() else None)
         if prov:
-            tm = territory_metrics(prov)
+            tm = territory_metrics(prov, imports=imports)
             out.update(territory_fragments=tm['fragments'], seam_edges=tm['seam_edges'], seam_chunks=tm['seam_chunks'],
                        server_between=tm['server_between'], rejected_chunks=tm['rejected'], territory_donors=tm['donors'])
             stand = params.get('stand_s') or 0
             if stand:
-                ts = territory_metrics([e for e in prov if e['t_ms'] <= stand * 1000])
+                early = [e for e in prov if e['t_ms'] <= stand * 1000]
+                tiles_early = {(e['cx'] // 4, e['cz'] // 4) for e in early if e['kind'] == 'donor'}
+                ts = territory_metrics(early, imports=None if imports is None else
+                                       [im for im in imports if im.get('tile') and tuple(im['tile']) in tiles_early])
                 out.update(stand_territory_fragments=ts['fragments'], stand_seam_edges=ts['seam_edges'],
                            stand_server_between=ts['server_between'], stand_donor_chunks=ts['donor_chunks'])
             sp = split_blank(blank_times(ev, rows, run=run, view=view, cache_radius_blocks=radius, start=DEFAULT_START, with_keys=True),
