@@ -38,6 +38,7 @@ public final class FlightRecorder {
     private final ViewTracker tracker;
     private final SecondRows rows;
     private final ViewTracker.Snapshot initial;
+    private int startTick = -1;
     /** 起飞命令执行时的 System.nanoTime；逐秒、chunk 事件、来源事件的时间都从这里算。 */
     private final long t0 = System.nanoTime();
     private long tickStart, ticks, scanNanos, endMs;
@@ -126,6 +127,9 @@ public final class FlightRecorder {
         }
         ChunkPos c = player.chunkPosition();
         this.initial = tracker.start(c.x, c.z, this::ready);
+        // 起飞时服务器的 tick 数：对 autosave（每 6000 tick）用（codex-audit K8：驱动在等初始视野之前取的不准）
+        this.startTick = player.getServer() == null ? -1 : player.getServer().getTickCount();
+        out.initial(tracker.initialJsonl());
         out.runJson(config().toString());
         countersAtStart = Generation.listen(listener);
         SyncLoads.addListener(syncListener);
@@ -353,6 +357,7 @@ public final class FlightRecorder {
         init.addProperty("view", initial == null ? 0 : initial.view());
         init.addProperty("not_ready", initial == null ? 0 : initial.notReady());
         o.add("initial", init);
+        o.addProperty("start_tick", startTick);
         // 给第 7 步预留（计划 6.1）：coordinator 的配置由系统属性给，没有就是 null
         o.addProperty("coordinator_features", System.getProperty("mcdonate.features"));
         o.addProperty("demand_lookahead", System.getProperty("mcdonate.demandLookahead"));

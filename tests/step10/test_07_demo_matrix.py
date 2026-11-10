@@ -202,3 +202,21 @@ def test_labels_include_scenario_so_groups_do_not_merge():
     assert any('转弯' in n for n in names) and any('来回' in n for n in names)
     sets = {s['setting']: s for s in demo_figures.settings(rows)}
     assert len(sets) == 2 and sorted(round(s['paired_reduction'][0], 3) for s in sets.values()) == [.2, .2]
+
+
+def test_scan_budget_arms_are_separate_settings():
+    # 调度 11-09：扫描预算 500 对 2000 同组同轮跑，两臂标签一样时 settings 排序撞上 dict 比较、整批出图崩了（数据都在）。
+    # 两臂要分开；同一种配置同一轮有两行时也不能崩
+    def row(budget, repeat, stall, donors=1):
+        r = dict(experiment='flight', group='scan', scenario='firework', server_cpus=2, donors=donors, repeat=repeat, latency_ms=0,
+                 features='territory+deadline+throughput' if donors else 'v0', lookahead=16 if donors else None, stall_fraction=stall)
+        if budget:
+            r['scan_budget_us'] = budget
+        return r
+    rows = [row(None, 1, .4, donors=0)] + [row(b, k, s) for k in (1, 2, 3) for b, s in ((500, .16), (2000, .05))]
+    names = [n for n, _ in demo_figures.configs(rows)]
+    assert any('扫描预算 500' in n for n in names) and any('扫描预算 2000' in n for n in names)
+    sets = {s['setting']: s for s in demo_figures.settings(rows)}
+    assert len(sets) == 2 and all(s['pairs'] == 1 for s in sets.values())   # 原版只有第 1 轮
+    twin = rows + [row(500, 1, .2)]   # 同标签同一轮两行
+    demo_figures.settings(twin)

@@ -202,4 +202,18 @@ class OverlayCoreTest {
         assertTrue(back.get(0).full(), "回到主世界：整片快照");
         assertEquals(Set.of(key(0, 0), key(1, 0)), chunks(back));
     }
+
+    @Test
+    void quickRoundTripBetweenTicksStillResyncs() {
+        // codex-audit K7：1 秒内去下界又回来，两次 tick 都在主世界。换维度时（事件里）调 away，下一次照样整片快照
+        core.subscribe(ALICE, new OverlaySubscribe(true, false));
+        core.onEvent(0, 0, Provenance.Kind.VANILLA, -1);
+        assertTrue(tick(ALICE, 0, 0).get(0).full());
+        core.away(ALICE);   // 去下界
+        core.away(ALICE);   // 又回来（同一秒里）
+        List<ProvenanceUpdate> back = tick(ALICE, 0, 0);
+        assertTrue(back.get(0).full());
+        assertEquals(Set.of(key(0, 0)), chunks(back));
+        assertTrue(tick(ALICE, 0, 0).isEmpty(), "之后照常只发变化");
+    }
 }

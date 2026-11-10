@@ -1,0 +1,65 @@
+{
+ "name": "ufw-turn-donor",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  },
+  "1x4": {
+   "donors": 1,
+   "env": {}
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09：fish-perf 635a362（撤掉的相邻 tile 也等）转弯只跑 donor 臂 3 轮，原版复用 k2 上 10cadc8 那批的。重点看 worker 日志里还有没有 PalettedContainer。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "a-fwt",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ]
+   }
+  ]
+ }
+}

@@ -62,7 +62,7 @@ worker 用游戏自带的 Java 21，不用另外装 Java。第一次打开时会
 ## 5. 怎么确认自己的 donor 在干活
 
 - **游戏里**：设置界面最下面一行是"worker 在跑"；帧率低时会变成"worker 在跑（帧率低，暂停中）"，见下面"帧率低时会自动暂停"。
-  算力面板：聊天框输入 `/mcdonate hud on`（`/mcdonate overlay on` 按 donor 给 chunk 上色，`/mcdonate show` 两个都开）。小地图中间的白色箭头是你的朝向（无头测试看不到画面，请在真机上看一眼方向对不对）。
+  算力面板：聊天框输入 `/mcdonate hud on`（`/mcdonate overlay on` 按 donor 给 chunk 上色，`/mcdonate show` 两个都开）。小地图中间的白色箭头是你的朝向（无头测试看不到画面，请在真机上看一眼方向对不对）。小地图默认是"探索"模式：只给你真正加载过的 chunk 上色，提前算好的地方不剧透；`/mcdonate map all` 显示所有知道来源的，`/mcdonate map explore` 改回来（存在 `config/mc-donate-overlay.properties`，重连会清空已探索的记录）。
 - **服务器上**（服务器管理者在 `deploy/` 目录里，命令见 `docs/deploy.md` 第 7 节）：
 
   ```bash

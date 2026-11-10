@@ -33,6 +33,11 @@ final class FlightOutput {
         writer.execute(() -> write("run.json", json));
     }
 
+    /** 初始视野逐 chunk 的就绪状态（codex-audit K1）。 */
+    void initial(String jsonl) {
+        writer.execute(() -> write("initial.jsonl", jsonl));
+    }
+
     void second(String line) {
         writer.execute(() -> {
             try {

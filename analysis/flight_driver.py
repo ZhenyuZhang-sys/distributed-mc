@@ -73,6 +73,32 @@ def _features_on(features):
     return names
 
 
+# 矩阵维度 → coordinator 配置项（-Dmcdonate.<项>，/donor status 的 config 里核对）
+SERVER_PROPS = {'scan_budget_us': 'demandScanBudgetMicros', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency',
+                'forward_first': 'demandForwardFirst', 'ticket_throttle': 'playerTicketThrottle'}
+SERVER_PROP_NAMES = {'scan_budget_us': '扫描预算', 'corridor_chunks': 'corridorChunks', 'max_concurrency': 'maxConcurrency',
+                     'forward_first': 'demandForwardFirst', 'ticket_throttle': 'playerTicketThrottle'}
+
+
+def _prop_used(status, k):
+    """服务器实际用的值：一般在 /donor status 的 config 里；玩家票节流（fish-throttle）读 playerTicketThrottle.actual 主世界的 maxTasks。"""
+    if k == 'ticket_throttle':
+        return (status.get('playerTicketThrottle') or {}).get('actual', {}).get('minecraft:overworld')
+    return status.get('config', {}).get(SERVER_PROPS[k])
+
+
+def _prop_matches(want, used):
+    """/donor status 里开关是 true/false，数是数：0/1 对 false/true，其余按字符串比。"""
+    if isinstance(used, bool):
+        return str(want) in ('0', '1') and bool(int(want)) == used
+    return str(used) == str(want)
+
+
+# fish-rate（11-09）status 里每个 worker 的速度估计；老代码没有这些就不记
+WORKER_STATUS_KEYS = ('lanes', 'parallelism', 'ratePerSec', 'laneLatencyMs', 'latencyMs', 'busyMs', 'slots', 'capacityPerSec',
+                      'boost', 'backgroundLeased', 'backgroundAccepted')
+
+
 def _status_counts(controller) -> dict:
     """/donor status 里会涨的计数：导入、丢弃按原因、过时删掉的（7.2）、导入的主线程耗时、donor 做完的 tile。"""
     s = controller.status()
@@ -82,6 +108,61 @@ def _status_counts(controller) -> dict:
                 import_ms=s.get('import', {}).get('totalMs', 0), tiles_done=sum(w.get('done', 0) for w in s.get('workers', [])))
 
 
+def _check_worker_jar(runner):
+    """donor 用的 worker jar（build/mods-worker，donor 容器挂的）必须就是刚构建的那个（worker/build/libs）。
+    11-09 事故：跑批只跑了 collectMods，mods-worker 一直是早上的旧 jar，一整上午的代码对比作废。返回 jar 的指纹（md5 前 8 位）。"""
+    if not hasattr(runner, 'worker_jar'):
+        return None
+    j = runner.worker_jar()
+    if j['mounted'] != j['built']:
+        raise RuntimeError(f"donor 挂的 worker jar（{j['mounted']}）不是刚构建的（{j['built']}）：构建时要跑 collectWorkerMods")
+    return j['mounted']
+
+
+def _server_tick(runner):
+    """服务器现在的 tick 数（/bench tick），拿不到是 None。"""
+    import json
+    try:
+        return int(json.loads(runner.rcon('bench tick'))['tick'])
+    except Exception:   # noqa: BLE001
+        return None
+
+
+def _keep_worker_logs(runner, controller, out, since):
+    """这一轮起过的 donor 容器的日志（带时间戳）存成 worker-<服务>.log。拿不到就算了。"""
+    if not hasattr(runner, 'service_log'):
+        return
+    for svc in sorted(getattr(controller, 'active', None) or []):
+        try:
+            lines = runner.service_log(svc, since)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f'worker-{svc}.log').write_text(''.join(l + '\n' for l in lines))
+        except Exception as e:   # noqa: BLE001
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f'worker-{svc}.log.error').write_text(repr(e))
+
+
+def _keep_diagnostics(runner, out, t_fly, donors):
+    """查 MSPT 尖峰用（调度 11-09）：飞的时候带时间戳的服务器日志（server_env 开了 GC 日志的话也在里面），和 /donor imports 的全部条目
+    （每条有主线程导入的三段耗时：解析、查区域含读存档、写入）。拿不到就算了，不影响这一轮。"""
+    import json
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        if hasattr(runner, 'server_log_ts'):
+            (out / 'server-log.txt').write_text(''.join(l + '\n' for l in runner.server_log_ts(t_fly)))
+        if donors:
+            items, total = [], None
+            while total is None or len(items) < total:
+                page = json.loads(runner.rcon(f'donor imports {len(items)}'))
+                total = page.get('total', 0)
+                if not page.get('items'):
+                    break
+                items += page['items']
+            (out / 'imports.jsonl').write_text(''.join(json.dumps(i, ensure_ascii=False) + '\n' for i in items))
+    except Exception as e:   # noqa: BLE001
+        (out / 'diagnostics-error.txt').write_text(repr(e))
+
+
 def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_START, seed=424242, donor_env=None,
                        donor_profiles=None, server_env=None):
     """donor_env：起 donor 时给 compose 的环境变量（演示矩阵里 worker3 提到 4 核）。
@@ -89,6 +170,13 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
     events = events or ab._docker_events
 
     def drive(cell, out) -> dict:
+        t_cell = time.time()
+        try:
+            return _drive(cell, out)
+        finally:   # 调度 11-09：不管这一轮成不成，worker 容器的日志先存进归档（下一轮会重建容器）
+            _keep_worker_logs(runner, controller, Path(out), t_cell)
+
+    def _drive(cell, out) -> dict:
         p = cell['params']
         donors = p['donors']
         env = donor_env
@@ -112,8 +200,11 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         lookahead = p.get('lookahead')
         # server_env：服务器容器的其他设置（调度 11-09"用户同款"：容器 3G、-Xms512M -Xmx2G）
         world_env = {**(server_env or {}), 'MC_CPUS': str(cpus), 'MC_CPUSET': cpuset}
-        if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）
-            world_env['MCD_JVM_EXTRA'] = f'-Dmcdonate.demandLookahead={lookahead}'
+        if lookahead:   # 提前量是服务器的 JVM 参数，换世界重建容器时带上（docs/config.md）；接在 server_env 的后面（比如 GC 日志）
+            world_env['MCD_JVM_EXTRA'] = ' '.join(x for x in (world_env.get('MCD_JVM_EXTRA', ''), f'-Dmcdonate.demandLookahead={lookahead}') if x)
+        props = {k: p[k] for k in SERVER_PROPS if p.get(k) is not None}   # 0 也传（比如开关关着的那一臂），好核对
+        for k, v in props.items():   # 其他 coordinator 配置（扫描预算、corridor、并发），同样是服务器的 JVM 参数
+            world_env['MCD_JVM_EXTRA'] = ' '.join(x for x in (world_env.get('MCD_JVM_EXTRA', ''), f'-Dmcdonate.{SERVER_PROPS[k]}={v}') if x)
         runner.script('new_world.sh', name, str(seed), env=world_env, timeout=900)
         if p.get('view_distance'):   # 按用户正式服的视距测（默认是 compose 里的 10）
             runner.rcon(f"bench viewdistance {p['view_distance']}")
@@ -121,13 +212,15 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         cache_chunks = None
         if cache:   # 缓存区：以起点为中心、半径 cache 个 chunk 的方形先用 Chunky 生成好（用户 11-09：从缓存区飞出去）
             from bench.server import chunky
-            cache_chunks = chunky(_LogShim(runner), int(start[0]), int(start[1]), cache * 16, timeout=900)
+            cache_chunks = chunky(_LogShim(runner), int(start[0]), int(start[1]), cache * 16, timeout=900, replace_stale=True)
         ids_before = []
+        jar = None
         if donors == 0:
             controller.donor_off()
             for f in FEATURES:
                 controller.feature(f, False)
         else:
+            jar = _check_worker_jar(runner)
             runner.rcon('donor reset')
             controller.donor_on(donors, env=env)
             on = _features_on(p.get('features'))
@@ -138,6 +231,18 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             elif net:
                 raise RuntimeError('要模拟网络，但 scripts/netem.sh 还不支持 NETEM_SERVICE 和限速')
             ids_before = controller.worker_ids()
+            if p.get('boost') is not None:   # 加速模式（fish-boost）：测试环境用 worker 的 /donor boost on|off 代替客户端开关
+                want = bool(p['boost'])
+                for svc in controller.active:
+                    runner.rcon_worker(svc, f"donor boost {'on' if want else 'off'}")
+                deadline = time.time() + min(60, controller.wait_timeout)
+                while True:   # 开关走心跳到 coordinator，等 status 里每个 worker 的 boost 都对上
+                    ws = controller.status().get('workers', [])
+                    if ws and all(w.get('boost') is want for w in ws):
+                        break
+                    if time.time() >= deadline:
+                        raise RuntimeError(f"这一轮无效：boost 没生效：要 {want}，coordinator 看到的是 {[w.get('boost') for w in ws]}")
+                    time.sleep(controller.wait_interval)
         counts_before = _status_counts(controller) if donors else None
         services = list(controller.active) if donors else []
         cpu_before = runner.worker_cpu(services) if services and hasattr(runner, 'worker_cpu') else None
@@ -145,29 +250,50 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         speed = scenario_speed(p)
         routes = (scenarios.routes(scenario, seed=seed, seconds=p['duration_s'], speed=p.get('speed_bps'), cache_radius_blocks=cache * 16)
                   if scenario else [None])
+        stand = p.get('stand_s') or 0
+        if stand:   # 起飞前在原地站 stand 秒（加速模式：空闲时 donor 先把周围算好）：路线前面加一段速度 0、朝向同第一段
+            if routes == [None]:
+                raise ValueError('stand_s 要配 scenario（route 模式）')
+            routes = [f"{r.split(';')[0].split(',')[0]},0,{stand};{r}" for r in routes]
+        stand_snap = {}
+        stand_timer = threading.Timer(stand, lambda: stand_snap.update(status=controller.status())) if stand and donors else None
+        start_tick = _server_tick(runner)   # 对 autosave（每 6000 tick）用
         t_fly = time.time()
+        # 每次尝试的 run 名不同：中途打断的一轮会在服务器的 bench-runs 里留下同名目录，重试时 bench fly start 会拒绝
+        run_tag = f'{time.time_ns() // 1_000_000 % 10**8:08d}'
         dirs = [out / ('flight' if i == 0 else f'flight{i + 1}') for i in range(len(routes))]
         errors = []
 
         def one(i, route):
             try:
-                flyer.fly_sync(f'mx-{name}-p{i + 1}' if len(routes) > 1 else f'mx-{name}', start, speed,
-                               p['duration_s'], dirs[i], route=route,
+                flyer.fly_sync(f'mx-{name}-{run_tag}-p{i + 1}' if len(routes) > 1 else f'mx-{name}-{run_tag}', start, speed,
+                               p['duration_s'] + stand, dirs[i], route=route,
                                player=None if i == 0 else f'{flyer.PLAYER}{i + 1}')
             except Exception as e:   # 一个玩家飞失败，这一轮就无效
                 errors.append(e)
 
         threads = [threading.Thread(target=one, args=(i, r), daemon=True) for i, r in enumerate(routes)]
+        if stand_timer:
+            stand_timer.start()
         for t in threads:
             t.start()
         for t in threads:
             t.join()
+        if stand_timer:
+            stand_timer.join()   # 飞的时间比站的长，到这里早就记过了
         if errors:
             raise errors[0]
         ids_after = controller.worker_ids() if donors else []
+        st = controller.status() if props else {}
+        used = {k: _prop_used(st, k) for k in props}
         counts_after = _status_counts(controller) if donors else None
+        status_after = controller.status() if donors else None
+        if status_after is not None:   # 飞完那一刻整份 /donor status（fish-rate 的每个 worker 的 lanes、速率等）
+            out.mkdir(parents=True, exist_ok=True)
+            (out / 'donor-status.json').write_text(json.dumps(status_after, ensure_ascii=False, indent=1))
         cpu_after = runner.worker_cpu(services) if cpu_before is not None else None
         log_lines = runner.server_log_since(t_fly) if hasattr(runner, 'server_log_since') else []
+        _keep_diagnostics(runner, out, t_fly, donors)
         all_judged = [ab._judge(d, donors > 0, cpus, ids_before, ids_after) for d in dirs]
         judged = all_judged[0]
         for j in all_judged[1:]:
@@ -177,9 +303,31 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         if lookahead and str(s.get('demand_lookahead')) != str(lookahead):
             judged['valid'] = False
             judged['invalid'].append(f"提前量没生效：要 {lookahead}，服务器用的是 {s.get('demand_lookahead')}")
+        for k, v in props.items():
+            if not _prop_matches(v, used[k]):
+                judged['valid'] = False
+                judged['invalid'].append(f"{SERVER_PROP_NAMES[k]}没生效：要 {v}，服务器用的是 {used[k]}")
         if not judged['valid']:
             raise RuntimeError('这一轮无效：' + '；'.join(judged['invalid']))
         result = {k: _num(s[k]) for k in METRICS if k in s}
+        for k in props:
+            result[f'{k}_effective'] = used[k]
+        if stand_snap.get('status') is not None:   # 站完那一刻：站着时接受了多少、后台派了 / 接受了多少（从这一轮开始算）
+            st = stand_snap['status']
+            (out / 'donor-status-stand.json').write_text(json.dumps(st, ensure_ascii=False, indent=1))
+            ws = st.get('workers', [])
+            result.update(stand_accepted=st.get('accepted', 0) - (counts_before or {}).get('imports_accepted', 0),
+                          stand_bg_leased=sum(w.get('backgroundLeased', 0) for w in ws),
+                          stand_bg_accepted=sum(w.get('backgroundAccepted', 0) for w in ws),
+                          stand_bg_imported=(st.get('importQueue') or {}).get('backgroundImported'))
+        if status_after is not None and status_after.get('importQueue'):   # f9d27c0：后台结果导过几个、飞完时还排着几个
+            result['bg_imported'] = status_after['importQueue'].get('backgroundImported')
+            result['bg_pending'] = status_after['importQueue'].get('background')
+        if p.get('boost') is not None and status_after is not None:
+            bs = {w.get('boost') for w in status_after.get('workers', [])}
+            result['boost_effective'] = bs.pop() if len(bs) == 1 else None
+        if status_after is not None:
+            result['worker_status'] = [{k: w[k] for k in ('id',) + WORKER_STATUS_KEYS if k in w} for w in status_after.get('workers', [])]
         if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个
             stalls = [j['summary'].get('stall_fraction') for j in all_judged if j['summary'].get('stall_fraction') is not None]
             dists = [j['summary'].get('distance_ratio') for j in all_judged if j['summary'].get('distance_ratio') is not None]
@@ -187,7 +335,9 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 result.update(stall_fraction=sum(stalls) / len(stalls), stall_fraction_max=max(stalls))
             if dists:
                 result['distance_ratio'] = sum(dists) / len(dists)
-        result.update(players=len(routes), scenario_route=routes[0],
+        if jar:
+            result['worker_jar'] = jar
+        result.update(players=len(routes), scenario_route=routes[0], fly_start_unix=t_fly, fly_start_tick=start_tick,
                       cant_keep_up=sum("Can't keep up" in l for l in log_lines),
                       moved_too_quickly=sum('moved too quickly' in l for l in log_lines))
         if cpu_before is not None:
@@ -206,6 +356,10 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 result['mspt_p95'] = _p95([float(r['mspt_mean']) for r in csv.DictReader(f) if r.get('mspt_mean')])
         else:
             result['mspt_p95'] = _p95([r.get('mspt_mean') for r in seconds])
+        if stand:   # 站着那段的服务器 MSPT（看后台持续导入会不会压垮 2 核）
+            st_rows = [r for r in seconds if (r.get('t_s') or 0) <= stand]
+            result['stand_mspt_p95'] = _p95([r.get('mspt_mean') for r in st_rows])
+            result['stand_mspt_max'] = max((r['mspt_max'] for r in st_rows if isinstance(r.get('mspt_max'), (int, float))), default=None)
         prov = layer2_stats.load_jsonl(raw / 'provenance.jsonl') if (raw / 'provenance.jsonl').exists() else []
         leads = layer2_stats.donor_leads(prov, seconds)
         if cache:   # 只看出了缓存区以后
@@ -213,7 +367,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             result.update(after_exit(seconds, start, cache * 16, speed), cache_chunks=cache_chunks)
         if counts_before is not None:
             result.update({k: counts_after[k] - counts_before[k] for k in counts_before})
-            result['tile_s'] = result.pop('tiles_done') / p['duration_s']
+            result['tile_s'] = result.pop('tiles_done') / (p['duration_s'] + stand)
         total = sum(result.get(k) or 0 for k in ('full_generated', 'full_resumed', 'full_loaded'))
         result['resumed_share'] = (result.get('full_resumed') or 0) / total if total else None
         result.update(donor_events=judged['donor_events'], netem=net, valid=True, server_cpuset=cpuset,

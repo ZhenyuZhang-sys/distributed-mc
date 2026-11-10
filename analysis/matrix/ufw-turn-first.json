@@ -1,0 +1,93 @@
+{
+ "name": "ufw-turn-first",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  },
+  "1x4": {
+   "donors": 1,
+   "env": {}
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09：fish-perf 3132230（转弯时新旧方向并集）先跑转弯（对照原版），再跑直线确认没变差。用户同款服务器，8 核 donor；GC 日志照开。 调度 11-09：关键对比每臂至少 3 轮，这里只留转弯；直线 3 轮在 ufw-straight3。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "a-fwt",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ]
+   },
+   {
+    "group": "a-fwt",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework_turning"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ]
+   }
+  ]
+ }
+}

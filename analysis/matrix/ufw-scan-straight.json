@@ -1,0 +1,94 @@
+{
+ "name": "ufw-scan-straight",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-09：验证部署包里唯一的参数改动——扫描预算 -Dmcdonate.demandScanBudgetMicros 500（旧默认）对 2000（部署值）。main f19d087（+kexu 实验工具），用户同款 2 核、3G、-Xmx2G，1 个 8 核 donor，开关和提前量同部署（territory+deadline+throughput、16），烟花 33.5 格/秒直线，k3 同槽位 500/2000 交替各 3 轮，原版 1 轮作参照。codex-server 用 1 个 4 核 donor 测过直飞 17%→4%。f19d087 的 worker 有'重导出外圈 chunk 不在内存'的 bug（fish 在修），偶尔让一个任务失败重排。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "scan-straight",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "repeats": 1
+   },
+   {
+    "group": "scan-straight",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     500,
+     2000
+    ]
+   }
+  ]
+ }
+}

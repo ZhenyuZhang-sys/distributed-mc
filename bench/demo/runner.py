@@ -22,6 +22,10 @@ class Runner:
     def rcon(self, command: str) -> str:
         return _COLOR.sub('', run(str(SCRIPTS / 'rcon.sh'), command, timeout=30)).strip()
 
+    def rcon_worker(self, service: str, command: str) -> str:
+        """发给 donor 容器（worker、worker2……）的控制台命令，比如测试环境的 /donor boost on。"""
+        return _COLOR.sub('', run(str(SCRIPTS / 'rcon.sh'), f'--{service}', command, timeout=30)).strip()
+
     def compose(self, *args, timeout=120, env=None) -> str:
         if not env:
             return compose(*args, timeout=timeout)
@@ -66,6 +70,24 @@ class Runner:
     def server_log_since(self, t: float) -> list:
         """服务器 t（unix 秒）以后的日志行（数 Can't keep up、moved too quickly 用）。"""
         return compose('logs', '--since', str(int(t)), '--no-log-prefix', 'minecraft', timeout=120).splitlines()
+
+    def server_log_ts(self, t: float) -> list:
+        """同上，每行带 Docker 的时间戳（UTC，到纳秒）：查 MSPT 尖峰时和 GC 日志、导入日志对时间。"""
+        return compose('logs', '--since', str(int(t)), '--timestamps', '--no-log-prefix', 'minecraft', timeout=120).splitlines()
+
+    def service_log(self, service: str, t: float) -> list:
+        """某个服务 t（unix 秒）以后的日志，带时间戳（donor 崩了时存进归档）。"""
+        return compose('logs', '--since', str(int(t)), '--timestamps', '--no-log-prefix', service, timeout=120).splitlines()
+
+    def worker_jar(self) -> dict:
+        """donor 容器挂的 worker jar（build/mods-worker）和刚构建的（worker/build/libs）的 md5 前 8 位；没有文件是 None。"""
+        import hashlib
+        root = SCRIPTS.parent
+
+        def md5(p):
+            return hashlib.md5(p.read_bytes()).hexdigest()[:8] if p.exists() else None
+        return dict(mounted=md5(root / 'build/mods-worker/mcdonate-worker-0.1.0.jar'),
+                    built=md5(root / 'worker/build/libs/mcdonate-worker-0.1.0.jar'))
 
     def services(self) -> list:
         """compose 里定义了的服务（不管起没起）。"""

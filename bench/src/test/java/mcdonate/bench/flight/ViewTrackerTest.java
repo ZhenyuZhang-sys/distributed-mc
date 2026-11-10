@@ -116,4 +116,18 @@ class ViewTrackerTest {
         assertThrows(IllegalStateException.class, () -> t.start(0, 0, isReady));
         assertThrows(IllegalArgumentException.class, () -> new ViewTracker(1, (a, b, c, d) -> {}));
     }
+
+    @Test
+    void initialStatesAreKeptForTheArchive() {
+        // codex-audit K1：初始视野不发事件，逐 chunk 的就绪状态单独存（initial.jsonl），重放时从它开始
+        ViewTracker t = tracker();
+        readyAll(0, 0);
+        ready.remove(ChunkPos.asLong(3, 4));
+        t.start(0, 0, isReady);
+        t.tick(50, 5, 0, isReady);   // 之后的变化不影响初始记录
+        String[] lines = t.initialJsonl().split("\n");
+        assertEquals(453, lines.length);
+        assertTrue(java.util.Arrays.asList(lines).contains("{\"cx\":3,\"cz\":4,\"ready\":false}"));
+        assertTrue(java.util.Arrays.asList(lines).contains("{\"cx\":0,\"cz\":0,\"ready\":true}"));
+    }
 }

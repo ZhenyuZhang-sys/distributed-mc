@@ -181,3 +181,267 @@ def test_profile_env_can_join_slot_core_sets():
     assert got == {'WORKER_CPUS': '8', 'WORKER_CPUSET': '24-27,28-31'}
     with pytest.raises(ValueError):
         resolve_env({'WORKER_CPUSET': '@NOPE'}, local.get)
+
+
+def test_driver_keeps_spike_diagnostics(tmp_path):
+    # 调度 11-09：查 MSPT 尖峰是导入还是 GC。驱动存下飞的时候带时间戳的服务器日志（含 GC 日志）、/donor imports 的全部条目、起飞时刻
+    import json
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    runner.server_log_ts = lambda t: ['2026-11-09T13:30:00.1Z [GC] Pause Young 12ms', '2026-11-09T13:30:01.2Z 导入任务 3']
+    items = [dict(tile=[i, 0], imp=dict(parse=1.0, check=2.0, write=3.0)) for i in range(5)]
+    orig = runner.rcon
+
+    def rcon(cmd):
+        if cmd.startswith('donor imports'):
+            a = int(cmd.split()[2]) if len(cmd.split()) > 2 else 0
+            return json.dumps(dict(total=len(items), items=items[a:a + 2]))   # 一页 2 条，要翻页
+        return orig(cmd)
+    runner.rcon = rcon
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    profiles = {'1x8': {'donors': 1, 'env': {'WORKER_CPUS': '8'}}}
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles=profiles,
+                               server_env={'MCD_JVM_EXTRA': '-Xlog:gc:stdout:time'})
+    cell = rcell('firework')
+    cell['params']['lookahead'] = 8
+    fly.lookahead = '8'
+    out = drive(cell, tmp_path / 'c9')
+    assert envs[0]['MCD_JVM_EXTRA'] == '-Xlog:gc:stdout:time -Dmcdonate.demandLookahead=8'   # 提前量不盖掉 server_env 里的
+    assert (tmp_path / 'c9' / 'server-log.txt').read_text().count('\n') == 2
+    got = [json.loads(l) for l in (tmp_path / 'c9' / 'imports.jsonl').read_text().splitlines()]
+    assert [g['tile'] for g in got] == [[i, 0] for i in range(5)]
+    assert isinstance(out['fly_start_unix'], float)
+
+
+def test_driver_records_start_tick(tmp_path):
+    # 调度 11-09：autosave 每 6000 tick 一次（sync-chunk-writes=true 时同步写在主线程），记下起飞时服务器的 tick 数好对尖峰
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    runner.tick = 5990
+    out = drive(rcell('firework'), tmp_path / 'c10')
+    assert out['fly_start_tick'] == 5990
+
+
+def test_driver_keeps_worker_logs_even_when_the_round_fails(tmp_path):
+    # 调度 11-09：worker 崩了（PalettedContainer 多线程访问）时容器随下一轮重建，日志没了。每轮结束（包括判无效、飞失败）先把
+    # worker 容器的日志存进归档
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    asked = []
+    runner.service_log = lambda svc, since: (asked.append(svc), [f'{svc} line 1', f'{svc} line 2'])[1]
+    out = drive(rcell('firework'), tmp_path / 'ok')
+    assert (tmp_path / 'ok' / 'worker-worker.log').read_text().splitlines() == ['worker line 1', 'worker line 2']
+    assert asked == ['worker'] and out
+
+    def boom(*a, **kw):
+        raise RuntimeError('飞的时候断了')
+    flyer.fly_sync = boom
+    with pytest.raises(RuntimeError, match='飞的时候断了'):
+        drive(rcell('firework'), tmp_path / 'bad')
+    assert (tmp_path / 'bad' / 'worker-worker.log').exists()
+
+
+def test_driver_refuses_stale_worker_mods(tmp_path):
+    # 11-09 事故：跑批只跑了 collectMods，donor 容器挂的 build/mods-worker 一直是早上的旧 jar，一整上午的代码对比作废。
+    # donor 轮开始前比一下 build/mods-worker 里的 jar 和刚构建的 worker jar，不一样就拒绝；结果里记下 jar 的指纹
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    runner.worker_jar = lambda: dict(mounted='aaaa', built='bbbb')
+    with pytest.raises(RuntimeError, match='collectWorkerMods'):
+        drive(rcell('firework'), tmp_path / 'stale')
+    runner.worker_jar = lambda: dict(mounted='cccc', built='cccc')
+    out = drive(rcell('firework'), tmp_path / 'ok')
+    assert out['worker_jar'] == 'cccc'
+    out = drive(rcell('firework', donors=0, profile=None, features='v0'), tmp_path / 'vanilla')   # 原版不碰 worker
+    assert 'worker_jar' not in out
+
+
+def test_run_name_differs_between_attempts(tmp_path):
+    # 11-09：中途打断的一轮在服务器的 bench-runs 里留下同名目录，同一格重试时 bench fly start 拒绝（"已存在，换个 run 名"）。
+    # 每次尝试的 run 名都不一样
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.slot_cpuset = lambda: '16-19'
+    names = []
+    orig = flyer.fly_sync
+    flyer.fly_sync = lambda run, *a, **kw: (names.append(run), orig(run, *a, **kw))[1]
+    drive(rcell('firework'), tmp_path / 'a1')
+    drive(rcell('firework'), tmp_path / 'a2')
+    assert len(names) == 2 and names[0] != names[1] and all(n.startswith('mx-mx') for n in names)
+
+
+def test_driver_sets_and_checks_scan_budget(tmp_path):
+    # 调度 11-09：部署包里唯一的参数改动是扫描预算 -Dmcdonate.demandScanBudgetMicros（旧默认 500，部署 2000），要能按单元设、
+    # 接在 server_env 后面（GC 日志不丢），并用 /donor status 的 config 核对服务器真的用上了，没用上判无效
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    profiles = {'1x8': {'donors': 1, 'env': {'WORKER_CPUS': '8'}}}
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles=profiles,
+                               server_env={'MCD_JVM_EXTRA': '-Xlog:gc:stdout:time'})
+    cell = rcell('firework')
+    cell['params']['scan_budget_us'] = 2000
+    runner.status['config'] = {'demandScanBudgetMicros': 2000}
+    out = drive(cell, tmp_path / 'c11')
+    assert envs[0]['MCD_JVM_EXTRA'] == '-Xlog:gc:stdout:time -Dmcdonate.demandScanBudgetMicros=2000'
+    assert out['scan_budget_us_effective'] == 2000
+    runner.status['config'] = {'demandScanBudgetMicros': 500}
+    with pytest.raises(RuntimeError, match='扫描预算没生效'):
+        drive(cell, tmp_path / 'c12')
+
+
+def test_matrix_accepts_scan_budget_and_drops_it_for_vanilla():
+    from analysis import run_matrix as rm
+    base = dict(donors=[0, 1], speed=['elytra'], server_cpus=[2], latency_ms=[0], features=['deadline'], bots=[1], duration_s=120,
+                scenario=['firework'], scan_budget_us=[500, 2000])
+    cfg = dict(name='t', seed=1, repeats=1, experiments=dict(flight=[base]))
+    rm.validate(cfg)
+    cells = rm.expand(cfg)
+    got = sorted((c['params']['donors'], c['params'].get('scan_budget_us')) for c in cells)
+    assert got == [(0, None), (1, 500), (1, 2000)]   # 原版没有扫描（没 donor 不扫），只留一个
+    bad = dict(cfg, experiments=dict(flight=[dict(base, scan_budget_us=[0])]))
+    with pytest.raises(ValueError):
+        rm.validate(bad)
+
+
+def test_firework_config_name_shows_scan_budget():
+    from analysis import firework as f
+    r = dict(donors=1, donor_profile='1x8', scan_budget_us=2000)
+    assert f._cfg(r).endswith('扫描预算 2000 µs')
+    assert '扫描预算' not in f._cfg(dict(donors=0))
+
+
+def test_driver_sets_corridor_and_concurrency_and_checks_them(tmp_path):
+    # 调度 11-09：直线参数扫描 lookahead × corridorChunks、maxConcurrency，和扫描预算一样接在 JVM 参数后面并核对
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles={'1x8': {'donors': 1, 'env': {}}},
+                               server_env={'MCD_JVM_EXTRA': '-Xlog:gc:stdout:time'})
+    cell = rcell('firework')
+    cell['params'].update(scan_budget_us=2000, corridor_chunks=10, max_concurrency=6)
+    runner.status['config'] = {'demandScanBudgetMicros': 2000, 'corridorChunks': 10, 'maxConcurrency': 6}
+    out = drive(cell, tmp_path / 'c13')
+    extra = envs[0]['MCD_JVM_EXTRA']
+    assert extra.startswith('-Xlog:gc:stdout:time ')
+    assert {'-Dmcdonate.demandScanBudgetMicros=2000', '-Dmcdonate.corridorChunks=10', '-Dmcdonate.maxConcurrency=6'} <= set(extra.split())
+    assert out['corridor_chunks_effective'] == 10 and out['max_concurrency_effective'] == 6
+    runner.status['config'] = {'demandScanBudgetMicros': 2000, 'corridorChunks': 6, 'maxConcurrency': 6}
+    with pytest.raises(RuntimeError, match='corridorChunks没生效'):
+        drive(cell, tmp_path / 'c14')
+
+
+def test_driver_forward_first_both_arms_are_checked(tmp_path):
+    # 调度 11-09：fish-fwd 的 -Dmcdonate.demandForwardFirst（0/1），/donor status 的 config 里是 true/false。关的那一臂（0）也要
+    # 明确传、明确核对，不能因为是 0 就当没设
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (name == 'new_world.sh' and envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles={'1x8': {'donors': 1, 'env': {}}})
+    for i, (v, shown) in enumerate(((1, True), (0, False))):
+        cell = rcell('firework')
+        cell['params']['forward_first'] = v
+        runner.status['config'] = {'demandForwardFirst': shown}
+        out = drive(cell, tmp_path / f'f{i}')
+        assert f'-Dmcdonate.demandForwardFirst={v}' in envs[-1]['MCD_JVM_EXTRA'].split()
+        assert out['forward_first_effective'] is shown
+    runner.status['config'] = {'demandForwardFirst': True}
+    with pytest.raises(RuntimeError, match='demandForwardFirst没生效'):
+        drive(cell, tmp_path / 'f9')
+
+
+def test_driver_ticket_throttle_applies_to_vanilla_too_and_checks_actual(tmp_path):
+    # 调度 11-09：fish-throttle 的 -Dmcdonate.playerTicketThrottle=N 改的是原版玩家票节流，原版（0 个 donor）也要能设；
+    # 用 /donor status 的 playerTicketThrottle.actual（各维度实际的 maxTasks）核对，主世界不对就判无效
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    envs = []
+    orig_script = runner.script
+    runner.script = lambda name, *a, env=None, **kw: (name == 'new_world.sh' and envs.append(env), orig_script(name, *a, env=env, **kw))[1]
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles={'1x8': {'donors': 1, 'env': {}}})
+    for i, donors in enumerate((0, 1)):
+        cell = rcell('firework', donors=donors)
+        cell['params']['ticket_throttle'] = 16
+        runner.status['playerTicketThrottle'] = {'configured': 16, 'actual': {'minecraft:overworld': 16, 'minecraft:the_nether': 16}}
+        out = drive(cell, tmp_path / f't{i}')
+        assert '-Dmcdonate.playerTicketThrottle=16' in envs[-1]['MCD_JVM_EXTRA'].split()
+        assert out['ticket_throttle_effective'] == 16
+    runner.status['playerTicketThrottle'] = {'configured': 16, 'actual': {'minecraft:overworld': 4}}
+    with pytest.raises(RuntimeError, match='playerTicketThrottle没生效'):
+        drive(cell, tmp_path / 't9')
+
+
+def test_matrix_keeps_ticket_throttle_for_vanilla():
+    from analysis import run_matrix as rm
+    base = dict(donors=[0, 1], speed=['elytra'], server_cpus=[2], latency_ms=[0], features=['deadline'], bots=[1], duration_s=120,
+                scenario=['firework'], ticket_throttle=[4, 16], scan_budget_us=[2000])
+    cfg = dict(name='t', seed=1, repeats=1, experiments=dict(flight=[base]))
+    rm.validate(cfg)
+    got = sorted((c['params']['donors'], c['params'].get('ticket_throttle'), c['params'].get('scan_budget_us')) for c in rm.expand(cfg))
+    assert got == [(0, 4, None), (0, 16, None), (1, 4, 2000), (1, 16, 2000)]
+
+
+def test_firework_vanilla_label_shows_ticket_throttle():
+    from analysis import firework as f
+    assert '票节流 16' in f._cfg(dict(donors=0, ticket_throttle=16))
+    assert '票节流 4' in f._cfg(dict(donors=1, donor_profile='1x8', ticket_throttle=4))
+
+
+def test_driver_keeps_donor_status_after_flight(tmp_path):
+    # 调度 11-09：fish-rate 的 status 每个 worker 有 lanes / parallelism / ratePerSec / laneLatencyMs，飞完那一刻的整份 /donor status
+    # 存进归档（donor-status.json），结果里摘出每个 worker 的这几项
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.status['workers'] = [dict(id=7, name='w', done=3, lanes=4, parallelism=3.5, ratePerSec=4.8, laneLatencyMs=700)]
+    out = drive(rcell('firework'), tmp_path / 'c15')
+    import json
+    saved = json.loads((tmp_path / "c15" / "donor-status.json").read_text())
+    assert saved['workers'][0]['lanes'] == 4
+    assert dict(id=7, lanes=4, parallelism=3.5, ratePerSec=4.8, laneLatencyMs=700) in out['worker_status']
+
+
+def test_driver_stands_before_flying_and_snapshots_status(tmp_path):
+    # 调度 11-09 加速模式：起飞前在原地站 stand_s 秒（路线前面加一段速度 0），站完那一刻记一份 /donor status，
+    # 结果里有站着时接受了多少、后台派了 / 接受了多少
+    import json
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.status['workers'] = [dict(id=7, name='w', done=0, boost=True, backgroundLeased=5, backgroundAccepted=4)]
+    runner.status['importQueue'] = dict(foreground=0, background=2, backgroundImported=3)   # f9d27c0：后台结果单独排队
+    cell = rcell('firework')
+    cell['params']['stand_s'] = 1
+    out = drive(cell, tmp_path / 'c16')
+    route = fly.calls[-1]['route']
+    first = route.split(';')[0].split(',')
+    assert first[1] == '0' and first[2] == '1'                     # 先站 1 秒
+    assert route.split(';')[1] == scenarios.routes('firework', seed=424242, seconds=120, cache_radius_blocks=0)[0].split(';')[0]
+    assert fly.calls[-1]['seconds'] == 121
+    snap = json.loads((tmp_path / 'c16' / 'donor-status-stand.json').read_text())
+    assert snap['workers'][0]['backgroundLeased'] == 5
+    assert out['stand_bg_leased'] == 5 and out['stand_bg_accepted'] == 4
+    assert out['stand_bg_imported'] == 3 and out['bg_imported'] == 3 and out['bg_pending'] == 2
+    assert out['stand_accepted'] == snap['accepted']   # 这一轮开始前是 0（假飞行一下就飞完，所以快照里已经有飞行时的）
+
+
+def test_driver_sets_boost_on_workers_and_checks_it(tmp_path):
+    # 测试环境用 worker 的 /donor boost on|off 代替客户端开关；coordinator status 里每个 worker 的 boost 要对上，否则判无效
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    sent = []
+
+    def rcon_worker(service, cmd):
+        sent.append((service, cmd))
+        for w in runner.status['workers']:
+            w['boost'] = cmd.endswith(' on')
+        return 'boost on' if cmd.endswith(' on') else 'boost off'
+    runner.rcon_worker = rcon_worker
+    cell = rcell('firework')
+    cell['params']['boost'] = 1
+    out = drive(cell, tmp_path / 'c17')
+    assert sent and all(c == 'donor boost on' for _, c in sent)
+    assert out['boost_effective'] is True
+    runner.rcon_worker = lambda s, c: 'boost on'   # 发了但 coordinator 那边没变
+    for w in runner.status['workers']:
+        w['boost'] = False
+    with pytest.raises(RuntimeError, match='boost 没生效'):
+        drive(cell, tmp_path / 'c18')

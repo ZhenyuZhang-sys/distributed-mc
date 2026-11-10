@@ -178,15 +178,21 @@ def start_chunky(server: "Server") -> str:
     return out
 
 
-def chunky(server: "Server", x: int, z: int, radius: int, timeout: float = 900) -> int:
-    """用 Chunky 生成以 (x, z) 为中心、半径 radius 格的方形，返回 Chunky 报告的 chunk 数。"""
+def chunky(server: "Server", x: int, z: int, radius: int, timeout: float = 900, replace_stale: bool = False) -> int:
+    """用 Chunky 生成以 (x, z) 为中心、半径 radius 格的方形，返回 Chunky 报告的 chunk 数。
+    replace_stale：有残留任务（中途打断的一轮留在 config/chunky/tasks 里，跨世界不清）时用 chunky confirm 换成这次的；
+    只给全新世界用（实验驱动），测试照旧报错。"""
     pattern = r"Task finished for minecraft:overworld\. Processed: (\d+) chunks"
     # 同一轮里可能已经跑过 Chunky，等新增的那条完成记录
     before = len(re.findall(pattern, server.logs()))
     for cmd in ["chunky world minecraft:overworld", "chunky shape square",
                 f"chunky center {x} {z}", f"chunky radius {radius}"]:
         server.rcon(cmd)
-    start_chunky(server)
+    if replace_stale:
+        if CHUNKY_BUSY in server.rcon("chunky start"):
+            server.rcon("chunky confirm")
+    else:
+        start_chunky(server)
     return wait_until(lambda: len(d := re.findall(pattern, server.logs())) > before and int(d[-1]),
                       timeout=timeout, interval=1, what="Chunky 完成")
 
