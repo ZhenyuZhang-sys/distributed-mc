@@ -527,7 +527,7 @@ def rows_recomputed(campaign) -> list[dict]:
                 by_cell[cdir.name] = a
     for r in rows:
         a = by_cell.get(r['cell_id'])
-        if a is not None and r.get('cache_radius'):
+        if a is not None and r.get('cache_radius') is not None:   # 0 也算（领地测量不用缓存区）
             r.update(recompute(a, r))
     return rows
 
