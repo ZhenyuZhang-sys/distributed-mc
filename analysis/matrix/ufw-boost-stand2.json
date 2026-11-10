@@ -19,7 +19,7 @@
   "MC_MAX_MEMORY": "2G",
   "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
  },
- "note": "调度 11-09：fish-boost 0163fc8（后台样本不参与探/退、连续两个慢样本才退、冷却 30）：站 60 秒再飞，boost 关/开各 2 轮，看飞完时 lanes 是否保持约 4。fish-boost 92f40c4（含 v2.2 和 lanecap）+kexu 实验工具。用户同款 2 核，预算 2000，1×8 donor，L16 C6，烟花直线 33.5 格/秒 120 秒；测试环境用 worker 的 /donor boost on|off 代替客户端开关，每轮等 coordinator status 里 boost 对上。",
+ "note": "调度 11-09：fish-boost 60efd48（含 0163fc8：后台样本不参与探/退、连续两个慢样本才退、冷却 30；开加速的在途上限至少 2）：站 60 秒再飞，boost 关/开各 2 轮，看飞完时 lanes 是否保持约 4。fish-boost 92f40c4（含 v2.2 和 lanecap）+kexu 实验工具。用户同款 2 核，预算 2000，1×8 donor，L16 C6，烟花直线 33.5 格/秒 120 秒；测试环境用 worker 的 /donor boost on|off 代替客户端开关，每轮等 coordinator status 里 boost 对上。",
  "experiments": {
   "flight": [
    {
