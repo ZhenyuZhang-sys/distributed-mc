@@ -1,0 +1,74 @@
+{
+ "name": "ufw-pool-b0",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-10：worker 生成池 = 核数之后的新基线（main b9b8f42 + kexu 实验工具，1×8 donor 应是 genPool 8、cpus 9，驱动每轮核对）。站 60 秒朝航线再飞 33.5，boost 关，3 轮。用户同款 2 核，预算 2000，L16 C6，带 stages。之前的批次生成池 = 核数 − 1，不和这批直接比。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "pool-b0",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "boost": [
+     0
+    ],
+    "stand_s": [
+     60
+    ],
+    "repeats": 3
+   }
+  ]
+ }
+}
