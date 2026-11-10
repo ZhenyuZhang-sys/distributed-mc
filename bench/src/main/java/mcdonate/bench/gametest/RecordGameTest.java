@@ -22,9 +22,12 @@ public class RecordGameTest implements FabricGameTest {
         Vec3 before = p.position();
         String run = FlightGameTest.newRun("rec");
         FlightGameTest.check(FlightGameTest.run(h, "bench record start " + p.getStringUUID() + " " + run) == 1, "record start 失败");
-        ChunkPos c = p.chunkPosition();
-        int dz = 40 + Math.floorMod(UUID.randomUUID().hashCode(), 200);
-        h.getLevel().getChunk(c.x + 45, c.z + dz);   // 强制生成一个新 chunk：来源事件要进 provenance.jsonl
+        // 强制生成一个新 chunk：来源事件（vanilla）要进 provenance.jsonl。GameTest 共用一个世界：原来只离 45 个 chunk，
+        // 可能正好在别的测试的玩家视野或飞行路线上——已经在内存里（没有事件）或已经生成过一部分（事件是 resumed / loaded），
+        // 11-09 fish 的 f3 偶发失败。改成离几千个 chunk、随机取，并先确认它不在内存里
+        int[] t = freshChunk(h);
+        int cx = t[0], cz = t[1];
+        h.getLevel().getChunk(cx, cz);
         h.runAfterDelay(30, () -> {
             FlightGameTest.check(p.position().equals(before), "记录期间玩家被挪了：" + before + " → " + p.position());
             FlightGameTest.check(FlightGameTest.run(h, "bench record stop " + run) == 1, "record stop 失败");
@@ -37,9 +40,10 @@ public class RecordGameTest implements FabricGameTest {
                 // runAfterDelay(30) 在第 30 个 tick 中间执行，那个 tick 的结束还没算上；留点余量
                 FlightGameTest.check(FlightGameTest.field(done, "ticks").getAsLong() >= 25, "tick 数：" + done);
                 List<JsonObject> prov = FlightGameTest.lines(h, run, "provenance.jsonl");
-                int cx = c.x + 45, cz = c.z + dz;
-                FlightGameTest.check(prov.stream().anyMatch(e -> e.get("cx").getAsInt() == cx && e.get("cz").getAsInt() == cz
-                        && "vanilla".equals(e.get("kind").getAsString())), "强制生成的 chunk 没有来源事件");
+                List<String> kinds = prov.stream().filter(e -> e.get("cx").getAsInt() == cx && e.get("cz").getAsInt() == cz)
+                        .map(e -> e.get("kind").getAsString()).toList();
+                FlightGameTest.check(kinds.contains("vanilla"),
+                        "强制生成的 chunk (" + cx + ", " + cz + ") 没有 vanilla 来源事件，这个 chunk 的事件：" + kinds + "，共 " + prov.size() + " 行");
                 // 玩家没动：没有进出视野的事件，chunks.jsonl 可以是空的；逐秒行要有（和飞行一样的格式）
                 List<JsonObject> secs = FlightGameTest.lines(h, run, "seconds.jsonl");
                 FlightGameTest.check(!secs.isEmpty() && secs.size() == FlightGameTest.field(done, "rows").getAsInt()
@@ -47,6 +51,19 @@ public class RecordGameTest implements FabricGameTest {
                 FlightGameTest.delete(h, run);
             });
         });
+    }
+
+    /** 离测试位置几千个 chunk、随机取一个不在内存里的 chunk（别的测试碰不到；世界每轮 GameTest 都是新的）。 */
+    static int[] freshChunk(GameTestHelper h) {
+        ChunkPos c = new ChunkPos(h.absolutePos(net.minecraft.core.BlockPos.ZERO));
+        java.util.Random rnd = new java.util.Random(UUID.randomUUID().getMostSignificantBits());
+        for (int i = 0; i < 16; i++) {
+            int x = c.x + 3000 + rnd.nextInt(3000), z = c.z - 3000 - rnd.nextInt(3000);
+            if (h.getLevel().getChunkSource().getChunkNow(x, z) == null) {
+                return new int[] {x, z};
+            }
+        }
+        throw new AssertionError("找不到不在内存里的 chunk");
     }
 
     /** 玩家下线（这里是移除 mock 玩家）：自动结束这一轮，stopped_reason = left。 */
