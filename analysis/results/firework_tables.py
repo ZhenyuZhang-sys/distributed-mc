@@ -295,6 +295,12 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60', title='后台导入
             '同上一组条件；k3 boost 关各 3 轮，k4 boost 开各 2 轮。boost 关时 lanes 回到 4 / 4 / 3（不再掉到 1），前方持平；boost 开时略好。',
             ['k3-solo2-56b4eee', 'k3-solo2-2736827', 'u1-solo2-56b4eee', 'u1-solo2-2736827'],
             lambda r, n: f"{n.split('-')[-1]} · boost {'开' if r.get('boost') else '关'}")
+    L += ab('新基线：worker 生成池 = 核数（main b9b8f42 = 2736827 + 生成池改动，站 60 秒朝航线再飞）',
+            '**条件变了：worker 生成池 = 核数**（1×8 donor：genPool 8、cpus 9，驱动每轮核对）；之前各节都是生成池 = 核数 − 1，不和这一节直接比。'
+            '2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒；k3 boost 关、k4 boost 开，各 3 轮。'
+            '和同代码改动前（上一节 2736827）在误差内：donor 本来就没吃满（1.85 / 2.95 核），多一个生成线程不影响。',
+            ['k3-pool-ufw-pool-b0', 'u1-pool-ufw-pool-b1'],
+            lambda r, n: f"b9b8f42 · 生成池 = 核数 · boost {'开' if r.get('boost') else '关'}")
     return L
 
 
