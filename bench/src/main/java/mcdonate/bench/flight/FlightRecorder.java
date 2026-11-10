@@ -100,6 +100,15 @@ public final class FlightRecorder {
             legs[i] = s.speed() > 0 ? new Flight(0, 0, flight.y(), s.dirX(), s.dirZ(), s.speed(), s.seconds(), Flight.Mode.WALL) : null;
         }
         out.runJson(config().toString());   // 带上路线再写一遍 run.json
+        face(player, route.segments().get(0).yaw());
+        place(player, posX, posZ);
+    }
+
+    /** 假玩家朝当前这一段的方向看（站着也是）：coordinator 的后台扫描站着时按视线 yaw 往前铺（调度 11-10 加速演示）。 */
+    private static void face(ServerPlayer p, float yaw) {
+        p.setYRot(yaw);
+        p.setYHeadRot(yaw);
+        p.setYBodyRot(yaw);
     }
 
     FlightRecorder(String run, ServerPlayer player, Flight flight, int viewDistance, FlightOutput out) {
@@ -215,6 +224,7 @@ public final class FlightRecorder {
         if (stalledThisTick) {
             stalledTicks++;
         }
+        face(p, route.segments().get(route.segmentAt(to)).yaw());
         place(p, posX, posZ);
     }
 

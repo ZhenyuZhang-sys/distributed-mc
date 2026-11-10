@@ -1,0 +1,75 @@
+{
+ "name": "ufw-boost-face60",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-10 演示最关心的\"开和不开差别大不大\"：fish-v23 1409315（097bea7 修 lanes + 928cbbc 探索模式 + 后台先沿朝向往前铺）+kexu（假玩家站着时朝航线方向看）。站 60 秒再飞，boost 关/开各 3 轮。用户同款 2 核，预算 2000，1×8 donor，L16 C6，缓存区 16，直线 33.5 格/秒 120 秒。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "boost-face60",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "boost": [
+     0,
+     1
+    ],
+    "stand_s": [
+     60
+    ],
+    "repeats": 3
+   }
+  ]
+ }
+}
