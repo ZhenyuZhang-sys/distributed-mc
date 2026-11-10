@@ -214,6 +214,18 @@ final class DonorThroughput {
      * 在 worker 上排队的那几个延迟长，中位数会把它们略掉、高估速率），不小于 1/延迟中位数。
      */
     synchronized double ratePerMs(int worker) {
+        return rate(worker);
+    }
+
+    /**
+     * 派活的在途上限：租约名额（slots）和 lanes 里小的（11-10 kexu mc8：lanes 退到 1 了，宽截止的任务照样派到 8 个在途，
+     * 一个一个做的 donor 延迟涨到 6.8 秒，后来的紧任务都排在它们后面）。往上探照样能探：占满 lanes 时延迟没变长 lanes 就 +1。
+     */
+    synchronized int inFlightCap(int worker, int slots) {
+        return Math.max(1, Math.min(slots, lanes(worker)));
+    }
+
+    private double rate(int worker) {
         Deque<long[]> d = samples.get(worker);
         if (d == null || d.isEmpty()) {
             // 冷启动（codex-audit G4）：假设能同时做 MAX_CONCURRENCY 个，派出去探路的不被剪掉
