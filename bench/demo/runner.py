@@ -22,6 +22,10 @@ class Runner:
     def rcon(self, command: str) -> str:
         return _COLOR.sub('', run(str(SCRIPTS / 'rcon.sh'), command, timeout=30)).strip()
 
+    def rcon_worker(self, service: str, command: str) -> str:
+        """发给 donor 容器（worker、worker2……）的控制台命令，比如测试环境的 /donor boost on。"""
+        return _COLOR.sub('', run(str(SCRIPTS / 'rcon.sh'), f'--{service}', command, timeout=30)).strip()
+
     def compose(self, *args, timeout=120, env=None) -> str:
         if not env:
             return compose(*args, timeout=timeout)

@@ -95,7 +95,8 @@ def _prop_matches(want, used):
 
 
 # fish-rate（11-09）status 里每个 worker 的速度估计；老代码没有这些就不记
-WORKER_STATUS_KEYS = ('lanes', 'parallelism', 'ratePerSec', 'laneLatencyMs', 'latencyMs', 'busyMs', 'slots', 'capacityPerSec')
+WORKER_STATUS_KEYS = ('lanes', 'parallelism', 'ratePerSec', 'laneLatencyMs', 'latencyMs', 'busyMs', 'slots', 'capacityPerSec',
+                      'boost', 'backgroundLeased', 'backgroundAccepted')
 
 
 def _status_counts(controller) -> dict:
@@ -230,6 +231,18 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             elif net:
                 raise RuntimeError('要模拟网络，但 scripts/netem.sh 还不支持 NETEM_SERVICE 和限速')
             ids_before = controller.worker_ids()
+            if p.get('boost') is not None:   # 加速模式（fish-boost）：测试环境用 worker 的 /donor boost on|off 代替客户端开关
+                want = bool(p['boost'])
+                for svc in controller.active:
+                    runner.rcon_worker(svc, f"donor boost {'on' if want else 'off'}")
+                deadline = time.time() + min(60, controller.wait_timeout)
+                while True:   # 开关走心跳到 coordinator，等 status 里每个 worker 的 boost 都对上
+                    ws = controller.status().get('workers', [])
+                    if ws and all(w.get('boost') is want for w in ws):
+                        break
+                    if time.time() >= deadline:
+                        raise RuntimeError(f"这一轮无效：boost 没生效：要 {want}，coordinator 看到的是 {[w.get('boost') for w in ws]}")
+                    time.sleep(controller.wait_interval)
         counts_before = _status_counts(controller) if donors else None
         services = list(controller.active) if donors else []
         cpu_before = runner.worker_cpu(services) if services and hasattr(runner, 'worker_cpu') else None
@@ -237,6 +250,13 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         speed = scenario_speed(p)
         routes = (scenarios.routes(scenario, seed=seed, seconds=p['duration_s'], speed=p.get('speed_bps'), cache_radius_blocks=cache * 16)
                   if scenario else [None])
+        stand = p.get('stand_s') or 0
+        if stand:   # 起飞前在原地站 stand 秒（加速模式：空闲时 donor 先把周围算好）：路线前面加一段速度 0、朝向同第一段
+            if routes == [None]:
+                raise ValueError('stand_s 要配 scenario（route 模式）')
+            routes = [f"{r.split(';')[0].split(',')[0]},0,{stand};{r}" for r in routes]
+        stand_snap = {}
+        stand_timer = threading.Timer(stand, lambda: stand_snap.update(status=controller.status())) if stand and donors else None
         start_tick = _server_tick(runner)   # 对 autosave（每 6000 tick）用
         t_fly = time.time()
         # 每次尝试的 run 名不同：中途打断的一轮会在服务器的 bench-runs 里留下同名目录，重试时 bench fly start 会拒绝
@@ -247,16 +267,20 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         def one(i, route):
             try:
                 flyer.fly_sync(f'mx-{name}-{run_tag}-p{i + 1}' if len(routes) > 1 else f'mx-{name}-{run_tag}', start, speed,
-                               p['duration_s'], dirs[i], route=route,
+                               p['duration_s'] + stand, dirs[i], route=route,
                                player=None if i == 0 else f'{flyer.PLAYER}{i + 1}')
             except Exception as e:   # 一个玩家飞失败，这一轮就无效
                 errors.append(e)
 
         threads = [threading.Thread(target=one, args=(i, r), daemon=True) for i, r in enumerate(routes)]
+        if stand_timer:
+            stand_timer.start()
         for t in threads:
             t.start()
         for t in threads:
             t.join()
+        if stand_timer:
+            stand_timer.join()   # 飞的时间比站的长，到这里早就记过了
         if errors:
             raise errors[0]
         ids_after = controller.worker_ids() if donors else []
@@ -288,6 +312,16 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         result = {k: _num(s[k]) for k in METRICS if k in s}
         for k in props:
             result[f'{k}_effective'] = used[k]
+        if stand_snap.get('status') is not None:   # 站完那一刻：站着时接受了多少、后台派了 / 接受了多少（从这一轮开始算）
+            st = stand_snap['status']
+            (out / 'donor-status-stand.json').write_text(json.dumps(st, ensure_ascii=False, indent=1))
+            ws = st.get('workers', [])
+            result.update(stand_accepted=st.get('accepted', 0) - (counts_before or {}).get('imports_accepted', 0),
+                          stand_bg_leased=sum(w.get('backgroundLeased', 0) for w in ws),
+                          stand_bg_accepted=sum(w.get('backgroundAccepted', 0) for w in ws))
+        if p.get('boost') is not None and status_after is not None:
+            bs = {w.get('boost') for w in status_after.get('workers', [])}
+            result['boost_effective'] = bs.pop() if len(bs) == 1 else None
         if status_after is not None:
             result['worker_status'] = [{k: w[k] for k in ('id',) + WORKER_STATUS_KEYS if k in w} for w in status_after.get('workers', [])]
         if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个
@@ -318,6 +352,10 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
                 result['mspt_p95'] = _p95([float(r['mspt_mean']) for r in csv.DictReader(f) if r.get('mspt_mean')])
         else:
             result['mspt_p95'] = _p95([r.get('mspt_mean') for r in seconds])
+        if stand:   # 站着那段的服务器 MSPT（看后台持续导入会不会压垮 2 核）
+            st_rows = [r for r in seconds if (r.get('t_s') or 0) <= stand]
+            result['stand_mspt_p95'] = _p95([r.get('mspt_mean') for r in st_rows])
+            result['stand_mspt_max'] = max((r['mspt_max'] for r in st_rows if isinstance(r.get('mspt_max'), (int, float))), default=None)
         prov = layer2_stats.load_jsonl(raw / 'provenance.jsonl') if (raw / 'provenance.jsonl').exists() else []
         leads = layer2_stats.donor_leads(prov, seconds)
         if cache:   # 只看出了缓存区以后
@@ -325,7 +363,7 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             result.update(after_exit(seconds, start, cache * 16, speed), cache_chunks=cache_chunks)
         if counts_before is not None:
             result.update({k: counts_after[k] - counts_before[k] for k in counts_before})
-            result['tile_s'] = result.pop('tiles_done') / p['duration_s']
+            result['tile_s'] = result.pop('tiles_done') / (p['duration_s'] + stand)
         total = sum(result.get(k) or 0 for k in ('full_generated', 'full_resumed', 'full_loaded'))
         result['resumed_share'] = (result.get('full_resumed') or 0) / total if total else None
         result.update(donor_events=judged['donor_events'], netem=net, valid=True, server_cpuset=cpuset,

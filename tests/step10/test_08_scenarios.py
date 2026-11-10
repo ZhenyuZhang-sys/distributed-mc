@@ -400,3 +400,46 @@ def test_driver_keeps_donor_status_after_flight(tmp_path):
     saved = json.loads((tmp_path / "c15" / "donor-status.json").read_text())
     assert saved['workers'][0]['lanes'] == 4
     assert dict(id=7, lanes=4, parallelism=3.5, ratePerSec=4.8, laneLatencyMs=700) in out['worker_status']
+
+
+def test_driver_stands_before_flying_and_snapshots_status(tmp_path):
+    # 调度 11-09 加速模式：起飞前在原地站 stand_s 秒（路线前面加一段速度 0），站完那一刻记一份 /donor status，
+    # 结果里有站着时接受了多少、后台派了 / 接受了多少
+    import json
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    runner.status['workers'] = [dict(id=7, name='w', done=0, boost=True, backgroundLeased=5, backgroundAccepted=4)]
+    cell = rcell('firework')
+    cell['params']['stand_s'] = 1
+    out = drive(cell, tmp_path / 'c16')
+    route = fly.calls[-1]['route']
+    first = route.split(';')[0].split(',')
+    assert first[1] == '0' and first[2] == '1'                     # 先站 1 秒
+    assert route.split(';')[1] == scenarios.routes('firework', seed=424242, seconds=120, cache_radius_blocks=0)[0].split(';')[0]
+    assert fly.calls[-1]['seconds'] == 121
+    snap = json.loads((tmp_path / 'c16' / 'donor-status-stand.json').read_text())
+    assert snap['workers'][0]['backgroundLeased'] == 5
+    assert out['stand_bg_leased'] == 5 and out['stand_bg_accepted'] == 4
+    assert out['stand_accepted'] == snap['accepted']   # 这一轮开始前是 0（假飞行一下就飞完，所以快照里已经有飞行时的）
+
+
+def test_driver_sets_boost_on_workers_and_checks_it(tmp_path):
+    # 测试环境用 worker 的 /donor boost on|off 代替客户端开关；coordinator status 里每个 worker 的 boost 要对上，否则判无效
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)
+    sent = []
+
+    def rcon_worker(service, cmd):
+        sent.append((service, cmd))
+        for w in runner.status['workers']:
+            w['boost'] = cmd.endswith(' on')
+        return 'boost on' if cmd.endswith(' on') else 'boost off'
+    runner.rcon_worker = rcon_worker
+    cell = rcell('firework')
+    cell['params']['boost'] = 1
+    out = drive(cell, tmp_path / 'c17')
+    assert sent and all(c == 'donor boost on' for _, c in sent)
+    assert out['boost_effective'] is True
+    runner.rcon_worker = lambda s, c: 'boost on'   # 发了但 coordinator 那边没变
+    for w in runner.status['workers']:
+        w['boost'] = False
+    with pytest.raises(RuntimeError, match='boost 没生效'):
+        drive(cell, tmp_path / 'c18')
