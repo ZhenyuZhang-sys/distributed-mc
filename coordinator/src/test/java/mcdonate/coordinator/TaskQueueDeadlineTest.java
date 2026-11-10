@@ -1,5 +1,6 @@
 package mcdonate.coordinator;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -437,10 +438,13 @@ class TaskQueueDeadlineTest {
     @Test
     void dispatchAndPruneAgree() {
         // codex-audit F2：同一组数据，canMeet 说做得完的，剪枝不能剪掉。速率 1 个/秒、延迟 4 秒、手上 3 个在做
+        // 11-09（codex-audit 第十五节）：速率按实测并行度，喂真实的在途：手上一直 4 个、每秒交回一个
         DonorThroughput t = new DonorThroughput();
-        for (int i = 0; i < 10; i++) {
-            t.record(1, 4_000, 10_000 + i * 1_000L);
+        List<long[]> iv = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            iv.add(new long[] {6_000 + i * 1_000L, 10_000 + i * 1_000L});
         }
+        DonorThroughputTest.feed(t, iv, 19_000);
         TaskQueue q = queue("deadline");
         for (int i = 0; i < 3; i++) {
             q.enqueue(9, i);
@@ -450,7 +454,9 @@ class TaskQueueDeadlineTest {
         long by = now.get() + 5_000 + TaskQueue.IMPORT_MARGIN_MS;     // 4 + 1 = 5 秒能做完
         q.setDue(0, 0, by + 1_000, by, 0);
         assertTrue(t.canMeet(1, q.inFlight(1), now.get(), by - TaskQueue.IMPORT_MARGIN_MS));
-        assertEquals(List.of(), q.pruneHopeless(t.ratePerMs(1), t.latencyMs(1)), "派发说做得完的，剪枝不剪");
+        // 剪枝用和派发一样的估计（CoordinatorServer 传的就是这几个量）
+        assertEquals(List.of(), q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(t.laneLatencyMs(1), t.ratePerMs(1),
+                q.inFlight(1), t.lanes(1)))), "派发说做得完的，剪枝不剪");
     }
 
     @Test
@@ -489,4 +495,75 @@ class TaskQueueDeadlineTest {
         assertEquals(1, q.pruneHopeless(List.of(donors.get(0))).size(), "只有慢的：做不完，剪");
     }
 
+
+    // ---- 11-09 正式服 hopeless 398：空着的 donor 能马上接的不剪 ----
+
+    @Test
+    void idleDonorKeepsTasksItCanStartNow() {
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 5; i++) {
+            q.enqueue(i * 2, 0);
+            q.setDue(i * 2, 0, now.get() + 3_000, now.get() + 1_800, 1);   // 留出 1 秒余量后限 0.8 秒
+        }
+        // donor 延迟 0.7 秒、实测能并行 4 个（速率 4/0.7 秒）、手上 0 个：前 4 个 0.7 秒，第 5 个排队约 0.9 秒
+        List<Long> dropped = q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(700, 4.0 / 700, 0, 4)));
+        assertEquals(1, dropped.size(), "前 4 个马上能开始、0.7 秒做完，不剪；第 5 个要排队才剪：" + dropped);
+        assertEquals(q.find(8, 0), dropped.get(0));
+    }
+
+    @Test
+    void serialDonorStillPrunesWhatItCannotDo() {
+        // codex-audit 第十五节 V2：一个一个做的 donor（实测并行 1），4 个都限 1 秒：只做得完第 1 个，剪 3 个
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 4; i++) {
+            q.enqueue(i * 2, 0);
+            q.setDue(i * 2, 0, now.get() + 3_000, now.get() + 2_000, 1);
+        }
+        assertEquals(3, q.pruneHopeless(List.of(new TaskQueue.DonorEstimate(700, 1.0 / 700, 0, 1))).size());
+    }
+
+    @Test
+    void loadMeterFollowsLeases() {
+        // 在途数随时间记：两个一起做 1 秒（忙 1 秒、在途·时间 2 秒），交回一个，再 1 秒
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(2, 0);
+        long a = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        q.assign(1, 4, d -> true).orElseThrow();
+        now.addAndGet(1_000);
+        assertArrayEquals(new long[] {1_000, 2_000}, q.load(1));
+        q.onResult(1, a, true);
+        now.addAndGet(1_000);
+        assertArrayEquals(new long[] {2_000, 3_000}, q.load(1));
+        assertArrayEquals(new long[] {0, 0}, q.load(7), "没派过的 worker");
+    }
+
+    @Test
+    void lateOldResultGivesNoLatencySample() {
+        // codex-audit 第十五节 V4：worker1 的租约过期、同一个任务重派给 worker2；worker1 的旧结果这时回来，
+        // 不能拿 worker2 的派出时间算 worker1 的延迟（会把 1 秒多记成 1 毫秒）
+        TaskQueue q = new TaskQueue(now::get, 1_000, 3, new Features("deadline"));
+        q.enqueue(0, 0);
+        long id = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        assertEquals(now.get(), q.sampleLeasedAt(1, id), "第一次派出：正常取样");
+        now.addAndGet(1_001);
+        q.expireLeases();
+        assertEquals(id, q.assign(2, 4, d -> true).orElseThrow().taskId());
+        now.addAndGet(1);
+        assertEquals(-1, q.sampleLeasedAt(1, id), "不是它手上的");
+        assertEquals(-1, q.sampleLeasedAt(2, id), "重派过：分不清是哪一次的结果，不取样");
+    }
+
+    @Test
+    void remembersInFlightAtLease() {
+        // 往上探用：派出时这个 worker 手上一共几个（含这个）
+        TaskQueue q = queue("deadline");
+        q.enqueue(0, 0);
+        q.enqueue(2, 0);
+        long a = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        long b = q.assign(1, 4, d -> true).orElseThrow().taskId();
+        assertEquals(1, q.inFlightAtLease(a));
+        assertEquals(2, q.inFlightAtLease(b));
+        assertEquals(0, q.inFlightAtLease(999), "不认识的");
+    }
 }

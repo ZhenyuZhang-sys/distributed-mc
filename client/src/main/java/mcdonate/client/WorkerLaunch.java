@@ -1,6 +1,7 @@
 package mcdonate.client;
 
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +39,8 @@ public final class WorkerLaunch {
                 "-XX:ActiveProcessorCount=" + (o.genThreads() + 1),
                 "-Dmcdonate.coordinator=" + o.coordinator(),
                 "-Dmcdonate.parentPid=" + o.parentPid(),
+                "-Dmcdonate.parentStartMillis=" + ProcessHandle.of(o.parentPid())
+                        .flatMap(p -> p.info().startInstant()).map(Instant::toEpochMilli).orElse(-1L),
                 "-Dmcdonate.inviteSeed=" + o.inviteSeed(),
                 "-Dmcdonate.boost=" + o.boost(),
                 "-jar", "fabric-server-launch.jar", "nogui"));

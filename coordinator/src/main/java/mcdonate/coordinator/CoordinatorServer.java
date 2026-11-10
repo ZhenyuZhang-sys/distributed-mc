@@ -266,8 +266,8 @@ final class CoordinatorServer {
                 List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
-                        est.add(new TaskQueue.DonorEstimate(throughput.latencyMs(c.workerId), throughput.ratePerMs(c.workerId),
-                                tasks.inFlight(c.workerId)));
+                        est.add(new TaskQueue.DonorEstimate(throughput.laneLatencyMs(c.workerId), throughput.ratePerMs(c.workerId),
+                                tasks.inFlight(c.workerId), throughput.lanes(c.workerId)));
                     }
                 }
                 List<Long> hopeless = tasks.pruneHopeless(est);
@@ -289,7 +289,6 @@ final class CoordinatorServer {
                     }
                 }
             }
-            boolean thr = features.on(Features.THROUGHPUT);
             for (Connection c : workers.values()) {
                 if (now - c.lastSeen > DEAD_MS) {
                     LOG.info("worker {} 15 秒没有消息，断开", c.workerId);
@@ -299,22 +298,61 @@ final class CoordinatorServer {
                 if (c.paused) {
                     continue; // 第 9 步：玩家那边帧率低、worker 暂停了：不派新任务，手上的照常续租、等结果
                 }
-                // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
-                // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
-                int max = thr ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
-                java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
-                        ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
-                Optional<TaskQueue.Assignment> a;
-                while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
-                    TaskQueue.Assignment x = a.get();
-                    LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
-                    // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
-                    c.currentTask = x.taskId();
-                    c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
-                }
+                dispatch(c, now);
             }
         } catch (RuntimeException e) {
             LOG.warn("定时任务出错：{}", e.toString());
+        }
+    }
+
+    /** 这个 worker 同时能领几个：开 throughput 时按实测耗时（租约内能做完的个数，最多 maxConcurrency），关着时 1 个。 */
+    private int slots(Connection c) {
+        return features.on(Features.THROUGHPUT) ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
+    }
+
+    /** 给一个 worker 派到名额满（或者没有它能做的）。只在定时线程上调。 */
+    private void dispatch(Connection c, long now) {
+        // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
+        // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
+        // 11-09（正式服 hopeless 398）：实测能并行的几个马上开始，不按"前面几个 ÷ 速率"排队估（codex-audit 第十五节：按实测并行度，不按租约名额）
+        int max = slots(c);
+        boolean thr = features.on(Features.THROUGHPUT);
+        java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
+                ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
+        Optional<TaskQueue.Assignment> a;
+        while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
+            TaskQueue.Assignment x = a.get();
+            LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
+            // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
+            c.currentTask = x.taskId();
+            c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
+            if (c.closed) {
+                // codex-audit 第十五节 V3：查过连接还在、派出之前连接被关了，close 那边已经收回过，这一个没人收：自己收回。
+                // closed 在 close 收回之前就置上，所以这里看到 false 的，之后 close 的收回一定能收到它
+                List<Long> back = tasks.workerGone(c.workerId);
+                LOG.info("worker {} 派活时断开，任务 {} 回到队首", c.workerId, back);
+                return;
+            }
+        }
+    }
+
+    /**
+     * 11-09（正式服 hopeless 398）：收到一个结果就马上给这个 worker 补派，不等下一秒的定时：
+     * 一个 tile 0.7 秒做完，等定时最多空 1 秒，空档又让实测速率偏低。在定时线程上做（和 tick 不并发）。
+     */
+    private void dispatchSoon(Connection c) {
+        try {
+            timer.execute(() -> {
+                try {
+                    if (workers.get(c.workerId) == c && !c.paused) {
+                        dispatch(c, System.currentTimeMillis());
+                    }
+                } catch (RuntimeException e) {
+                    LOG.warn("补派出错：{}", e.toString());
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // coordinator 在停
         }
     }
 
@@ -341,10 +379,13 @@ final class CoordinatorServer {
                     w == null ? -1 : w[0], w == null ? -1 : w[1], w == null ? -1 : w[2], w == null ? -1 : w[3],
                     tasks.slackAtLease(r.taskId())});
         }
-        if (r.ok() && leasedAt > 0) {
-            // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的
+        long sampleAt = tasks.sampleLeasedAt(c.workerId, r.taskId());
+        if (r.ok() && sampleAt > 0) {
+            // 7.3：实测耗时（派出到结果回来），不信 worker 自己报的。只取这个 worker 手上、只派过一次的（codex-audit 第十五节 V4）。
+            // 同时记下在途表读数（这个任务还算在途），速率按实测并行度算
             long nowMs = System.currentTimeMillis();
-            throughput.record(c.workerId, nowMs - leasedAt, nowMs);
+            long[] load = tasks.load(c.workerId);
+            throughput.record(c.workerId, nowMs - sampleAt, nowMs, load[0], load[1], tasks.inFlightAtLease(r.taskId()));
         }
         if (r.ok()) {
             String world = r.tile().getString("worldId");
@@ -390,6 +431,7 @@ final class CoordinatorServer {
             resultMeta.remove(r.taskId());
             waitDonor.release(r.taskId());
         }
+        dispatchSoon(c); // 空出一个名额：马上补派
     }
 
     /** 主线程上：校验 tile 并导入。出错就让任务回到队列。返回是否被接受。 */
@@ -549,6 +591,14 @@ final class CoordinatorServer {
                     .append(",\"inFlight\":").append(tasks.inFlight(c.workerId))
                     .append(",\"paused\":").append(c.paused)
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
+                    // 11-09（正式服 hopeless 398）：派活怎么估这个 donor
+                    .append(",\"latencyMs\":").append(throughput.latencyMs(c.workerId))
+                    .append(",\"laneLatencyMs\":").append(throughput.laneLatencyMs(c.workerId))
+                    .append(",\"ratePerSec\":").append(Math.round(throughput.ratePerMs(c.workerId) * 1e5) / 100.0)
+                    .append(",\"busyMs\":").append(tasks.load(c.workerId)[0])
+                    .append(",\"slots\":").append(slots(c))
+                    .append(",\"parallelism\":").append(Math.round(throughput.parallelism(c.workerId) * 100) / 100.0)
+                    .append(",\"lanes\":").append(throughput.lanes(c.workerId))
                     .append('}');
         }
         return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"playerTicketThrottle\":").append(PlayerTicketThrottle.json(server)).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())

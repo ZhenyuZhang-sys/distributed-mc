@@ -93,6 +93,7 @@ worker 会抢你电脑的 CPU。为了不让游戏卡，客户端一直看最近
 | "准备失败" | 日志里的原因；多半是下载不下来（网络、代理）。修好网络后关掉 donor 再打开重试。**不要删整个 `mc-donate/worker/`**（里面的世界和 `mcdonate-world-id` 删了要重新生成）；实在要重来，先把日志发回来 |
 | worker 起来了但服务器上看不到 | `mc-donate/worker/worker.log`：连不上 coordinator（服务器没放行 25580、`PUBLIC_HOST` 填错）、token 被拒（会自动再要一次） |
 | 游戏卡 | 设置里把线程调到 1，或者关掉 |
+| "有残留 worker 占着世界锁" / "有残留 worker 占用此目录（PID …）" | 上一次的 worker 进程没退出（旧版本的客户端有这个问题：游戏关了 worker 还在跑）。mod 不会自己去杀它：退出游戏，在活动监视器（Mac）/ 任务管理器（Windows）/ `ps`（Linux）里找命令行带 `fabric-server-launch.jar` 和 `mcdonate.parentPid` 的 java 进程结束掉，再开游戏。**不要删 `session.lock`**。新版本的 worker 在游戏没了、关掉 donor、被要求停的时候最多 5 秒就退出 |
 
 把 `.minecraft/logs/latest.log` 和 `.minecraft/mc-donate/worker/worker.log` 发回来就行。日志里不会有 token。
 

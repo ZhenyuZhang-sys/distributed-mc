@@ -82,6 +82,12 @@ public final class ClientMod implements ClientModInitializer {
             }
 
             @Override
+            public String error() {
+                WorkerProcess w = worker;
+                return w != null && !w.failureMessage().isEmpty() ? w.failureMessage() : lastError;
+            }
+
+            @Override
             public void send(String line) {
                 WorkerProcess w = worker;
                 if (w != null) {
@@ -147,6 +153,7 @@ public final class ClientMod implements ClientModInitializer {
             return "第一次准备中（下载服务器）…";
         }
         WorkerProcess w = worker;
+        if (w != null && !w.failureMessage().isEmpty()) return "出错：" + w.failureMessage();
         if (w != null && w.alive()) {
             return "worker 在跑" + (throttle != null && throttle.paused() ? "（帧率低，暂停中）" : "");
         }
@@ -224,6 +231,7 @@ public final class ClientMod implements ClientModInitializer {
             preparing = true;
             Thread t = new Thread(() -> {
                 try {
+                    WorkerProcess.preflight(files().root());
                     files().prepare(ClientMod::download, name -> ClientMod.class.getResourceAsStream("/mcdonate/worker-mods/" + name));
                     LOG.info("worker 准备好了：{}", files().root());
                     lastError = "";
@@ -251,6 +259,7 @@ public final class ClientMod implements ClientModInitializer {
                     port = probe.getLocalPort();
                 }
                 WorkerFiles f = files();
+                WorkerProcess.preflight(f.root()); // 占锁时连配置和mod也不覆盖。
                 f.writeServerProperties(port);
                 // 每次都按客户端 jar 里带的放 worker mod（客户端升级后不再用旧的）
                 f.syncMods(name -> ClientMod.class.getResourceAsStream("/mcdonate/worker-mods/" + name));

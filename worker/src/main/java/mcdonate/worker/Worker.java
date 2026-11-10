@@ -100,12 +100,16 @@ public final class Worker implements ModInitializer {
         // 第 5 步：配了 coordinator（系统属性 mcdonate.coordinator=host:port）就连上去领任务
         // 客户端起的 worker：服务器起来之前把标准输入拿给控制通道，不让原版控制台读走（ControlStdin）
         InputStream control = mcdonate.common.Config.getLong("parentPid", -1) > 0 ? ControlStdin.claim() : null;
+        if (control != null) {
+            // 建世界、等seed/token之前就看守；不能等SERVER_STARTED才启动。
+            startParentWatch(control);
+            ServerLifecycleEvents.SERVER_STARTING.register(server -> lifecycleServer = server);
+        }
         String address = SeedHandshake.address();
         if (address != null) {
             ServerLifecycleEvents.SERVER_STARTED.register(server -> {
                 client = new WorkerClient(server, address);
                 client.start();
-                startParentWatch(server, control);
             });
             ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
                 if (client != null) {
@@ -117,6 +121,7 @@ public final class Worker implements ModInitializer {
     }
 
     private static volatile WorkerClient client;
+    private static volatile net.minecraft.server.MinecraftServer lifecycleServer;
 
     private static int boost(net.minecraft.commands.CommandSourceStack source, boolean on) {
         WorkerClient c = client;
@@ -133,26 +138,34 @@ public final class Worker implements ModInitializer {
      * 第 9 步：客户端 mod 起的 worker（系统属性 mcdonate.parentPid）：游戏没了（PID 不在、标准输入 EOF）就停服务器退出；
      * 标准输入同时是控制通道（ControlLine：PAUSE、RESUME、STOP、STATUS、TOKEN）。Docker 里的 worker 没有 parentPid，不启动。
      */
-    private static void startParentWatch(net.minecraft.server.MinecraftServer server, InputStream control) {
+    private static void startParentWatch(InputStream control) {
         long pid = mcdonate.common.Config.getLong("parentPid", -1);
         if (pid <= 0 || control == null) {
             return;
         }
-        Runnable exit = () -> {
-            LOG.info("游戏没了或要求停止，worker 退出");
-            server.execute(() -> server.halt(false));
-        };
-        new ParentWatch(ParentWatch.pidAlive(pid), control, line -> {
+        ExitDeadline stop = new ExitDeadline(ExitDeadline.GRACE_MS, () -> Runtime.getRuntime().halt(70));
+        // SIGTERM时原版关闭钩子可能永远等主线程。此钩子只启动计时器，不拖慢正常退出。
+        Runtime.getRuntime().addShutdownHook(new Thread(stop::arm, "mcdonate-shutdown-bound"));
+        java.util.function.Consumer<String> exit = why -> stop.stop(() -> {
+            LOG.info("worker 退出：{}（最多宽限{}毫秒）", why, ExitDeadline.GRACE_MS);
+            WorkerClient c = client;
+            if (c != null) c.stop();
+            net.minecraft.server.MinecraftServer server = lifecycleServer;
+            if (server != null) server.halt(false); // 直接置停服标记，不能排进已卡死的主线程。
+            else System.exit(0);
+        });
+        long started = mcdonate.common.Config.getLong("parentStartMillis", -1);
+        new ParentWatch(ParentWatch.pidAlive(pid, started), control, line -> {
             ControlLine.Command c = ControlLine.parse(line);
             if (c == null) {
                 LOG.warn("读不懂的控制命令：{}", ControlLine.redact(line));
             } else if (c.kind() == ControlLine.Kind.STOP) {
-                exit.run();
+                exit.accept("客户端 STOP");
             } else if (client != null) {
                 client.control(c);
             }
         }, exit).start();
-        LOG.info("看着父进程 {}（游戏），标准输入是控制通道", pid);
+        LOG.info("看着父进程 {}（游戏），标准输入是控制通道，退出有独立限时兜底", pid);
     }
 
     private static int hold(CommandSourceStack source, boolean on) {
