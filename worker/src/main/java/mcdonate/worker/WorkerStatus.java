@@ -12,6 +12,11 @@ final class WorkerStatus {
 
     /** 进程的负载快照。cpuLoad 不知道（刚启动、平台不支持）时是 -1。 */
     record Load(int threads, double cpuLoad, int cpus, long heapUsedMb, long heapMaxMb) {
+        /** 原版生成线程池（Util.backgroundExecutor，ForkJoinPool）实际的并行度；拿不到是 0。 */
+        static int genPool() {
+            return net.minecraft.Util.backgroundExecutor() instanceof java.util.concurrent.ForkJoinPool p ? p.getParallelism() : 0;
+        }
+
         Load {
             if (Double.isNaN(cpuLoad) || cpuLoad < 0) {
                 cpuLoad = -1;

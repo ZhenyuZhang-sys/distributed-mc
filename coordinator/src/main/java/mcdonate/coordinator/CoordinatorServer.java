@@ -645,6 +645,9 @@ final class CoordinatorServer {
                     // 11-09 加速模式：开没开、报的线程数、当后台任务领了几个、被接受几个
                     .append(",\"boost\":").append(c.boost)
                     .append(",\"threads\":").append(c.threads)
+                    // 11-10：worker 看到的核数、生成池实际大小（旧 worker 不报：null）
+                    .append(",\"cpus\":").append(c.cpus > 0 ? Integer.toString(c.cpus) : "null")
+                    .append(",\"genPool\":").append(c.genPool > 0 ? Integer.toString(c.genPool) : "null")
                     .append(",\"backgroundLeased\":").append(tasks.backgroundLeased(c.workerId))
                     .append(",\"backgroundAccepted\":").append(tasks.backgroundAccepted(c.workerId))
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
@@ -721,6 +724,8 @@ final class CoordinatorServer {
         /** 11-09 加速模式：心跳里报的（愿意空闲时做后台 tile、生成线程数，不知道是 0）。 */
         volatile boolean boost;
         volatile int threads;
+        volatile int cpus;
+        volatile int genPool;
         /** 第 9 步：这个 worker 属于哪个玩家（token 换来的）；免 token 的本地 worker 是 null。 */
         volatile java.util.UUID player;
         /** 这个 worker 的 donor 世界（从它交的第一个结果里知道）。 */
@@ -839,6 +844,11 @@ final class CoordinatorServer {
                     }
                     boost = h.boost();
                     threads = h.threads();
+                    if ((h.cpus() != cpus || h.genPool() != genPool) && h.genPool() > 0) {
+                        LOG.info("worker {} 看到 {} 个核，生成池 {} 个线程", workerId, h.cpus(), h.genPool());
+                    }
+                    cpus = h.cpus();
+                    genPool = h.genPool();
                     if (h.taskId() >= 0) {
                         tasks.heartbeat(workerId, h.taskId());
                     }

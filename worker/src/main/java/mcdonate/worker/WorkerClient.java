@@ -299,9 +299,11 @@ final class WorkerClient {
         return boost;
     }
 
-    /** 心跳：手上的任务、暂停、加速、生成线程数。 */
+    /** 心跳：手上的任务、暂停、加速、生成线程数；看到的核数和生成池实际大小（核对测试和真客户端一致，11-10）。 */
     private Heartbeat heartbeat(boolean paused) {
-        return new Heartbeat(System.currentTimeMillis(), currentTask, paused, boost, WorkerStatus.Load.current().threads());
+        WorkerStatus.Load load = WorkerStatus.Load.current();
+        return new Heartbeat(System.currentTimeMillis(), currentTask, paused, boost, load.threads(), load.cpus(),
+                WorkerStatus.Load.genPool());
     }
 
     boolean paused() {
