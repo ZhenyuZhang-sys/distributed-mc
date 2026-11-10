@@ -71,7 +71,52 @@ class TaskQueueBoostTest {
         assertTrue(assign(q, 1, 4, true).isPresent());
         assertTrue(assign(q, 1, 4, true).isPresent());
         assertTrue(assign(q, 1, 4, true).isEmpty(), "4 个名额后台最多占 2 个，前方任务来了马上有空位");
-        assertTrue(assign(q, 2, 1, true).isPresent(), "只有 1 个名额时也能做 1 个后台");
+        // codex-audit 第十七节 B2：只有 1 个名额时不做后台（原来允许，唯一的名额被后台占着，急活进不来）
+        assertTrue(assign(q, 2, 1, true).isEmpty(), "只有 1 个名额时不做后台");
+    }
+
+    @Test
+    void singleLaneLeavesAdmissionForUrgentWork() {
+        TaskQueue q = queue("deadline");
+        q.enqueueBackground(50, 50, null);
+        assertTrue(assign(q, 1, 1, true).isEmpty());
+        q.enqueue(5, 0);
+        q.setDue(5, 0, now.get() + 9_000, now.get() + 7_000, 1);
+        assertEquals(5, assign(q, 1, 1, true).orElseThrow().tx(), "急活来了能马上派");
+    }
+
+    @Test
+    void capShrinkRevokesExcessBackground() {
+        // B2：上限 8 时派了 4 个后台，之后关了加速（上限 4）：后台超过一半的收回，前方的有空位
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 6; i++) {
+            q.enqueueBackground(50 + 2 * i, 50, null);
+        }
+        for (int i = 0; i < 4; i++) {
+            assertTrue(assign(q, 1, 8, true).isPresent());
+        }
+        assertEquals(4, q.inFlight(1));
+        java.util.List<TaskQueue.Cancelled> back = q.revokeExcessBackground(1, 4);
+        assertEquals(2, back.size(), "4 个名额：后台最多留 2 个");
+        assertEquals(2, q.inFlight(1));
+        assertEquals(TaskQueue.State.QUEUED, q.state(back.get(0).taskId()), "收回的回到队里，以后还能做");
+        q.enqueue(5, 0);
+        q.setDue(5, 0, now.get() + 9_000, now.get() + 7_000, 1);
+        assertEquals(5, assign(q, 1, 4, false).orElseThrow().tx());
+        assertTrue(q.revokeExcessBackground(1, 4).isEmpty(), "没超就不收");
+    }
+
+    @Test
+    void promotedInFlightBackgroundBlocksFurtherBackground() {
+        // B3：派出去的后台 A 后来有了截止（玩家转过来了）：它就是前方任务，手上有它时不再补后台
+        TaskQueue q = queue("deadline");
+        q.enqueueBackground(50, 50, null);
+        q.enqueueBackground(60, 60, null);
+        assertEquals(50, assign(q, 1, 4, true).orElseThrow().tx());
+        q.setDue(50, 50, now.get() + 9_000, now.get() + 7_000, 1);
+        assertTrue(assign(q, 1, 4, true).isEmpty(), "手上有有截止的任务（转成前方的 A）：不补后台");
+        assertTrue(q.revokeExcessBackground(1, 1).isEmpty(), "转成前方的不当后台收回");
+        assertTrue(!q.currentlyBackground(q.find(50, 50)), "A 现在是前方任务");
     }
 
     @Test

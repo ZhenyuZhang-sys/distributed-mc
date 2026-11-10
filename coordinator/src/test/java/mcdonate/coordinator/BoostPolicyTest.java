@@ -1,6 +1,7 @@
 package mcdonate.coordinator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashSet;
@@ -24,7 +25,19 @@ class BoostPolicyTest {
     void backgroundSlotsHalf() {
         assertEquals(2, BoostPolicy.backgroundSlots(4));
         assertEquals(4, BoostPolicy.backgroundSlots(8));
-        assertEquals(1, BoostPolicy.backgroundSlots(1));
+        assertEquals(1, BoostPolicy.backgroundSlots(3));
+        // codex-audit 第十七节 B2：只有 1 个名额时不做后台（做了就把唯一的名额占了，前方的急活进不来）
+        assertEquals(0, BoostPolicy.backgroundSlots(1));
+    }
+
+    @Test
+    void backgroundImportGate() {
+        // B1：后台结果的导入只在主线程闲时做：这个 tick 没导前方的、前方队里没有、平均 tick 不超过 30 ms、离上一个后台至少 4 tick
+        assertTrue(BoostPolicy.backgroundImportAllowed(false, false, 20, 4));
+        assertFalse(BoostPolicy.backgroundImportAllowed(true, false, 20, 4), "这个 tick 已经导过前方的");
+        assertFalse(BoostPolicy.backgroundImportAllowed(false, true, 20, 4), "前方还有排着的");
+        assertFalse(BoostPolicy.backgroundImportAllowed(false, false, 45, 4), "服务器忙");
+        assertFalse(BoostPolicy.backgroundImportAllowed(false, false, 20, 2), "刚导过一个后台");
     }
 
     @Test
