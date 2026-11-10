@@ -46,6 +46,7 @@ public final class FlightRecorder {
     /** 来源事件计数，按 Provenance.Kind 的顺序；监听器在生成线程上调用。 */
     private final AtomicLongArray provenance = new AtomicLongArray(Provenance.Kind.values().length);
     private final Provenance.Listener listener = this::provenance;
+    private final mcdonate.bench.ChunkStages.Listener stageListener = this::stage;
     private final Generation.Snapshot countersAtStart;
     /** 现在的位置（按速度积分，不越过没就绪的 chunk，见 Flight.advance）和上次前进到的起飞后纳秒。 */
     private double posX, posZ, distance;
@@ -142,6 +143,7 @@ public final class FlightRecorder {
         out.runJson(config().toString());
         countersAtStart = Generation.listen(listener);
         SyncLoads.addListener(syncListener);
+        mcdonate.bench.ChunkStages.addListener(stageListener);
     }
 
     UUID playerId() {
@@ -285,6 +287,7 @@ public final class FlightRecorder {
         if (finished) return;
         finished = true;
         rows.finish();
+        mcdonate.bench.ChunkStages.removeListener(stageListener);
         Generation.Snapshot end = Generation.unlisten(listener);
         SyncLoads.removeListener(syncListener);
         ServerPlayer p = level.getServer().getPlayerList().getPlayer(playerId);
@@ -390,6 +393,12 @@ public final class FlightRecorder {
         o.addProperty("max_ms", syncMaxNanos[i] / 1e6);
         o.addProperty("stack", syncMaxStack[i]);
         return o;
+    }
+
+    /** 阶段事件（任何线程）：写进 stages.jsonl，t_ms 和来源事件一样从起飞命令算。 */
+    private void stage(int cx, int cz, mcdonate.bench.ChunkStages.Kind kind, String status) {
+        out.stage("{\"t_ms\":" + (System.nanoTime() - t0) / 1_000_000 + ",\"cx\":" + cx + ",\"cz\":" + cz + ",\"ev\":\""
+                + kind.name().toLowerCase(java.util.Locale.ROOT) + "\"" + (status == null ? "" : (kind == mcdonate.bench.ChunkStages.Kind.READ ? ",\"disk\":\"" : ",\"status\":\"") + status + "\"") + "}");
     }
 
     /** 来源事件（任何线程）：写进 provenance.jsonl，t_ms 从起飞命令算。地图按它上色和回放。 */

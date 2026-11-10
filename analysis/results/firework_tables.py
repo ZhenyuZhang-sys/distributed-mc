@@ -224,6 +224,7 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
         boost, raw = m['params'].get('boost'), a / 'flight' / 'raw'
         L = lambda n: [json.loads(l) for l in (raw / n).read_text().splitlines() if l.strip()]
         rows, ev, prov, run = L('seconds.jsonl'), L('chunks.jsonl'), L('provenance.jsonl'), json.loads((raw / 'run.json').read_text())
+        stages = L('stages.jsonl') if (raw / 'stages.jsonl').exists() else None
         imp, full = {}, {}
         for e in sorted(prov, key=lambda e: e['t_ms']):
             k = (e['cx'], e['cz'])
@@ -233,7 +234,7 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
                 full.setdefault(k, e['t_ms'] / 1000)
         for zone, kw in (('≤48', dict(max_chunks=f.NEAR_CHUNKS)), ('>48', dict(min_chunks=f.NEAR_CHUNKS + 1))):
             common = dict(run=run, view=10, cache_radius_blocks=(m['params'].get('cache_radius') or 0) * 16, start=DEFAULT_START, **kw)
-            b = f.blank_breakdown(ev, prov, rows, **common)
+            b = f.blank_breakdown(ev, prov, rows, stages=stages, **common)
             for cat in ('pre', 'none'):
                 per.setdefault((boost, zone, cat), []).append(b[cat])
             g = {'8 个邻居都导入了': [], '有邻居没导入': []}
@@ -262,13 +263,16 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
          '按 chunk 对齐：导入时刻（provenance 里这个 chunk 的第一个 donor 事件）、服务器做完（第一个 resumed / vanilla / loaded）、'
          '进视野（enter）、可发送（ready，getChunkToSend 就绪）。只看前方 90 度扇形、缓存区外的 chunk；"≤48"是离起点 48 个 chunk 以内'
          '（后台走廊半径），"进视野前导入了"多半是加速后台和提前量做的，"没导入"是服务器自己做的。每格是 3 轮各自中位数的中位数。', '',
-         '| boost | 区 | 类 | 每轮个数 | 空白中位（秒） | 截尾比例 | 进视野前已做完 | 导入→进视野（秒） | 进视野→做完（秒） | 做完→可发送（秒） |',
-         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+         '| boost | 区 | 类 | 每轮个数 | 空白中位（秒） | 截尾比例 | 进视野前已做完 | 导入→进视野（秒） | 进视野→做完（秒） | 做完→可发送（秒） '
+         '| 进视野→加票 | 加票→读盘完成 | 读盘→full |',
+         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for (boost, zone, cat), bs in sorted(per.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2] != 'pre')):
         L.append(f"| {'开' if boost else '关'} | {zone} | {'进视野前导入了' if cat == 'pre' else '没导入'} | {show(med([b['n'] for b in bs]), 0)} "
                  f"| {show(med([b['blank_median_s'] for b in bs]))} | {show(100 * med([b['censored_share'] for b in bs]), 0)}% "
                  f"| {show(100 * med([b['full_before_enter_share'] for b in bs]), 0)}% | {show(med([b.get('import_to_enter_s') for b in bs]))} "
-                 f"| {show(med([b['enter_to_full_s'] for b in bs]))} | {show(med([b['full_to_ready_s'] for b in bs]))} |")
+                 f"| {show(med([b['enter_to_full_s'] for b in bs]))} | {show(med([b['full_to_ready_s'] for b in bs]))} "
+                 f"| {show(med([b.get('enter_to_ticket_s') for b in bs]))} | {show(med([b.get('ticket_to_read_s') for b in bs]))} "
+                 f"| {show(med([b.get('read_to_full_s') for b in bs]))} |")
     L += ['', '进视野→做完，按 8 个邻居是不是都在进视野前导入了分开（秒，括号是每轮个数）：', '',
           '| boost | 区 | 8 个邻居都导入了 | 有邻居没导入 |', '| --- | --- | --- | --- |']
     for boost in sorted({k[0] for k in nb}):

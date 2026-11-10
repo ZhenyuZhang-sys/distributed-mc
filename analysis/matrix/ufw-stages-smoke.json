@@ -1,0 +1,74 @@
+{
+ "name": "ufw-stages-smoke",
+ "seed": 424242,
+ "repeats": 1,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-10：bench 按 chunk 记阶段（stages.jsonl）的实测：v2.3 56b4eee + kexu，站 60 秒、boost 开 1 轮，看文件多大、拆出来的阶段对不对。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "stages-smoke",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "boost": [
+     1
+    ],
+    "stand_s": [
+     60
+    ],
+    "repeats": 1
+   }
+  ]
+ }
+}

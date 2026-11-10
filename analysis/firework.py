@@ -255,11 +255,12 @@ def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blo
 FULL_KINDS = ('resumed', 'vanilla', 'loaded')
 
 
-def blank_breakdown(events, prov, rows, **kw):
+def blank_breakdown(events, prov, rows, stages=None, **kw):
     """前方空白按导入时机拆开（调度 11-10）：pre = 进视野前就有 donor 导入（多半是加速的后台），post = 进视野后才导入，
     none = 没有 donor 导入（服务器自己做）。每类：个数、空白中位、截尾比例，以及按 chunk 对齐的中位间隔（秒）：
     导入→进视野（pre）/ 进视野→导入（post）、进视野→服务器做完（provenance 里第一个 resumed / vanilla / loaded）、做完→可发送（ready）。
-    导入取这个 chunk 的第一个 donor 事件（tile 带一圈，同一个 chunk 会被导入好几次）。"""
+    导入取这个 chunk 的第一个 donor 事件（tile 带一圈，同一个 chunk 会被导入好几次）。
+    stages（bench 的 stages.jsonl）有的时候再拆：进视野→加票、加票→读盘完成、读盘→full（都取这个 chunk 的第一次），和读盘时存档里的状态。"""
     imp, full = {}, {}
     for e in sorted(prov, key=lambda e: e['t_ms']):
         k, t = (e['cx'], e['cz']), e['t_ms'] / 1000
@@ -267,6 +268,16 @@ def blank_breakdown(events, prov, rows, **kw):
             imp.setdefault(k, t)
         elif e['kind'] in FULL_KINDS:
             full.setdefault(k, t)
+    tk, rd, fl, disk = {}, {}, {}, {}
+    for e in sorted(stages or [], key=lambda e: e['t_ms']):
+        k, t = (e['cx'], e['cz']), e['t_ms'] / 1000
+        if e['ev'] == 'ticket':
+            tk.setdefault(k, t)
+        elif e['ev'] == 'read':
+            rd.setdefault(k, t)
+            disk.setdefault(k, e.get('disk'))
+        elif e['ev'] == 'status' and e.get('status') == 'minecraft:full':
+            fl.setdefault(k, t)
     cats = {c: [] for c in ('pre', 'post', 'none')}
     for k, te, d, cens in blank_times(events, rows, with_keys=True, **kw):
         cat = 'none' if k not in imp else 'pre' if imp[k] <= te else 'post'
@@ -282,6 +293,14 @@ def blank_breakdown(events, prov, rows, **kw):
             r['import_to_enter_s'] = _median([te - imp[k] for k, te, _, _ in xs])
         if cat == 'post':
             r['enter_to_import_s'] = _median([imp[k] - te for k, te, _, _ in xs])
+        if stages is not None:
+            r['enter_to_ticket_s'] = _median([tk[k] - te for k, te, _, _ in xs if k in tk])
+            r['ticket_to_read_s'] = _median([rd[k] - tk[k] for k, _, _, _ in xs if k in tk and k in rd])
+            r['read_to_full_s'] = _median([fl[k] - rd[k] for k, _, _, _ in xs if k in rd and k in fl])
+            r['disk'] = {}
+            for k, _, _, _ in xs:
+                if k in disk:
+                    r['disk'][disk[k]] = r['disk'].get(disk[k], 0) + 1
         out[cat] = r
     return out
 

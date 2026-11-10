@@ -53,6 +53,41 @@ public class RecordGameTest implements FabricGameTest {
         });
     }
 
+    /**
+     * 按 chunk 记各阶段时刻（调度 11-10：导入过的 chunk 到达后还要 2～5 秒才做完，分不清是票准入、读盘还是续做）：stages.jsonl 里
+     * 这个新 chunk 有加票（ticket）、读盘完成（read，带存档里的状态）、各状态完成（status），按时间先加票、再读盘、最后 full。
+     */
+    @GameTest(template = EMPTY_STRUCTURE, timeoutTicks = 12000)
+    public void recordWritesPerChunkStages(GameTestHelper h) {
+        ServerPlayer p = FlightGameTest.player(h);
+        String run = FlightGameTest.newRun("stg");
+        FlightGameTest.check(FlightGameTest.run(h, "bench record start " + p.getStringUUID() + " " + run) == 1, "record start 失败");
+        int[] t = freshChunk(h);
+        int cx = t[0], cz = t[1];
+        h.getLevel().getChunk(cx, cz);
+        h.runAfterDelay(5, () -> {
+            FlightGameTest.check(FlightGameTest.run(h, "bench record stop " + run) == 1, "record stop 失败");
+            h.succeedWhen(() -> {
+                FlightGameTest.done(h, run);
+                List<JsonObject> st = FlightGameTest.lines(h, run, "stages.jsonl").stream()
+                        .filter(e -> e.get("cx").getAsInt() == cx && e.get("cz").getAsInt() == cz).toList();
+                long ticket = first(st, "ticket", null), read = first(st, "read", null), full = first(st, "status", "minecraft:full");
+                FlightGameTest.check(ticket >= 0 && read >= 0 && full >= 0, "这个 chunk 缺阶段：" + st);
+                FlightGameTest.check(ticket <= read && read <= full, "阶段顺序不对：ticket " + ticket + " read " + read + " full " + full);
+                FlightGameTest.check(st.stream().filter(e -> "read".equals(e.get("ev").getAsString())).allMatch(e -> e.has("disk")),
+                        "read 要带存档里的状态：" + st);
+                FlightGameTest.check(st.stream().filter(e -> "status".equals(e.get("ev").getAsString())).count() >= 5,
+                        "新生成的 chunk 应该经过好几个状态：" + st);
+                FlightGameTest.delete(h, run);
+            });
+        });
+    }
+
+    private static long first(List<JsonObject> st, String ev, String status) {
+        return st.stream().filter(e -> ev.equals(e.get("ev").getAsString()) && (status == null || status.equals(e.get("status").getAsString())))
+                .mapToLong(e -> e.get("t_ms").getAsLong()).min().orElse(-1);
+    }
+
     /** 离测试位置几千个 chunk、随机取一个不在内存里的 chunk（别的测试碰不到；世界每轮 GameTest 都是新的）。 */
     static int[] freshChunk(GameTestHelper h) {
         ChunkPos c = new ChunkPos(h.absolutePos(net.minecraft.core.BlockPos.ZERO));
