@@ -77,4 +77,15 @@ class BoostPolicyTest {
         List<TilePos> c = BoostPolicy.backgroundOrder(new int[][] {{100, 100, -1}}, 4);
         assertEquals(TilePos.ofChunk(100, 100), c.get(0), "预设中心从中心那个 tile 开始");
     }
+
+    @Test
+    void boostDonorKeepsRoomForOneBackground() {
+        // 11-10 f2 端到端：worker 之前一直一个一个派（lanes 1），开了加速：在途上限 1、后台名额 0，后台排了 64 个一个都不派。
+        // 开了加速的至少给 2 个（1 个后台、1 个留给前方；前方可能在 worker 上排在那 1 个后台后面，这是开加速的代价）
+        assertEquals(2, BoostPolicy.dispatchCap(1, true, 3));
+        assertEquals(1, BoostPolicy.dispatchCap(1, false, 3), "不开加速照旧");
+        assertEquals(1, BoostPolicy.dispatchCap(1, true, 1), "只有 1 个线程：照旧");
+        assertEquals(4, BoostPolicy.dispatchCap(4, true, 8));
+        assertEquals(1, BoostPolicy.backgroundSlots(BoostPolicy.dispatchCap(1, true, 3)));
+    }
 }
