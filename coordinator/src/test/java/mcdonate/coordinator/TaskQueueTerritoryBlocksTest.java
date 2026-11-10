@@ -50,7 +50,7 @@ class TaskQueueTerritoryBlocksTest {
     }
 
     /**
-     * 两个 donor（W 快、V 慢），各最多 2 个在途，每 200 毫秒走一步。cols × width 个 tile；
+     * 两个 donor（W 快 0.7 秒、V 慢 3 秒），各最多 2 个在途，每 200 毫秒走一步。cols × width 个 tile；
      * corridor：玩家沿 x 方向往前飞，每 3 秒前进一列，前方 4 列入队、截止按列；否则一开始全部入队、没有截止（手动 enqueue 一批）。
      */
     static Outcome run(int cols, int width, boolean corridor) {
@@ -58,7 +58,8 @@ class TaskQueueTerritoryBlocksTest {
         TaskQueue q = new TaskQueue(now::get, 30_000, 3, new Features("deadline,territory"));
         q.setWorkerWorld(1, "W");
         q.setWorkerWorld(2, "V");
-        long[] latency = {0, 1_500, 3_000};
+        // 快的 0.7 秒（演示里一台 M5 就跟得上 20 格/秒）、慢的 3 秒（Windows 那台），和 codex-audit 第二十三节的路线模型一样
+        long[] latency = {0, 700, 3_000};
         Map<Long, long[]> running = new HashMap<>();   // 任务 → {worker, 做完时刻}
         Map<Long, int[]> tile = new HashMap<>();
         List<int[]> all = new ArrayList<>();
@@ -138,16 +139,16 @@ class TaskQueueTerritoryBlocksTest {
     void twoDonorsFlyingSplitIntoFewPieces() {
         Outcome o = run(24, 4, true);
         System.out.println("走廊 24×4、两个 donor：" + o);
-        assertTrue(o.pieces() <= 4, "连续大块，不交错（原来 5）：" + o);
-        assertTrue(o.dropped() + o.stuck() <= 12, "接缝少（落给服务器的；原来 27）：" + o);
+        assertTrue(o.pieces() <= 4, "连续大块，不交错：" + o);
+        assertTrue(o.dropped() + o.stuck() <= 12, "接缝少（落给服务器的；不按块 24）：" + o);
     }
 
     @Test
     void manualBatchSplitIntoFewPieces() {
         Outcome o = run(12, 12, false);
         System.out.println("手动一批 12×12、两个 donor：" + o);
-        assertTrue(o.pieces() <= 2, "连续大块（原来 3）：" + o);
-        assertTrue(o.dropped() + o.stuck() <= 14, "接缝少（原来 21）：" + o);
+        assertTrue(o.pieces() <= 2, "连续大块（不按块 3）：" + o);
+        assertTrue(o.dropped() + o.stuck() <= 14, "接缝少（不按块 23）：" + o);
     }
 
     // ---- codex-audit 第二十三节（审 40dd535）：块是"有时间时的偏好"，紧任务谁能做谁做；真实的 tile 亲缘高于块 ----
@@ -293,9 +294,10 @@ class TaskQueueTerritoryBlocksTest {
     @Test
     void negativeCoordinatesUseFloorDivision() {
         S s = new S();
+        int b = TaskQueue.TERRITORY_BLOCK;
         s.seed(1, -1, 0, false);
-        s.q.enqueue(-8, 0);
-        assertTrue(s.q.assign(2).isEmpty(), "-8～-1 同一块（W 的），不急的不给 V");
+        s.q.enqueue(-b, 0);
+        assertTrue(s.q.assign(2).isEmpty(), "-b～-1 同一块（W 的），不急的不给 V");
         s.q.enqueue(0, 0);
         assertEquals(0, s.q.assign(2).orElseThrow().tx());
     }
