@@ -48,6 +48,7 @@ public final class OverlayClient {
 
     private static OverlaySettings settings = new OverlaySettings(false, false);
     private static final ChunkSources SOURCES = new ChunkSources();
+    private static final ExploredChunks EXPLORED = new ExploredChunks();   // 探索模式：客户端加载过的 chunk（用户 11-10）
     private static WorkerLink link;
     private static volatile String latestStatus;
     private static boolean subscribedThisConnection;
@@ -63,15 +64,20 @@ public final class OverlayClient {
 
     public static void install(WorkerLink workerLink) {
         link = workerLink;
-        settings = OverlaySettings.load(file());
+        // -Dmcdonate.mapExplore=true|false 盖掉文件里的探索开关（之后用命令改了任一开关，会按当时的值存进文件）
+        settings = OverlaySettings.withOverride(OverlaySettings.load(file()), System.getProperty("mcdonate.mapExplore"));
         PayloadTypeRegistry.playS2C().register(ProvenanceUpdate.TYPE, ProvenanceUpdate.CODEC);
         PayloadTypeRegistry.playC2S().register(OverlaySubscribe.TYPE, OverlaySubscribe.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(ProvenanceUpdate.TYPE, (update, context) -> onUpdate(update));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             subscribedThisConnection = false;
             SOURCES.clear();
+            client.execute(EXPLORED::clear);
         });
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(SOURCES::clear));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
+            SOURCES.clear();
+            EXPLORED.clear();
+        }));
         ClientTickEvents.END_CLIENT_TICK.register(OverlayClient::onTick);
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(
                 ClientCommandManager.literal("mcdonate")
@@ -79,6 +85,9 @@ public final class OverlayClient {
                         .then(ClientCommandManager.literal("overlay")
                                 .then(ClientCommandManager.literal("on").executes(ctx -> set(OverlayToggles.overlay(settings, true))))
                                 .then(ClientCommandManager.literal("off").executes(ctx -> set(OverlayToggles.overlay(settings, false)))))
+                        .then(ClientCommandManager.literal("map")
+                                .then(ClientCommandManager.literal("explore").executes(ctx -> set(OverlayToggles.explore(settings, true))))
+                                .then(ClientCommandManager.literal("all").executes(ctx -> set(OverlayToggles.explore(settings, false)))))
                         .then(ClientCommandManager.literal("hud")
                                 .then(ClientCommandManager.literal("on").executes(ctx -> set(OverlayToggles.hud(settings, true))))
                                 .then(ClientCommandManager.literal("off").executes(ctx -> set(OverlayToggles.hud(settings, false)))))));
@@ -105,7 +114,7 @@ public final class OverlayClient {
         if (mc.player != null) {
             mc.player.displayClientMessage(Component.literal(OverlayToggles.describe(s)), false);
         }
-        LOG.info("overlay 开关：overlay={} hud={}", s.overlay(), s.hud());
+        LOG.info("overlay 开关：overlay={} hud={} explore={}", s.overlay(), s.hud(), s.explore());
         return 1;
     }
 
@@ -162,6 +171,7 @@ public final class OverlayClient {
         }
         if (++ticks % 100 == 0) {   // 每 5 秒：来源表超过 2 万个就删掉离玩家 64 圈以外的
             SOURCES.prune(client.player.chunkPosition().x, client.player.chunkPosition().z, 64, 20_000);
+            EXPLORED.prune(client.player.chunkPosition().x, client.player.chunkPosition().z, ExploredChunks.KEEP, ExploredChunks.MAX);
         }
         if (settings.hud() && ticks % 20 == 0 && link != null && link.running()) {
             link.send("STATUS");
@@ -206,7 +216,8 @@ public final class OverlayClient {
         g.fill(x0 - 1, y0 - 1, x0 + size + 1, y0 + size + 1, 0x90000000);
         for (int dx = -MAP_RADIUS; dx <= MAP_RADIUS; dx++) {
             for (int dz = -MAP_RADIUS; dz <= MAP_RADIUS; dz++) {
-                int c = SOURCES.color(pcx + dx, pcz + dz);
+                int c = EXPLORED.color(SOURCES.color(pcx + dx, pcz + dz), settings.explore(), pcx + dx, pcz + dz,
+                        mc.level != null && mc.level.getChunkSource().hasChunk(pcx + dx, pcz + dz));
                 if (c != -1) {
                     int x = x0 + (dx + MAP_RADIUS) * cell, y = y0 + (dz + MAP_RADIUS) * cell;
                     g.fill(x, y, x + cell - (cell > 3 ? 1 : 0), y + cell - (cell > 3 ? 1 : 0), 0xD0000000 | c);
@@ -234,7 +245,7 @@ public final class OverlayClient {
             g.drawString(mc.font, "其他 " + (donors.size() - 8) + " 个 donor", x0, y, 0xFFCCCCCC, true);
             y += 10;
         }
-        g.drawString(mc.font, "没颜色 = 来源不明", x0, y, 0xFFAAAAAA, true);
+        g.drawString(mc.font, settings.explore() ? "没颜色 = 还没加载到（/mcdonate map all 看全部）" : "没颜色 = 来源不明", x0, y, 0xFFAAAAAA, true);
     }
 
     private static void triangle(GuiGraphics g, float[] t, int argb) {
