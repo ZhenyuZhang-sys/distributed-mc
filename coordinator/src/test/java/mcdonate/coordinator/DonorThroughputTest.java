@@ -273,6 +273,12 @@ class DonorThroughputTest {
      * 返回 {最后的 lanes, 迟到的个数, 总个数, 最后的 laneLatencyMs}。
      */
     static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs) {
+        return simulate(real, serviceMs, deadlineMs, seconds, history, looseMs, looseDeadlineMs, DonorThroughput.MAX_CONCURRENCY);
+    }
+
+    /** 同上，slots：租约名额（coordinator 按租约长度给的上限，maxConcurrency 8 时是 8）；返回值第 5 个是最长的延迟。 */
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
+            int slots) {
         DonorThroughput t = new DonorThroughput();
         LoadMeter meter = new LoadMeter();
         long now = 0;
@@ -286,10 +292,11 @@ class DonorThroughputTest {
         // 在途：{派出时刻, 开始做的时刻（排队的是 -1）, 截止, 派出时手上几个}
         List<long[]> work = new ArrayList<>();
         int late = 0, total = 0;
+        long maxLatency = 0;
         long start = now, end = now + seconds * 1_000;
         while (now < end) {
             long dl = now - start < looseMs ? looseDeadlineMs : deadlineMs;
-            while (work.size() < DonorThroughput.MAX_CONCURRENCY && t.canMeet(1, work.size(), now, now + dl)) {
+            while (work.size() < t.inFlightCap(1, slots) && t.canMeet(1, work.size(), now, now + dl)) {
                 meter.start(now);
                 work.add(new long[] {now, -1, now + dl, work.size() + 1});
             }
@@ -323,6 +330,7 @@ class DonorThroughputTest {
                     t.record(1, now - w[0], now, r[0], r[1], (int) w[3]);
                     meter.end(now);
                     total++;
+                    maxLatency = Math.max(maxLatency, now - w[0]);
                     if (now > w[2] && w[0] - start >= looseMs) {
                         late++;
                     }
@@ -330,7 +338,7 @@ class DonorThroughputTest {
                 }
             }
         }
-        return new int[] {t.lanes(1), late, total, (int) t.laneLatencyMs(1)};
+        return new int[] {t.lanes(1), late, total, (int) t.laneLatencyMs(1), (int) maxLatency};
     }
 
     @Test
@@ -405,5 +413,38 @@ class DonorThroughputTest {
         long[] r = m.read(now);
         t.record(1, 2_000, now, r[0], r[1], 1);
         assertEquals(before, t.lanes(1));
+    }
+
+    // ---- 11-10 kexu mc8：lanes 退到 1 了，在途还是接近 8（parallelism 6.4、延迟 6.8 秒）：lanes 只用来估，没限派活 ----
+
+    @Test
+    void inFlightCappedByLanes() {
+        DonorThroughput t = new DonorThroughput();
+        List<long[]> iv = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            iv.add(new long[] {10_000 + i * 700L, 10_700 + i * 700L});
+        }
+        feed(t, iv);
+        assertEquals(1, t.lanes(1));
+        assertEquals(1, t.inFlightCap(1, 8), "一个一个做的：租约名额有 8 个也只给 1 个");
+        assertEquals(4, new DonorThroughput().inFlightCap(9, 8), "冷启动：按 maxConcurrency 探路");
+        assertEquals(2, new DonorThroughput().inFlightCap(9, 2), "不超过租约名额");
+    }
+
+    @Test
+    void serialDonorWithLooseDeadlinesDoesNotPileUp() {
+        // 截止都很宽（10 秒），租约名额 8：原来派到 8 个在途，一个一个做的 donor 延迟涨到 5～6 秒，后来的紧任务都排在后面
+        int[] r = simulate(1, 700, 10_000, 60, true, 0, 10_000, 8);
+        System.out.println("宽截止 1 并行 8 名额：lanes=" + r[0] + " 总 " + r[2] + " 最长延迟 " + r[4]);
+        assertTrue(r[4] <= 1_500, "在途不堆：最长延迟 " + r[4]);
+        assertTrue(r[2] >= 70, "照样做满：" + r[2]);
+    }
+
+    @Test
+    void parallelDonorWithLooseDeadlinesUsesItsLanes() {
+        int[] r = simulate(4, 700, 10_000, 60, true, 0, 10_000, 8);
+        System.out.println("宽截止 4 并行 8 名额：lanes=" + r[0] + " 总 " + r[2] + " 最长延迟 " + r[4]);
+        assertEquals(4, r[0]);
+        assertTrue(r[2] >= 300, "4 个并行做满：" + r[2]);
     }
 }
