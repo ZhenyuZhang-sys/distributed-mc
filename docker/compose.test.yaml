@@ -1,5 +1,10 @@
 # 只给测试用，叠加在 compose.yaml 上（scripts/lib.sh 的 tc 会带上）。
 # 平时玩的服务器不用这个文件，不装我们的 mod，也没有 worker。
+# 测试 worker 的生成线程数（scripts/lib.sh 的 tc 读渲染后的值算 ActiveProcessorCount；空的是"按核数"）
+x-mcd-gen-threads:
+  worker: "${WORKER_GEN_THREADS:-}"
+  worker3: "${WORKER3_GEN_THREADS:-}"
+
 services:
   minecraft:
     environment:
