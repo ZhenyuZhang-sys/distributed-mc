@@ -34,4 +34,17 @@ class WorkerNameTest {
         assertEquals(new WorkerName("host:f776deaedcc8", "f776deaedcc8"), WorkerName.of(null, null, null, "f776deaedcc8"));
         assertEquals(new WorkerName("host:", "?"), WorkerName.of(null, null, "", ""));
     }
+
+    /** 导入账本里的 donor（overlay 给续完的 chunk 上色用）：和它在线时的连接是同一个稳定名字，颜色一样。 */
+    @org.junit.jupiter.api.Test
+    void ledgerEntryHasTheSameStableNameAsTheLiveConnection() {
+        java.util.UUID p = java.util.UUID.fromString("00000000-0000-4000-8000-00000000a11c");
+        WorkerName live = WorkerName.of(p, "Alice", "w-1", "mac");
+        org.junit.jupiter.api.Assertions.assertEquals(live.stable(), WorkerName.ofLedger(p.toString(), "Alice", "w-1").stable());
+        org.junit.jupiter.api.Assertions.assertEquals("Alice", WorkerName.ofLedger(p.toString(), "Alice", "w-1").display());
+        // 第 9 步以前的账本没有玩家：按 donor 世界编号；名字不知道时显示世界编号的前几位
+        org.junit.jupiter.api.Assertions.assertEquals("world:w-1", WorkerName.ofLedger("", null, "w-1").stable());
+        org.junit.jupiter.api.Assertions.assertEquals("donor w-1", WorkerName.ofLedger("", null, "w-1").display());
+        org.junit.jupiter.api.Assertions.assertEquals("world:w-1", WorkerName.ofLedger("not-a-uuid", null, "w-1").stable());
+    }
 }

@@ -445,3 +445,28 @@ def test_driver_sets_boost_on_workers_and_checks_it(tmp_path):
         w['boost'] = False
     with pytest.raises(RuntimeError, match='boost 没生效'):
         drive(cell, tmp_path / 'c18')
+
+
+def test_driver_checks_worker_gen_pool(tmp_path):
+    # 调度 11-10（fish-pool）：测试 worker 的生成池 = 生成线程数（默认 WORKER_CPUS），/donor status 每个 worker 报 genPool；
+    # 驱动按 profile 的环境变量算该是多少，对不上判无效（哪个槽位漏改一眼看出来）；老 worker 报 null 就不核对
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)   # 1x8：WORKER_CPUS=8
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=8)]
+    out = drive(rcell('firework'), tmp_path / 'g1')
+    assert 8 in out['gen_pool']   # 假 runner 起 donor 时自己也加一个 worker（没有 genPool，不核对）
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=7)]
+    with pytest.raises(RuntimeError, match='生成池不对'):
+        drive(rcell('firework'), tmp_path / 'g2')
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=None)]
+    assert set(drive(rcell('firework'), tmp_path / 'g3')['gen_pool']) == {None}
+
+
+def test_expected_gen_pool_rules():
+    from analysis.flight_driver import expected_gen_pools
+    env = {'WORKER_CPUS': '8'}
+    assert expected_gen_pools(['worker'], env.get) == [8]
+    assert expected_gen_pools(['worker', 'worker2'], {'WORKER_CPUS': '4'}.get) == [4, 4]      # worker2 继承
+    assert expected_gen_pools(['worker'], {'WORKER_CPUS': '2.5'}.get) == [3]                  # 向上取整
+    assert expected_gen_pools(['worker'], {'WORKER_CPUS': '8', 'WORKER_GEN_THREADS': '6'}.get) == [6]
+    assert expected_gen_pools(['worker3'], {'WORKER_CPUS': '8', 'WORKER3_CPUS': '1'}.get) == [1]
+    assert expected_gen_pools(['worker'], {}.get) == [None]                                   # 不知道就不核对

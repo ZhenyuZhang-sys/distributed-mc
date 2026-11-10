@@ -9,7 +9,9 @@
     "ThreadedLevelLightEngineMixin",
     "ChunkMapAccess",
     "ServerChunkCacheSyncLoadMixin",
-    "ServerPlayerTickMixin"
+    "ServerPlayerTickMixin",
+    "ChunkMapStagesMixin",
+    "GenerationChunkHolderStagesMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -376,3 +376,55 @@ def test_blank_time_counts_front_chunks_outside_cache():
     assert s['blank_p90_s'] == pytest.approx(4.0)
     assert s['blank_ready_share'] == pytest.approx(3 / 5)
     assert blank_summary([]) == dict(blank_median_s=None, blank_p90_s=None, blank_n=0, blank_censored=0, blank_ready_share=None)
+
+
+def test_blank_time_split_by_distance_from_start():
+    # 调度 11-10 加速演示：后台走廊只铺到起点外 48 个 chunk，整段平均会把差别冲淡；按离起点的 chunk 距离（方形）分两段报
+    from analysis.firework import blank_times, blank_summary
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0) for t in range(0, 11)]
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))
+    ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=3000, cx=4, cz=0, ev='ready'),     # 离起点 4：2 秒
+          dict(t_ms=3000, cx=6, cz=1, ev='enter'), dict(t_ms=7000, cx=6, cz=1, ev='ready')]     # 离起点 6：4 秒
+    near = blank_times(ev, rows, run=run, view=2, cache_radius_blocks=24, max_chunks=5)
+    far = blank_times(ev, rows, run=run, view=2, cache_radius_blocks=24, min_chunks=6)
+    assert [round(d, 3) for d, _ in near] == [2.0] and [round(d, 3) for d, _ in far] == [4.0]
+    assert blank_summary(near)['blank_median_s'] == 2.0
+
+
+def test_blank_breakdown_by_import_timing():
+    # 调度 11-10：后台导入过的 chunk 到达时还空白 6～8 秒，卡在哪：按 chunk 对齐导入（provenance 的 donor 事件）、服务器做完
+    # （resumed / vanilla / loaded）、进视野（enter）、可发送（ready），分"进视野前就导入了""进视野后才导入""没导入（服务器自己做）"
+    from analysis.firework import blank_breakdown
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0) for t in range(0, 11)]
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))
+    ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=4000, cx=4, cz=0, ev='ready'),
+          dict(t_ms=2000, cx=5, cz=0, ev='enter'), dict(t_ms=3000, cx=5, cz=0, ev='ready'),
+          dict(t_ms=3000, cx=6, cz=0, ev='enter'), dict(t_ms=8000, cx=6, cz=0, ev='ready')]
+    prov = [dict(t_ms=200, cx=4, cz=0, kind='donor'), dict(t_ms=500, cx=4, cz=0, kind='donor'),   # 进视野前 0.8 秒导入（取第一个）
+            dict(t_ms=3500, cx=4, cz=0, kind='resumed'),                                         # 进视野后 2.5 秒做完，再 0.5 秒可发送
+            dict(t_ms=2500, cx=5, cz=0, kind='donor'), dict(t_ms=2900, cx=5, cz=0, kind='resumed'),   # 进视野后才导入
+            dict(t_ms=7000, cx=6, cz=0, kind='vanilla')]                                          # 服务器自己做
+    b = blank_breakdown(ev, prov, rows, run=run, view=2, cache_radius_blocks=24)
+    pre, post, none = b['pre'], b['post'], b['none']
+    assert pre['n'] == 1 and pre['blank_median_s'] == 3.0 and pre['import_to_enter_s'] == 0.8
+    assert pre['enter_to_full_s'] == 2.5 and pre['full_to_ready_s'] == 0.5
+    assert post['n'] == 1 and post['blank_median_s'] == 1.0 and post['enter_to_import_s'] == 0.5
+    assert none['n'] == 1 and none['enter_to_full_s'] == 4.0 and none['full_to_ready_s'] == 1.0
+
+
+def test_blank_breakdown_uses_stages_when_present():
+    # stages.jsonl（bench 按 chunk 记的加票 / 读盘 / 各状态做完）有的时候，把"进视野→做完"拆成 进视野→加票、加票→读盘完成、读盘→full
+    from analysis.firework import blank_breakdown
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0) for t in range(0, 11)]
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))
+    ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=5000, cx=4, cz=0, ev='ready')]
+    prov = [dict(t_ms=200, cx=4, cz=0, kind='donor'), dict(t_ms=4500, cx=4, cz=0, kind='resumed')]
+    stages = [dict(t_ms=2000, cx=4, cz=0, ev='ticket'), dict(t_ms=3000, cx=4, cz=0, ev='read', disk='minecraft:initialize_light'),
+              dict(t_ms=3500, cx=4, cz=0, ev='ticket_full'), dict(t_ms=4000, cx=4, cz=0, ev='status', status='minecraft:light'),
+              dict(t_ms=4400, cx=4, cz=0, ev='status', status='minecraft:full')]
+    pre = blank_breakdown(ev, prov, rows, stages=stages, run=run, view=2, cache_radius_blocks=24)['pre']
+    assert pre['enter_to_ticket_s'] == 1.0 and pre['ticket_to_read_s'] == 1.0 and pre['read_to_full_s'] == pytest.approx(1.4)
+    assert pre['disk'] == {'minecraft:initialize_light': 1}
+    assert pre['enter_to_ticket_full_s'] == 2.5 and pre['ticket_full_to_light_s'] == 0.5 and pre['ticket_full_to_full_s'] == pytest.approx(0.9)
+    assert pre['light_before_ticket_full_share'] == 0
+    assert 'enter_to_ticket_s' not in blank_breakdown(ev, prov, rows, run=run, view=2, cache_radius_blocks=24)['pre']   # 没有 stages 就不报

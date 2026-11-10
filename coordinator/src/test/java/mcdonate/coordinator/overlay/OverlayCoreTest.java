@@ -216,4 +216,43 @@ class OverlayCoreTest {
         assertEquals(Set.of(key(0, 0)), chunks(back));
         assertTrue(tick(ALICE, 0, 0).isEmpty(), "之后照常只发变化");
     }
+
+    /**
+     * 用户 11-10 演示：donor 在远处（玩家不在附近时）导入、后来玩家飞过去由服务器续完的 chunk，小地图显示成通用 RESUMED。
+     * 原因：导入那一刻的 DONOR 事件没进来源表（比如服务器重启过，来源表只在内存里），续完时 old 是空的。
+     * 修：RESUMED 而来源表里不是 DONOR 时，查导入账本（ImportLedger）是谁导入的，按那个 donor 发；和在线时同一个稳定名字、同一个编号。
+     */
+    @Test
+    void resumedChunkImportedEarlierUsesTheLedgerDonor() {
+        OverlayCore.Name alice = new OverlayCore.Name("player:" + ALICE, "Alice");
+        OverlayCore c = new OverlayCore(id -> Optional.of(id == 7 ? alice : new OverlayCore.Name("host:box" + id, "box" + id)), () -> 1,
+                (cx, cz) -> cx == 40 && cz == 0 ? Optional.of(alice) : Optional.empty());
+        c.subscribe(BOB, new OverlaySubscribe(true, false));
+        c.onEvent(41, 0, Provenance.Kind.DONOR, 7);       // Alice 现在在线导入的另一个 chunk
+        c.onEvent(40, 0, Provenance.Kind.RESUMED, -1);    // 早先远处导入（来源表里没有），玩家飞到这里服务器续完
+        c.onEvent(42, 0, Provenance.Kind.RESUMED, -1);    // 账本里也没有：照旧 RESUMED
+        c.onEvent(43, 0, Provenance.Kind.VANILLA, -1);
+        List<ProvenanceUpdate> ups = c.tick(List.of(new OverlayCore.View(BOB, 41, 0, 2))).get(BOB);
+        Map<Long, Entry> got = ups.stream().flatMap(u -> u.chunks().stream()).collect(Collectors.toMap(e -> key(e.cx(), e.cz()), e -> e));
+        assertEquals(Source.DONOR, got.get(key(40, 0)).source());
+        assertEquals(got.get(key(41, 0)).donor(), got.get(key(40, 0)).donor());   // 同一个 donor、同一种颜色
+        assertEquals(Source.RESUMED, got.get(key(42, 0)).source());
+        assertEquals(Source.SERVER, got.get(key(43, 0)).source());
+        assertTrue(ups.stream().flatMap(u -> u.donors().stream()).anyMatch(d -> d.name().equals("Alice")));
+    }
+
+    /** 账本只在来源表里不是 DONOR 时查（是 DONOR 的照旧保留），也不会因为查账本把导入计数算两遍。 */
+    @Test
+    void ledgerOnlyConsultedWhenStateHasNoDonor() {
+        int[] asked = {0};
+        OverlayCore c = new OverlayCore(id -> Optional.of(new OverlayCore.Name("host:box" + id, "box" + id)), () -> 1,
+                (cx, cz) -> { asked[0]++; return Optional.empty(); });
+        c.subscribe(BOB, new OverlaySubscribe(true, true));
+        c.onEvent(0, 0, Provenance.Kind.DONOR, 3);
+        c.onEvent(0, 0, Provenance.Kind.RESUMED, -1);
+        c.onEvent(1, 0, Provenance.Kind.VANILLA, -1);
+        List<ProvenanceUpdate> ups = c.tick(List.of(new OverlayCore.View(BOB, 0, 0, 2))).get(BOB);
+        assertEquals(0, asked[0]);
+        assertEquals(1, ups.get(0).summary().importedTotal());
+    }
 }

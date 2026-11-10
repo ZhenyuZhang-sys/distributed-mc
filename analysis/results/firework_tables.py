@@ -151,6 +151,8 @@ AB_COLS = (('前方空白 中位（秒）', 'blank_median_s', False, 1), ('p90�
            ('卡住（参考）', 'stall_after_exit', True, 1), ('交回被接受', 'imports_accepted', False, 0), ('hopeless 丢弃', 'hopeless', False, 0),
            ('飞过丢弃', 'stale_dropped', False, 0), ('worker 核', 'worker_cores', False, 2), ('tile/s', 'tile_s', False, 2),
            ('MSPT p95', 'mspt_p95', False, 1), ('MSPT max', 'mspt_max', False, 0),
+           ('≤48 chunk 空白中位', 'blank_near_median_s', False, 1), ('≤48 等到就绪', 'blank_near_ready_share', True, 1),
+           ('>48 chunk 空白中位', 'blank_far_median_s', False, 1),
            ('站着时后台导入', 'stand_bg_imported', False, 0), ('站着 MSPT p95', 'stand_mspt_p95', False, 1), ('站着 MSPT max', 'stand_mspt_max', False, 0))
 
 
@@ -188,12 +190,111 @@ def experiments_evening():
             '2 核，预算 2000，1×8 donor，直线 33.5，L16 C6。0dfd6c9 那组按调度只跑了 4 格就换成 ba95fde（每格 1～2 轮，粗测）；ba95fde 那组各 3 轮。',
             ['k2-rate-e7fed5f', 'k2-rate-0dfd6c9', 'k2-rate2-e7fed5f', 'k2-rate2-ba95fde'],
             lambda r, n: f"{n.split('-')[-1]} · mc{r.get('max_concurrency')}" + (' · 第二批' if 'rate2' in n else ''))
-    for code, note in (('92f40c4', '第一版'), ('f9d27c0', '修了后台导入节流（codex-audit 第十七节）'), ('60efd48', '修了 lanes 回退（含 0163fc8）')):
+    for code, note in (('92f40c4', '第一版'), ('f9d27c0', '修了后台导入节流（codex-audit 第十七节）'), ('60efd48', '修了 lanes 回退（含 0163fc8）'),
+                       ('097bea7', 'fish-v23，codex-audit 第十八节 X1～X4'), ('1409315', 'fish-v23，后台先沿朝向往前铺；假玩家站着朝航线看'),
+                       ('56b4eee', 'v2.3 包：1409315 + df9c0e2 前方样本单独窗口 + 朝向修复')):
         L += ab(f'加速模式 boost（fish-boost {code}，{note}）',
                 '2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒；测试环境用 worker 的 /donor boost 代替客户端开关，每轮核对 coordinator status。'
                 '"先站 60 秒"是起飞前在原地站着（后台先算周围）；不站的是直接飞。f9d27c0：开的那臂飞完时 lanes 都退到 1，前方变差。',
-                [n for n in (f'k3-{code}boost-ufw-boost-stand', f'u1-{code}boost-ufw-boost-fly', f'u1-{code}boost-ufw-boost-stand2')],
-                lambda r, n: ('原版' if not r.get('donors') else f"boost {'开' if r.get('boost') else '关'}") + (' · 先站 60 秒' if r.get('stand_s') else ' · 直接飞'))
+                sorted(d.name for d in HERE.glob(f'*-{code}boost-*')),
+                lambda r, n: ('原版' if not r.get('donors') else f"boost {'开' if r.get('boost') else '关'}")
+                + (f" · 先站 {r['stand_s']} 秒" if r.get('stand_s') else ' · 直接飞'))
+    return L
+
+
+def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60', title='后台导入过的 chunk 到达时为什么还空白（v2.3 56b4eee，站 60 秒，k3）', notes=None):
+    """后台导入过的 chunk 到达时为什么还空白（调度 11-10）：按 chunk 对齐导入、服务器做完、进视野、可发送；邻居导没导入；服务器 CPU。"""
+    import json
+    from bench.demo.ab import DEFAULT_START
+    base = HERE / name
+    if not base.exists():
+        return []
+    sx, sz = DEFAULT_START
+    per = {}   # (boost, 区, 类) -> [每轮的值 dict]
+    nb = {}    # (boost, 区, 邻居) -> [每轮中位]
+    cpu = {}   # (boost, 阶段) -> [每轮核数]
+    for cell in sorted(base.iterdir()):
+        tries = sorted(cell.glob('attempt-*')) if cell.is_dir() else []
+        if not tries or not (tries[-1] / 'manifest.json').exists():
+            continue
+        a = tries[-1]
+        m = json.loads((a / 'manifest.json').read_text())
+        if m.get('status') != 'passed' or not m['params'].get('donors'):
+            continue
+        boost, raw = m['params'].get('boost'), a / 'flight' / 'raw'
+        L = lambda n: [json.loads(l) for l in (raw / n).read_text().splitlines() if l.strip()]
+        rows, ev, prov, run = L('seconds.jsonl'), L('chunks.jsonl'), L('provenance.jsonl'), json.loads((raw / 'run.json').read_text())
+        stages = L('stages.jsonl') if (raw / 'stages.jsonl').exists() else None
+        imp, full = {}, {}
+        for e in sorted(prov, key=lambda e: e['t_ms']):
+            k = (e['cx'], e['cz'])
+            if e['kind'] == 'donor':
+                imp.setdefault(k, e['t_ms'] / 1000)
+            elif e['kind'] in f.FULL_KINDS:
+                full.setdefault(k, e['t_ms'] / 1000)
+        for zone, kw in (('≤48', dict(max_chunks=f.NEAR_CHUNKS)), ('>48', dict(min_chunks=f.NEAR_CHUNKS + 1))):
+            common = dict(run=run, view=10, cache_radius_blocks=(m['params'].get('cache_radius') or 0) * 16, start=DEFAULT_START, **kw)
+            b = f.blank_breakdown(ev, prov, rows, stages=stages, **common)
+            for cat in ('pre', 'none'):
+                per.setdefault((boost, zone, cat), []).append(b[cat])
+            g = {'8 个邻居都导入了': [], '有邻居没导入': []}
+            for k, te, d, c in f.blank_times(ev, rows, with_keys=True, **common):
+                if k in imp and k in full and full[k] > te:
+                    ok = all((k[0] + dx, k[1] + dz) in imp and imp[(k[0] + dx, k[1] + dz)] <= te
+                             for dx in (-1, 0, 1) for dz in (-1, 0, 1) if dx or dz)
+                    g['8 个邻居都导入了' if ok else '有邻居没导入'].append(full[k] - te)
+            for kk, v in g.items():
+                nb.setdefault((boost, zone, kk), []).append((f._median(v), len(v)))
+        cs = [json.loads(l) for l in (a / 'flight' / 'cpu-samples.jsonl').read_text().splitlines() if l.strip()]
+        t0 = cs[0]['time_ns']
+        dist = lambda r: max(abs(r['x'] - sx), abs(r['z'] - sz))
+        stand = m['params'].get('stand_s') or 0
+        for phase, ts in (('站着', [r['t_s'] for r in rows if r['t_s'] <= stand]),
+                          ('≤48 那段', [r['t_s'] for r in rows if 256 < dist(r) <= f.NEAR_CHUNKS * 16 - 160]),
+                          ('>48 那段', [r['t_s'] for r in rows if dist(r) > f.NEAR_CHUNKS * 16])):
+            pts = [c for c in cs if ts and min(ts) - 1 <= (c['time_ns'] - t0) / 1e9 <= max(ts)]
+            if len(pts) > 1:
+                cpu.setdefault((boost, phase), []).append((pts[-1]['usage_usec'] - pts[0]['usage_usec']) / 1e6 / ((pts[-1]['time_ns'] - pts[0]['time_ns']) / 1e9))
+    if not per:
+        return []
+    med = lambda xs: f._median([x for x in xs if x is not None])
+    show = lambda v, d=1: '—' if v is None else f'{v:.{d}f}'
+    L = [f'## {title}', '',
+         '按 chunk 对齐：导入时刻（provenance 里这个 chunk 的第一个 donor 事件）、服务器做完（第一个 resumed / vanilla / loaded）、'
+         '进视野（enter）、可发送（ready，getChunkToSend 就绪）。只看前方 90 度扇形、缓存区外的 chunk；"≤48"是离起点 48 个 chunk 以内'
+         '（后台走廊半径），"进视野前导入了"多半是加速后台和提前量做的，"没导入"是服务器自己做的。每格是 3 轮各自中位数的中位数。', '',
+         '| boost | 区 | 类 | 每轮个数 | 空白中位（秒） | 截尾比例 | 进视野前已做完 | 导入→进视野（秒） | 进视野→做完（秒） | 做完→可发送（秒） '
+         '| 进视野→加票 | 加票→读盘完成 | 读盘→full | 进视野→票到 FULL 等级 | 票到 FULL 等级→光照 | 票到 FULL 等级→full |',
+         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+    for (boost, zone, cat), bs in sorted(per.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2] != 'pre')):
+        L.append(f"| {'开' if boost else '关'} | {zone} | {'进视野前导入了' if cat == 'pre' else '没导入'} | {show(med([b['n'] for b in bs]), 0)} "
+                 f"| {show(med([b['blank_median_s'] for b in bs]))} | {show(100 * med([b['censored_share'] for b in bs]), 0)}% "
+                 f"| {show(100 * med([b['full_before_enter_share'] for b in bs]), 0)}% | {show(med([b.get('import_to_enter_s') for b in bs]))} "
+                 f"| {show(med([b['enter_to_full_s'] for b in bs]))} | {show(med([b['full_to_ready_s'] for b in bs]))} "
+                 f"| {show(med([b.get('enter_to_ticket_s') for b in bs]))} | {show(med([b.get('ticket_to_read_s') for b in bs]))} "
+                 f"| {show(med([b.get('read_to_full_s') for b in bs]))} | {show(med([b.get('enter_to_ticket_full_s') for b in bs]))} "
+                 f"| {show(med([b.get('ticket_full_to_light_s') for b in bs]))} | {show(med([b.get('ticket_full_to_full_s') for b in bs]))} |")
+    L += ['', '进视野→做完，按 8 个邻居是不是都在进视野前导入了分开（秒，括号是每轮个数）：', '',
+          '| boost | 区 | 8 个邻居都导入了 | 有邻居没导入 |', '| --- | --- | --- | --- |']
+    for boost in sorted({k[0] for k in nb}):
+        for zone in ('≤48', '>48'):
+            a8, sm = nb.get((boost, zone, '8 个邻居都导入了'), []), nb.get((boost, zone, '有邻居没导入'), [])
+            L.append(f"| {'开' if boost else '关'} | {zone} | {show(med([x for x, _ in a8]))}（{show(med([n for _, n in a8]), 0)}） "
+                     f"| {show(med([x for x, _ in sm]))}（{show(med([n for _, n in sm]), 0)}） |")
+    L += ['', '服务器容器 CPU（核，2 核上限；cgroup 采样）：', '', '| boost | 站着 | ≤48 那段 | >48 那段 |', '| --- | --- | --- | --- |']
+    for boost in sorted({k[0] for k in cpu}):
+        L.append(f"| {'开' if boost else '关'} | " + ' | '.join(show(med(cpu.get((boost, ph), [])), 2) for ph in ('站着', '≤48 那段', '>48 那段')) + ' |')
+    if notes:
+        L += [''] + notes + ['']
+    L += ab('v2.4 候选 fish-solo 8f0cf99 对 main 56b4eee（站 60 秒朝航线再飞，同槽位按轮切代码）',
+            '2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒；k3 boost 关、k4 boost 开，每版 2 轮。boost 关时 8f0cf99 退步：'
+            '飞完 lanes 1 / parallelism 1.0（56b4eee 是 4 / 4.0），空白、前方就绪、被接受都更差，两轮对两轮不重叠；boost 开时持平。',
+            ['k3-solo-56b4eee', 'k3-solo-8f0cf99', 'u1-solo-56b4eee', 'u1-solo-8f0cf99'],
+            lambda r, n: f"{n.split('-')[-1]} · boost {'开' if r.get('boost') else '关'}")
+    L += ab('fish-solo 2736827（修单独基线回落）对 main 56b4eee（站 60 秒朝航线再飞，同槽位按轮切代码）',
+            '同上一组条件；k3 boost 关各 3 轮，k4 boost 开各 2 轮。boost 关时 lanes 回到 4 / 4 / 3（不再掉到 1），前方持平；boost 开时略好。',
+            ['k3-solo2-56b4eee', 'k3-solo2-2736827', 'u1-solo2-56b4eee', 'u1-solo2-2736827'],
+            lambda r, n: f"{n.split('-')[-1]} · boost {'开' if r.get('boost') else '关'}")
     return L
 
 
@@ -235,6 +336,21 @@ def sweep():
     return L
 
 
-md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(experiments_evening()) + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
+STAGE_NOTES = [
+    '读法（11-10 kexu，用下面"按阶段"那一轮核对过）：',
+    '- 导入过的前方 chunk 没有一个在进视野前被做完（"进视野前已做完" 0%），时间全在"进视野→做完"：≤48 那段 4～5 秒，后面 2.3～2.6 秒。',
+    '- 拆开以后（下一节，bench 的 stages.jsonl）：读盘早就完了（第一次进加载等级后 0.03～0.07 秒，比进视野早 2～4 秒），'
+    '**时间几乎全花在等票等级到 FULL（33）**：进视野→票到 FULL 等级 ≤48 那段 4.2 秒、后面 2.2 秒；票一到，0.13 秒就做完 FULL、'
+    '再 0.6 秒可发送。所以卡的是玩家票的准入（DistanceManager 的节流队列），不是读盘、不是续做光照、也基本不是等邻居'
+    '（8 个邻居都导入了的照样要这么久，有邻居没导入的只是少数）。和 codex-server"前方空白大头是原版玩家票排队"一致。',
+    '- 本节第一版（b83e3f9）把原因写成"服务器读盘续完、光照"，是在没有 stages 时按 CPU 推的，**是错的**，以这里为准。',
+    '- 服务器 CPU：站着时 0.2～0.35 核，飞起来约 1.55 核（2 核上限）。站着时有空闲，但只要票等级没到 33，导入的半成品就不会被做完。',
+    '- 加速的好处主要是把"没导入（服务器从头生成，空白 10～11 秒）"变成"进视野前导入了"（≤48 那段每轮 193 → 289 个、没导入 351 → 255 个）。',
+    '- 可试的方向：给走廊里已导入的 chunk 提前加一张 FULL 等级的票（绕过玩家票节流队列），到达时就只剩发送；'
+    '之前的 playerTicketThrottle 4 → 16 没见效，可能是名额以外还有"等 5×5 FULL 才放下一个"的条件。',
+]
+
+md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(boost_breakdown(notes=STAGE_NOTES))
+md += '\n'.join(boost_breakdown('k3-stages2-ufw-stages-smoke', '按阶段拆开（bench stages.jsonl，v2.3 56b4eee + kexu，站 60 秒、boost 开，k3，1 轮）')) + '\n'.join(experiments_evening()) + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
 (Path(__file__).parent / 'firework-3arm.md').write_text(md)
 print(md)

@@ -38,10 +38,16 @@ public final class OverlaySender {
      * donorsOnline：现在连着的 donor 个数。只能调一次。
      */
     public static synchronized OverlayCore install(IntFunction<Optional<OverlayCore.Name>> names, IntSupplier donorsOnline) {
+        return install(names, donorsOnline, (cx, cz) -> Optional.empty());
+    }
+
+    /** importedBy：导入账本里这个 chunk 是谁导入的（续完的 chunk 来源表里没有时用）。 */
+    public static synchronized OverlayCore install(IntFunction<Optional<OverlayCore.Name>> names, IntSupplier donorsOnline,
+                                                   OverlayCore.ImportedBy importedBy) {
         if (core != null) {
             return core;
         }
-        OverlayCore c = new OverlayCore(names, donorsOnline);
+        OverlayCore c = new OverlayCore(names, donorsOnline, importedBy);
         core = c;
         PayloadTypeRegistry.playC2S().register(OverlaySubscribe.TYPE, OverlaySubscribe.CODEC);
         PayloadTypeRegistry.playS2C().register(ProvenanceUpdate.TYPE, ProvenanceUpdate.CODEC);

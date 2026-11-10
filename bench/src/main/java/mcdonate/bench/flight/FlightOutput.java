@@ -20,7 +20,7 @@ final class FlightOutput {
 
     private final Path dir;
     private final ExecutorService writer;
-    private BufferedWriter seconds, chunks, provenance;
+    private BufferedWriter seconds, chunks, provenance, stages;
     /** 只在写线程上读写。done.json 写完以后，晚到的来源事件（比如 coordinator 并发 report）丢掉。 */
     private boolean closed;
 
@@ -48,6 +48,7 @@ final class FlightOutput {
                 seconds.flush();
                 if (chunks != null) chunks.flush();
                 if (provenance != null) provenance.flush();
+                if (stages != null) stages.flush();
             } catch (IOException e) {
                 LOG.error("写 seconds.jsonl 失败：{}", dir, e);
             }
@@ -79,13 +80,29 @@ final class FlightOutput {
         });
     }
 
-    /** 关掉三个流（没有行也建空文件），再写 done.json。 */
+    /** 按 chunk 的阶段时刻（ChunkStages：加票、读盘、各状态做完），任何线程。 */
+    void stage(String line) {
+        writer.execute(() -> {
+            if (closed) return;
+            try {
+                if (stages == null) stages = Files.newBufferedWriter(dir.resolve("stages.jsonl"), StandardCharsets.UTF_8);
+                stages.write(line);
+                stages.write('\n');
+            } catch (IOException e) {
+                LOG.error("写 stages.jsonl 失败：{}", dir, e);
+            }
+        });
+    }
+
+    /** 关掉各个流（没有行也建空文件），再写 done.json。 */
     void done(String json) {
         writer.execute(() -> {
             try {
                 if (seconds == null) seconds = Files.newBufferedWriter(dir.resolve("seconds.jsonl"), StandardCharsets.UTF_8);
                 if (chunks == null) chunks = Files.newBufferedWriter(dir.resolve("chunks.jsonl"), StandardCharsets.UTF_8);
                 if (provenance == null) provenance = Files.newBufferedWriter(dir.resolve("provenance.jsonl"), StandardCharsets.UTF_8);
+                if (stages == null) stages = Files.newBufferedWriter(dir.resolve("stages.jsonl"), StandardCharsets.UTF_8);
+                stages.close();
                 seconds.close();
                 chunks.close();
                 provenance.close();
