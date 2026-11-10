@@ -188,12 +188,14 @@ def experiments_evening():
             '2 核，预算 2000，1×8 donor，直线 33.5，L16 C6。0dfd6c9 那组按调度只跑了 4 格就换成 ba95fde（每格 1～2 轮，粗测）；ba95fde 那组各 3 轮。',
             ['k2-rate-e7fed5f', 'k2-rate-0dfd6c9', 'k2-rate2-e7fed5f', 'k2-rate2-ba95fde'],
             lambda r, n: f"{n.split('-')[-1]} · mc{r.get('max_concurrency')}" + (' · 第二批' if 'rate2' in n else ''))
-    for code, note in (('92f40c4', '第一版'), ('f9d27c0', '修了后台导入节流（codex-audit 第十七节）'), ('60efd48', '修了 lanes 回退（含 0163fc8）')):
+    for code, note in (('92f40c4', '第一版'), ('f9d27c0', '修了后台导入节流（codex-audit 第十七节）'), ('60efd48', '修了 lanes 回退（含 0163fc8）'),
+                       ('097bea7', 'fish-v23，codex-audit 第十八节 X1～X4'), ('1409315', 'fish-v23，后台先沿朝向往前铺；假玩家站着朝航线看')):
         L += ab(f'加速模式 boost（fish-boost {code}，{note}）',
                 '2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒；测试环境用 worker 的 /donor boost 代替客户端开关，每轮核对 coordinator status。'
                 '"先站 60 秒"是起飞前在原地站着（后台先算周围）；不站的是直接飞。f9d27c0：开的那臂飞完时 lanes 都退到 1，前方变差。',
-                [n for n in (f'k3-{code}boost-ufw-boost-stand', f'u1-{code}boost-ufw-boost-fly', f'u1-{code}boost-ufw-boost-stand2')],
-                lambda r, n: ('原版' if not r.get('donors') else f"boost {'开' if r.get('boost') else '关'}") + (' · 先站 60 秒' if r.get('stand_s') else ' · 直接飞'))
+                sorted(d.name for d in HERE.glob(f'*-{code}boost-*')),
+                lambda r, n: ('原版' if not r.get('donors') else f"boost {'开' if r.get('boost') else '关'}")
+                + (f" · 先站 {r['stand_s']} 秒" if r.get('stand_s') else ' · 直接飞'))
     return L
 
 
