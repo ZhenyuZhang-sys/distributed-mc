@@ -38,6 +38,9 @@ jar 不在 git 里，两种拿法任选：
 
 服务器只装两个 mod：Fabric API（镜像启动时自动从 Modrinth 官方下载 0.116.6+1.21.1）和 mc-donate coordinator。
 不要装 `mcdonate-bench`，它是开发用的测量 mod。
+**mods 目录里我们的 jar 必须是同一个提交构建的**（演示、测试环境装了 `mcdonate-bench` 时尤其注意：bench 和 coordinator 各自嵌了一份 `mcdonate-common`）。
+11-10 起 common 的版本带提交号（`0.1.0-b<提交号>`），不同提交的混在一起时 Fabric 启动就报 "requires mcdonate-common =…"，
+换成同一个包里的 jar 就好。之前的版本（v2.3 及以前）混装不会报，而是跑起来以后 `NoSuchMethodError`、worker 不停断开。
 
 ## 3. 配置
 
