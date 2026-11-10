@@ -34,12 +34,16 @@ import mcdonate.common.net.ProvenanceUpdate.Summary;
  *   <li>donor 的名字在主线程上查（{@code names}，fish 的 Coordinator.workerName：会读玩家列表），按稳定名字分配编号，
  *       worker 重连换了编号也是同一个 donor、同一种颜色。
  *   <li>来源：VANILLA → 服务器自己生成；DONOR → 这个 donor；RESUMED → 原来是 donor 的保留 donor（donor 生成的、服务器接着做完），
- *       否则是"导入后接着做完"；REJECTED → 被打回；LOADED（读盘的成品）不知道是谁生成的，不发。
+ *       来源表里没有就查导入账本（{@code importedBy}），查到按那个 donor，否则是"导入后接着做完"；REJECTED → 被打回；LOADED（读盘的成品）不知道是谁生成的，不发。
  * </ul>
  */
 public final class OverlayCore {
     /** stable：稳定名字（颜色按它算，比如 player:&lt;uuid&gt;）；display：显示名。 */
     public record Name(String stable, String display) {}
+
+    /** 导入账本：这个 chunk 是哪个 donor 导入的（主线程上查）。没有记录是 empty。 */
+    @FunctionalInterface
+    public interface ImportedBy { Optional<Name> at(int cx, int cz); }
 
     /** 一个在线玩家：在哪个 chunk、范围多大（服务器视距）。 */
     public record View(UUID player, int cx, int cz, int radius) {}
@@ -58,6 +62,7 @@ public final class OverlayCore {
 
     private final IntFunction<Optional<Name>> names;
     private final IntSupplier donorsOnline;
+    private final ImportedBy ledger;
     private final int maxState, pruneRadius;
     private final ConcurrentLinkedQueue<Event> queue = new ConcurrentLinkedQueue<>();
     private volatile boolean active;
@@ -74,12 +79,21 @@ public final class OverlayCore {
     private final Map<UUID, Long> sentPackets = new HashMap<>();
 
     public OverlayCore(IntFunction<Optional<Name>> names, IntSupplier donorsOnline) {
-        this(names, donorsOnline, MAX_STATE, PRUNE_RADIUS);
+        this(names, donorsOnline, (cx, cz) -> Optional.empty());
+    }
+
+    public OverlayCore(IntFunction<Optional<Name>> names, IntSupplier donorsOnline, ImportedBy importedBy) {
+        this(names, donorsOnline, importedBy, MAX_STATE, PRUNE_RADIUS);
     }
 
     OverlayCore(IntFunction<Optional<Name>> names, IntSupplier donorsOnline, int maxState, int pruneRadius) {
+        this(names, donorsOnline, (cx, cz) -> Optional.empty(), maxState, pruneRadius);
+    }
+
+    OverlayCore(IntFunction<Optional<Name>> names, IntSupplier donorsOnline, ImportedBy importedBy, int maxState, int pruneRadius) {
         this.names = names;
         this.donorsOnline = donorsOnline;
+        this.ledger = importedBy;
         this.maxState = maxState;
         this.pruneRadius = pruneRadius;
         state.defaultReturnValue(-1);
@@ -173,12 +187,17 @@ public final class OverlayCore {
             return cached;
         }
         Name n = names.apply(worker).orElse(new Name("worker:" + worker, "#" + worker));
-        int idx = donorByStable.computeIfAbsent(n.stable(), k -> {
+        int idx = donorIndex(n);
+        donorByWorker.put(worker, idx);
+        return idx;
+    }
+
+    /** 按稳定名字分配编号（在线的 worker 和导入账本里的 donor 共用：同一个人同一种颜色）。 */
+    private int donorIndex(Name n) {
+        return donorByStable.computeIfAbsent(n.stable(), k -> {
             donors.add(new Donor(donors.size(), clip(n.display(), 32), clip(n.stable(), 64)));
             return donors.size() - 1;
         });
-        donorByWorker.put(worker, idx);
-        return idx;
     }
 
     private static String clip(String s, int max) {
@@ -197,7 +216,9 @@ public final class OverlayCore {
                 importedBy.merge(donors.get(d).key(), 1L, Long::sum);
                 yield code(Source.DONOR, d);
             }
-            case RESUMED -> old != -1 && source(old) == Source.DONOR ? old : code(Source.RESUMED, -1);
+            // 原来是 donor 的保留 donor；来源表里没有（导入时没进来，比如服务器重启过）就查导入账本，查到按那个 donor（用户 11-10 演示）
+            case RESUMED -> old != -1 && source(old) == Source.DONOR ? old
+                    : ledger.at(e.cx(), e.cz()).map(n -> code(Source.DONOR, donorIndex(n))).orElse(code(Source.RESUMED, -1));
             case REJECTED -> code(Source.REJECTED, -1);
             case LOADED -> old;   // 读盘的成品：不知道是谁生成的，有记录就保留
         };

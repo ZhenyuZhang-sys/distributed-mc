@@ -15,4 +15,19 @@ public record WorkerName(String stable, String display) {
         String display = playerName != null && !playerName.isEmpty() ? playerName : h.isEmpty() ? "?" : h;
         return new WorkerName(stable, display);
     }
+
+    /**
+     * 导入账本里的 donor（overlay 给后来由服务器续完的 chunk 上色，用户 11-10）：player 是账本里的 UUID 字符串（第 9 步以前是空串），
+     * playerName 是能查到的玩家名（可以 null），world 是 donor 世界编号。稳定名字和这个 donor 在线时一样。
+     */
+    public static WorkerName ofLedger(String player, String playerName, String world) {
+        UUID p = null;
+        try {
+            p = player == null || player.isEmpty() ? null : UUID.fromString(player);
+        } catch (IllegalArgumentException e) {
+            p = null;
+        }
+        String host = world == null || world.isEmpty() ? "" : "donor " + world.substring(0, Math.min(8, world.length()));
+        return of(p, playerName, world, host);
+    }
 }
