@@ -52,3 +52,14 @@ def test_status_reports_worker_rate(server, worker):
     w = json.loads(server.rcon("donor status"))["workers"][0]
     assert {"ratePerSec", "latencyMs", "inFlight", "slots", "parallelism", "lanes", "busyMs"} <= set(w), w
     assert w["slots"] >= 1 and w["lanes"] >= 1 and w["ratePerSec"] > 0, w
+
+
+def test_status_reports_boost(server, worker):
+    # 11-09 加速模式：每个 worker 开没开加速、线程数、后台领了几个、被接受几个；后台扫描的状态和配置
+    worker_id(server, "worker")
+    s = json.loads(server.rcon("donor status"))
+    w = s["workers"][0]
+    assert {"boost", "threads", "backgroundLeased", "backgroundAccepted"} <= set(w), w
+    assert w["boost"] is False, "测试里的 worker 默认不开加速"
+    assert {"active", "scans", "enqueued", "queued"} <= set(s["scan"]["background"]), s["scan"]
+    assert {"backgroundRadius", "backgroundQueueCap", "backgroundCenter", "boostMaxInFlight"} <= set(s["config"]), s["config"]

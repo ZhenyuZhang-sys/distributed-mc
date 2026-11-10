@@ -226,6 +226,8 @@ final class CoordinatorServer {
     /** 每秒：收回到期租约，给空闲 worker 派任务，断开 15 秒没动静的连接。 */
     private void tick() {
         try {
+            // 11-09 加速模式：有开了加速、没暂停的 donor 才做后台扫描
+            demand.setBoostActive(workers.values().stream().anyMatch(c -> c.boost && !c.paused));
             for (TaskQueue.Cancelled x : tasks.expireLeases()) {
                 // 11-09（A4）：收回的任务给原来的 worker 发 cancel（它可能卡住了，之后的结果作废也不要再做）
                 LOG.info("任务 {} 在 worker {} 上租约到期，收回（{}）", x.taskId(), x.worker(), tasks.state(x.taskId()));
@@ -251,7 +253,7 @@ final class CoordinatorServer {
                     LOG.info("任务 {} 玩家已经看到了还没派出去，丢掉，交给服务器", late);
                 }
                 // 7.2（11-09 补的漏洞）：玩家已经飞过、又不在任何玩家需求范围里的：删掉，派出去的撤回
-                TaskQueue.Stale stale = tasks.dropPassed(demand::inDemand);
+                TaskQueue.Stale stale = tasks.dropPassed(demand::inDemand, demand::inBackground);
                 for (TaskQueue.Cancelled c : stale.cancelled()) {
                     waitDonor.release(c.taskId());
                     Connection conn = workers.get(c.worker());
@@ -315,12 +317,13 @@ final class CoordinatorServer {
         // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
         // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
         // 11-09（正式服 hopeless 398）：实测能并行的几个马上开始，不按"前面几个 ÷ 速率"排队估（codex-audit 第十五节：按实测并行度，不按租约名额）
-        int max = slots(c);
+        // 11-09 加速模式：开了加速的按它报的线程数放宽在途上限
+        int max = BoostPolicy.maxInFlight(slots(c), c.boost, c.threads);
         boolean thr = features.on(Features.THROUGHPUT);
         java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
                 ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
         Optional<TaskQueue.Assignment> a;
-        while ((a = tasks.assign(c.workerId, max, canMeet)).isPresent()) {
+        while ((a = tasks.assign(c.workerId, max, canMeet, c.boost)).isPresent()) {
             TaskQueue.Assignment x = a.get();
             LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
             // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
@@ -570,6 +573,9 @@ final class CoordinatorServer {
                 + ",\"corridorChunks\":" + TaskQueue.CORRIDOR_CHUNKS + ",\"demandForwardFirst\":" + DemandScanner.FORWARD_FIRST + ",\"skipNoDeadline\":" + TaskQueue.SKIP_NO_DEADLINE
                 + ",\"importFrontier\":" + DemandScanner.IMPORT_FRONTIER + ",\"importMarginMs\":" + TaskQueue.IMPORT_MARGIN_MS
                 + ",\"waitDonorMaxMs\":" + WaitDonor.MAX_WAIT_MS
+                + ",\"backgroundRadius\":" + DemandScanner.BACKGROUND_RADIUS + ",\"backgroundQueueCap\":" + DemandScanner.BACKGROUND_QUEUE_CAP
+                + ",\"backgroundCenter\":\"" + (DemandScanner.BACKGROUND_CENTER == null ? "" : DemandScanner.BACKGROUND_CENTER[0] + "," + DemandScanner.BACKGROUND_CENTER[1]) + "\""
+                + ",\"boostMaxInFlight\":" + BoostPolicy.MAX_IN_FLIGHT
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
                 + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))
                 + "}";
@@ -590,6 +596,11 @@ final class CoordinatorServer {
                     .append(",\"idleMs\":").append(now - c.lastSeen)
                     .append(",\"inFlight\":").append(tasks.inFlight(c.workerId))
                     .append(",\"paused\":").append(c.paused)
+                    // 11-09 加速模式：开没开、报的线程数、当后台任务领了几个、被接受几个
+                    .append(",\"boost\":").append(c.boost)
+                    .append(",\"threads\":").append(c.threads)
+                    .append(",\"backgroundLeased\":").append(tasks.backgroundLeased(c.workerId))
+                    .append(",\"backgroundAccepted\":").append(tasks.backgroundAccepted(c.workerId))
                     .append(",\"avgMs\":").append(throughput.averageMs(c.workerId))
                     // 11-09（正式服 hopeless 398）：派活怎么估这个 donor
                     .append(",\"latencyMs\":").append(throughput.latencyMs(c.workerId))
@@ -655,6 +666,9 @@ final class CoordinatorServer {
         volatile int lastWireBytes = -1;
         /** 第 9 步：worker 在心跳里报的暂停状态（限速），暂停时不派新任务。 */
         volatile boolean paused;
+        /** 11-09 加速模式：心跳里报的（愿意空闲时做后台 tile、生成线程数，不知道是 0）。 */
+        volatile boolean boost;
+        volatile int threads;
         /** 第 9 步：这个 worker 属于哪个玩家（token 换来的）；免 token 的本地 worker 是 null。 */
         volatile java.util.UUID player;
         /** 这个 worker 的 donor 世界（从它交的第一个结果里知道）。 */
@@ -768,6 +782,11 @@ final class CoordinatorServer {
                         LOG.info("worker {} {}", workerId, h.paused() ? "暂停（玩家那边帧率低）" : "恢复");
                     }
                     paused = h.paused();
+                    if (boost != h.boost()) {
+                        LOG.info("worker {} 加速模式{}（{} 个生成线程）", workerId, h.boost() ? "打开" : "关闭", h.threads());
+                    }
+                    boost = h.boost();
+                    threads = h.threads();
                     if (h.taskId() >= 0) {
                         tasks.heartbeat(workerId, h.taskId());
                     }
