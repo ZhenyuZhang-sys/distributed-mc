@@ -166,4 +166,31 @@ class TaskQueueBoostTest {
         assertEquals(0, q.queuedCountingTowardCap());
         assertEquals(1, q.backgroundQueued());
     }
+
+    @Test
+    void revocationPrefersNewestInSameMillisecond() {
+        // X4：同一毫秒派出的 4 个后台，上限 8→4 收回 2 个：收最近派的（编号大的，多半还没开始做），不收最早的
+        TaskQueue q = queue("deadline");
+        for (int i = 0; i < 4; i++) {
+            q.enqueueBackground(50 + 2 * i, 50, null);
+        }
+        long[] ids = new long[4];
+        for (int i = 0; i < 4; i++) {
+            ids[i] = assign(q, 1, 8, true).orElseThrow().taskId();
+        }
+        java.util.List<TaskQueue.Cancelled> back = q.revokeExcessBackground(1, 4);
+        assertEquals(java.util.Set.of(ids[2], ids[3]), java.util.Set.of(back.get(0).taskId(), back.get(1).taskId()));
+    }
+
+    @Test
+    void finishedBackgroundBecomesForegroundWhenNeeded() {
+        // X3：后台 A 已经交回、排着导入（DONE），玩家飞过来了：找需求给它截止时间，它就该走前方的导入
+        TaskQueue q = queue("deadline");
+        q.enqueueBackground(50, 50, null);
+        long id = assign(q, 1, 4, true).orElseThrow().taskId();
+        assertEquals(TaskQueue.Action.IMPORT, q.onResult(1, id, true).action());
+        assertTrue(q.currentlyBackground(id));
+        q.setDue(50, 50, now.get() + 9_000, now.get() + 7_000, 1);
+        assertTrue(!q.currentlyBackground(id), "有了截止：不再是后台");
+    }
 }

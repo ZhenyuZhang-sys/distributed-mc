@@ -279,6 +279,15 @@ class DonorThroughputTest {
     /** 同上，slots：租约名额（coordinator 按租约长度给的上限，maxConcurrency 8 时是 8）；返回值第 5 个是最长的延迟。 */
     static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
             int slots) {
+        return simulate(real, serviceMs, deadlineMs, seconds, history, looseMs, looseDeadlineMs, slots, real, Long.MAX_VALUE, null);
+    }
+
+    /**
+     * 同上，跑到 changeAfterMs 以后 donor 真能同时做的个数变成 realAfter（用户开了游戏抢 CPU）。
+     * lateAfter 不为 null 时，lateAfter[0] 记变化之后的迟到个数，lateAfter[1] 记变化之后的总个数。
+     */
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
+            int slots, int realAfter, long changeAfterMs, int[] lateAfter) {
         DonorThroughput t = new DonorThroughput();
         LoadMeter meter = new LoadMeter();
         long now = 0;
@@ -307,7 +316,7 @@ class DonorThroughputTest {
                 }
             }
             for (long[] w : work) {
-                if (w[1] < 0 && running < real) {
+                if (w[1] < 0 && running < (now - start >= changeAfterMs ? realAfter : real)) {
                     w[1] = now;
                     running++;
                 }
@@ -333,6 +342,12 @@ class DonorThroughputTest {
                     maxLatency = Math.max(maxLatency, now - w[0]);
                     if (now > w[2] && w[0] - start >= looseMs) {
                         late++;
+                    }
+                    if (lateAfter != null && w[0] - start >= changeAfterMs) {
+                        lateAfter[1]++;
+                        if (now > w[2]) {
+                            lateAfter[0]++;
+                        }
                     }
                     it.remove();
                 }
@@ -526,5 +541,69 @@ class DonorThroughputTest {
         t.record(1, 1_500, now, r[0], r[1], 3);
         m.end(now);
         assertEquals(2, t.lanes(1), "连着两次慢：退到派出时手上的个数 − 1");
+    }
+
+    // ---- codex-audit 第十八节（审 0163fc8）----
+
+    @Test
+    void donorThatLosesTwoLanesBacksOff() {
+        // X2：已经学到 4 个并行，20 秒时真能并行的变成 2（用户开游戏抢 CPU），全是 1 秒紧任务。
+        // 0163fc8：两次慢之间夹一个占满时的快的就清零，lanes 停在 3，变化后一半迟到
+        int[] after = new int[2];
+        int[] r = simulate(4, 700, 1_000, 80, true, 0, 1_000, 4, 2, 20_000, after);
+        System.out.println("4→2：lanes=" + r[0] + " 变化后迟到 " + after[0] + "/" + after[1]);
+        assertEquals(2, r[0], "退到 2");
+        assertTrue(after[0] * 6 <= after[1], "变化后迟到不超过约一成半：" + after[0] + "/" + after[1]);
+    }
+
+    @Test
+    void backgroundOnlyColdStartKeepsGoing() {
+        // X1：新 worker 只做后台（没有前方的样本）：lanes 不能被后台的低在途算成 1（半额变 0 就再也不派）
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int round = 0; round < 12; round++) {
+            int cap = t.inFlightCap(1, 8);
+            int bg = BoostPolicy.backgroundSlots(BoostPolicy.dispatchCap(cap, true, 8));
+            assertTrue(bg >= 1, "第 " + round + " 轮还能派后台：cap " + cap);
+            for (int i = 0; i < bg; i++) {
+                m.start(now);
+            }
+            now += 1_500;
+            for (int i = 0; i < bg; i++) {
+                long[] r = m.read(now);
+                t.record(1, 1_500, now, r[0], r[1], i + 1, true);
+                m.end(now);
+            }
+        }
+        assertEquals(DonorThroughput.MAX_CONCURRENCY, t.lanes(1), "没有前方的样本：照冷启动");
+        assertEquals(DonorThroughput.DEFAULT_MS, t.laneLatencyMs(1), "前方的延迟不拿后台的补：" + t.laneLatencyMs(1));
+    }
+
+    @Test
+    void fastBackgroundDoesNotSupplyMissingSoloBaseline() {
+        // X1 补充：前方只有 k4 的样本（没有单独做的），中间混进 100 ms 的后台（缓存命中）：
+        // 单独做的基线不能拿后台的 100 ms 补，否则后面正常 700 ms 的前方都被当成慢了
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int round = 0; round < 8; round++) {
+            for (int i = 0; i < 4; i++) {
+                m.start(now);
+            }
+            now += 700;
+            for (int i = 0; i < 4; i++) {
+                long[] r = m.read(now);
+                t.record(1, 700, now, r[0], r[1], 4, false);
+                m.end(now);
+            }
+            m.start(now);
+            now += 100;
+            long[] r = m.read(now);
+            t.record(1, 100, now, r[0], r[1], 2, true);
+            m.end(now);
+        }
+        assertEquals(4, t.lanes(1));
+        assertTrue(t.laneLatencyMs(1) >= 600, "马上开始的延迟按前方的：" + t.laneLatencyMs(1));
     }
 }
