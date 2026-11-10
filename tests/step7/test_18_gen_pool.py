@@ -10,8 +10,9 @@ import json
 import math
 import os
 import re
+import subprocess
 
-from mcd import compose, limits, wait_until, worker_id
+from mcd import REPO_ROOT, compose, limits, wait_until, worker_id
 
 
 def config(profiles: str, **env) -> dict:
@@ -55,6 +56,53 @@ def test_overrides_follow_cpus_and_explicit_threads():
     assert apc(config("worker", WORKER_CPUS="8")["worker"]) == 9, "kexu 1×8"
     assert apc(config("worker", WORKER_CPUS="4", WORKER_GEN_THREADS="6")["worker"]) == 7, "单独设线程数"
     assert apc(config("worker3", WORKER3_CPUS="4")["worker3"]) == 5, "kexu 3×4 的 worker3"
+
+
+# ---- codex-audit 第二十二节：tc 取值要和 compose 看到的一样（L1 引号/注释/插值，L2 后层空值覆盖，L3 没 export 的变量）----
+
+def local_env(tmp_path, text: str) -> str:
+    """一个临时的 .env.local（MCD_LOCAL_ENV 指过去）：只影响这次 compose 渲染。"""
+    f = tmp_path / "env.local"
+    f.write_text(text)
+    return str(f)
+
+
+def test_dotenv_syntax_is_parsed_like_compose(tmp_path):
+    # L1：合法的 dotenv：引号、行尾注释、插值。原来引号报"要是正整数"、连 tc down 都失败；WORKER_CPUS="2" 被算成 1 条
+    assert apc(config("worker", MCD_LOCAL_ENV=local_env(tmp_path, 'WORKER_GEN_THREADS="6"\n'))["worker"]) == 7
+    assert apc(config("worker", MCD_LOCAL_ENV=local_env(tmp_path, 'WORKER_CPUS="2"\n'))["worker"]) == 3
+    assert apc(config("worker", MCD_LOCAL_ENV=local_env(tmp_path, "WORKER_GEN_THREADS=5 # 生成线程\n"))["worker"]) == 6
+    assert apc(config("worker", MCD_LOCAL_ENV=local_env(tmp_path, "WORKER_CPUS=2\nWORKER_GEN_THREADS=${WORKER_CPUS}\n"))["worker"]) == 3
+
+
+def test_empty_value_overrides_earlier_one(tmp_path):
+    # L2：后面写了空值就是空（compose 的 ${X:-默认} 取默认），不保留前面的
+    env = local_env(tmp_path, "WORKER3_CPUS=4\nWORKER3_CPUS=\nWORKER_GEN_THREADS=8\nWORKER_GEN_THREADS=\n")
+    s = config("worker,worker3", MCD_LOCAL_ENV=env)
+    assert apc(s["worker3"]) == 2, "worker3 回到默认 0.5 核"
+    assert apc(s["worker"]) == threads_for(s["worker"]["cpus"]) + 1, "线程数回到按核数"
+
+
+def test_unexported_shell_variable_is_not_compose_env():
+    # L3：没 export 的 Bash 变量 compose 看不到，派生值也不能用它
+    script = 'source scripts/lib.sh; WORKER_CPUS=1; tc config --format json'
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=REPO_ROOT,
+                         env={k: v for k, v in os.environ.items() if k != "WORKER_CPUS"})
+    assert out.returncode == 0, out.stderr
+    w = json.loads(out.stdout)["services"].get("worker")
+    if w is not None:   # worker 不在默认 profile 里时 config 不输出它；输出了就要对得上
+        assert apc(w) == threads_for(w["cpus"]) + 1, (w["cpus"], w["environment"]["JVM_OPTS"])
+
+
+def test_bad_thread_setting_does_not_block_non_creating_commands(tmp_path):
+    # L1：down、ps、exec 这些不建容器的不算线程参数，写错了也不挡（不然所有槽位的测试清理都会失败）
+    env = dict(os.environ, MCD_LOCAL_ENV=local_env(tmp_path, "WORKER_GEN_THREADS=abc\n"))
+    out = subprocess.run(["bash", "-c", "source scripts/lib.sh; tc ps --services >/dev/null"], capture_output=True, text=True,
+                         cwd=REPO_ROOT, env=env)
+    assert out.returncode == 0, out.stderr
+    bad = subprocess.run(["bash", "-c", "source scripts/lib.sh; tc config >/dev/null"], capture_output=True, text=True,
+                         cwd=REPO_ROOT, env=env)
+    assert bad.returncode != 0 and "生成线程数" in bad.stderr, "建容器、渲染时照样报错"
 
 
 def me(server, wid):
