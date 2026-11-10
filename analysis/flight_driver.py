@@ -96,7 +96,19 @@ def _prop_matches(want, used):
 
 # fish-rate（11-09）status 里每个 worker 的速度估计；老代码没有这些就不记
 WORKER_STATUS_KEYS = ('lanes', 'parallelism', 'ratePerSec', 'laneLatencyMs', 'latencyMs', 'busyMs', 'slots', 'capacityPerSec',
-                      'boost', 'backgroundLeased', 'backgroundAccepted', 'idleRejects', 'explorations')
+                      'boost', 'backgroundLeased', 'backgroundAccepted', 'idleRejects', 'explorations', 'cpus', 'genPool')
+
+
+def expected_gen_pools(services, get):
+    """每个 donor 服务该有的生成池（fish-pool：和 scripts/lib.sh 的 gen_threads 一样）：WORKER_GEN_THREADS，没有就 WORKER_CPUS
+    向上取整、至少 1；worker2 跟 worker；worker3 用 WORKER3_GEN_THREADS / WORKER3_CPUS。get(名字) 取环境变量，取不到给 None（不核对）。"""
+    def pool(gen, cpus):
+        v = get(gen) or get(cpus)
+        try:
+            return max(1, math.ceil(float(v))) if v not in (None, '') else None
+        except ValueError:
+            return None
+    return [pool('WORKER3_GEN_THREADS', 'WORKER3_CPUS') if svc == 'worker3' else pool('WORKER_GEN_THREADS', 'WORKER_CPUS') for svc in services]
 
 
 def _status_counts(controller) -> dict:
@@ -326,6 +338,14 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
         if p.get('boost') is not None and status_after is not None:
             bs = {w.get('boost') for w in status_after.get('workers', [])}
             result['boost_effective'] = bs.pop() if len(bs) == 1 else None
+        if status_after is not None:   # fish-pool：每个 worker 的生成池对不对（老 worker 报 null 不核对）
+            got = [w.get('genPool') for w in status_after.get('workers', [])]
+            result['gen_pool'] = got
+            local = getattr(runner, 'local_env', lambda k: None)
+            want = expected_gen_pools(services, lambda k: (env or {}).get(k) or local(k))
+            bad = [g for g in got if g is not None and None not in want and g not in want]
+            if bad:
+                raise RuntimeError(f'这一轮无效：worker 生成池不对：要 {sorted(want)}，status 里是 {got}')
         if status_after is not None:
             result['worker_status'] = [{k: w[k] for k in ('id',) + WORKER_STATUS_KEYS if k in w} for w in status_after.get('workers', [])]
         if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个
