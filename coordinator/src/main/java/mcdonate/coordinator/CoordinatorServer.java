@@ -325,7 +325,14 @@ final class CoordinatorServer {
         java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
                 ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
         Optional<TaskQueue.Assignment> a;
-        while ((a = tasks.assign(c.workerId, max, canMeet, c.boost)).isPresent()) {
+        // codex-audit 第十七节 B2：上限变小时超过一半的后台收回，前方的有空位
+        for (TaskQueue.Cancelled x : tasks.revokeExcessBackground(c.workerId, max)) {
+            LOG.info("worker {} 的上限变成 {}，收回后台任务 {}", c.workerId, max, x.taskId());
+            c.send(new Cancel(x.taskId()));
+        }
+        // B1 背压：等着导入的后台结果多了就不再派后台
+        boolean boost = c.boost && importQueues.backgroundPending() < BoostPolicy.BACKGROUND_PENDING_CAP;
+        while ((a = tasks.assign(c.workerId, max, canMeet, boost)).isPresent()) {
             TaskQueue.Assignment x = a.get();
             LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
             // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
@@ -425,7 +432,12 @@ final class CoordinatorServer {
                     });
                 } else {
                     // 11-09（A10）：排进导入队列，每个 tick 结束时按预算做（drainImports），不再各自 server.execute
-                    pendingImports.add(() -> importResult(c, r, epoch));
+                    // codex-audit 第十七节 B1：后台的单独排队，主线程闲时才导，前方的先导
+                    if (tasks.currentlyBackground(r.taskId())) {
+                        importQueues.addBackground(() -> importResult(c, r, epoch));
+                    } else {
+                        importQueues.addForeground(() -> importResult(c, r, epoch));
+                    }
                 }
             }
             case REQUEUE -> LOG.warn("任务 {} 在 worker {} 上失败（{}）：{}", r.taskId(), c.workerId, r.error(), d.reason());
@@ -538,11 +550,11 @@ final class CoordinatorServer {
 
     /** 每个 tick 导入最多用多少毫秒（至少做一个）。 */
     static final long IMPORT_BUDGET_MS = Config.getLong("importBudgetMs", 10);
-    private final java.util.Queue<Runnable> pendingImports = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private final ImportScheduler importQueues = new ImportScheduler();
 
     /** 主线程上，每个 tick 结束时调：按预算做排着的导入。 */
     void drainImports() {
-        ImportBudget.drain(pendingImports, IMPORT_BUDGET_MS * 1_000_000, System::nanoTime);
+        importQueues.drain(IMPORT_BUDGET_MS * 1_000_000, System::nanoTime, server.getAverageTickTimeNanos() / 1e6);
     }
 
     /** 排队剪枝估一个 tile 要多久：最快那个 donor 的延迟；没有 donor 是 0。纯函数。 */
@@ -621,6 +633,10 @@ final class CoordinatorServer {
                 .append(",\"other_world\":").append(discardedBy.get(RegionRules.Discard.OTHER_WORLD).get())
                 .append(",\"server\":").append(discardedBy.get(RegionRules.Discard.SERVER).get())
                 .append("},\"accepted\":").append(acceptedImports.get())
+                // codex-audit 第十七节 B1：等着导入的前方、后台结果，导过的后台结果
+                .append(",\"importQueue\":{\"foreground\":").append(importQueues.foregroundPending())
+                .append(",\"background\":").append(importQueues.backgroundPending())
+                .append(",\"backgroundImported\":").append(importQueues.backgroundImported()).append('}')
                 .append(",\"stale\":").append(tasks.staleJson())
                 .append(",\"hedge\":{\"cancelled\":").append(tasks.hedgeCancelled()).append(",\"wasted\":").append(tasks.hedgeWasted())
                 .append("},\"ledger\":").append(Ownership.LEDGER.size())

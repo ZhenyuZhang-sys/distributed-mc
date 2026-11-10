@@ -30,9 +30,27 @@ final class BoostPolicy {
         return Math.max(normal, Math.min(MAX_IN_FLIGHT, Math.max(1, threads / DIVISOR)));
     }
 
-    /** 后台任务最多占几个名额：一半，至少 1。 */
+    /**
+     * 后台任务最多占几个名额：一半（向下取整）。只有 1 个名额时不做后台（codex-audit 第十七节 B2：做了就把唯一的名额占了，
+     * 前方的急活进不来；一个一个做的 donor 开了加速也不多做后台，这是取舍）。
+     */
     static int backgroundSlots(int max) {
-        return Math.max(1, max / 2);
+        return Math.max(0, max / 2);
+    }
+
+    /** 后台结果的导入：平均 tick 超过这么多毫秒就不导（codex-audit 第十七节 B1）。 */
+    static final double BACKGROUND_IMPORT_MAX_MSPT = Config.getDouble("backgroundImportMaxMspt", 30);
+    /** 后台结果最多每这么多 tick 导一个。 */
+    static final int BACKGROUND_IMPORT_EVERY_TICKS = Math.max(1, Config.getInt("backgroundImportEveryTicks", 4));
+    /** 等着导入的后台结果有这么多个时，不再派新的后台任务（背压）。 */
+    static final int BACKGROUND_PENDING_CAP = Config.getInt("backgroundPendingCap", 4);
+
+    /**
+     * 这个 tick 能不能导一个后台结果：这个 tick 没导过前方的、前方没有排着的、平均 tick 不超过上限、离上一个后台够远。
+     */
+    static boolean backgroundImportAllowed(boolean importedForeground, boolean foregroundPending, double avgTickMs, int ticksSinceLast) {
+        return !importedForeground && !foregroundPending && avgTickMs <= BACKGROUND_IMPORT_MAX_MSPT
+                && ticksSinceLast >= BACKGROUND_IMPORT_EVERY_TICKS;
     }
 
     /**

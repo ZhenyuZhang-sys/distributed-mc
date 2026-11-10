@@ -445,6 +445,44 @@ public final class TaskQueue {
     /**
      * 后台任务：明确的后台 tile；开 deadline 时还有找需求算过、没有截止时间的（侧后方，对不开加速的照旧不派）。
      */
+    /** 当后台派出去、现在也还是后台（没有截止时间）的（codex-audit 第十七节 B3：转成前方的不算）。 */
+    private static boolean nowBackground(Task t) {
+        return t.leasedAsBackground && deadlineKey(t) == Long.MAX_VALUE;
+    }
+
+    /** 这个任务现在算不算后台（导入走哪个队列用）。 */
+    public synchronized boolean currentlyBackground(long taskId) {
+        Task t = tasks.get(taskId);
+        return t != null && nowBackground(t);
+    }
+
+    /**
+     * 后台在途超过 {@link BoostPolicy#backgroundSlots}(cap) 的收回（codex-audit 第十七节 B2：上限变小（关了加速、lanes 退下来）时，
+     * 原来已派的后台还占着，前方的进不来）。收回最近派的，回到队首；返回要发 cancel 的。
+     */
+    public synchronized List<Cancelled> revokeExcessBackground(int worker, int cap) {
+        List<Cancelled> out = new ArrayList<>();
+        Set<Long> s = leases.get(worker);
+        if (s == null) {
+            return out;
+        }
+        List<Task> bg = new ArrayList<>();
+        for (long id : s) {
+            Task t = tasks.get(id);
+            if (t != null && nowBackground(t)) {
+                bg.add(t);
+            }
+        }
+        int excess = bg.size() - BoostPolicy.backgroundSlots(Math.max(1, cap));
+        bg.sort(java.util.Comparator.comparingLong((Task t) -> t.leasedAt).reversed());
+        for (int i = 0; i < excess; i++) {
+            Task t = bg.get(i);
+            out.add(new Cancelled(t.id, worker));
+            backToHead(t);
+        }
+        return out;
+    }
+
     private static boolean backgroundTask(Task t, boolean byDue) {
         return t.background || (byDue && SKIP_NO_DEADLINE && t.scored && deadlineKey(t) == Long.MAX_VALUE);
     }
@@ -454,7 +492,7 @@ public final class TaskQueue {
         if (s != null) {
             for (long id : s) {
                 Task x = tasks.get(id);
-                if (x != null && !x.leasedAsBackground && deadlineKey(x) != Long.MAX_VALUE) {
+                if (x != null && deadlineKey(x) != Long.MAX_VALUE) { // 当后台派出、后来有了截止的也算（B3）
                     return true;
                 }
             }
@@ -468,7 +506,7 @@ public final class TaskQueue {
         if (s != null) {
             for (long id : s) {
                 Task x = tasks.get(id);
-                if (x != null && x.leasedAsBackground) {
+                if (x != null && nowBackground(x)) {
                     n++;
                 }
             }

@@ -51,6 +51,9 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `backgroundScanBudgetMicros` | 300 | 加速模式：后台扫描每次最多占主线程多久（在找需求之后，单独算） | |
 | `backgroundReadsPerScan` | 64 | 加速模式：后台扫描每次最多发起几次读存档 | |
 | `backgroundCenter` | 空 | 加速模式：预设中心（chunk 坐标 `x,z`）：没有玩家在附近也从这里一圈一圈往外做 | 比如出生点附近先铺开 |
+| `backgroundImportMaxMspt` | 30 | 加速模式：服务器平均 tick 超过这么多毫秒就不导后台结果（codex-audit 第十七节 B1：一个 tile 在 2 核上导入要 42～72 ms） | 后台结果和前方结果分两个队列，前方的先导 |
+| `backgroundImportEveryTicks` | 4 | 加速模式：后台结果最多每这么多 tick 导一个，而且只在那个 tick 没导前方的、前方没排着的时候 | |
+| `backgroundPendingCap` | 4 | 加速模式：等着导入的后台结果有这么多个时不再派新的后台任务 | 背压 |
 | `boostMaxInFlight` | 8 | 加速模式：开了加速的 donor 在途上限（按它报的生成线程数 ÷ `boostInFlightDivisor`，不比不开时少），lanes 往上探也到这里为止 | |
 | `boostInFlightDivisor` | 1 | 加速模式：在途上限 = 线程数 ÷ 这个数 | |
 | `skipNoDeadline` | true | 开 deadline 时，找需求算过、玩家不会去的 tile（侧后方，没有截止时间）不派 | false 退回原来的（donor 空着时也派），对照用 |
