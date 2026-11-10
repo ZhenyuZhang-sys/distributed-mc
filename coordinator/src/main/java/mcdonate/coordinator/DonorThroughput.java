@@ -68,53 +68,64 @@ final class DonorThroughput {
             d.pollFirst();
         }
         if (inFlightAtLease > 0 && !background) {
-            probe(worker, durationMs, inFlightAtLease);
+            probe(worker, durationMs, inFlightAtLease, completedAtMs);
         }
     }
 
     /**
      * 往上探（调度 11-09）：实测并行度只是"我们派了多少"，估低了只派 1～2 个，测出来也就 1～2，会自我强化。
      * 每个 worker 记一个探路的 lanes：在 lanes 个都占着时做完的，延迟不超过单独做时的 1.2 倍，连续 3 个就 +1（最多 MAX_CONCURRENCY）；
-     * 超过 1.5 倍就退到"派出时手上的个数 − 1"（不比现在高），之后 30 个结果里不再往上探（一个一个做的 donor 不来回试）。
+     * 超过 1.5 倍就退到"派出时手上的个数 − 1"（不比现在高），之后 PROBE_HOLD_MS（20 秒）不再往上探（一个一个做的 donor 不来回试）。
+     * "明显慢"要最近 6 个一起做的里有 2 个才算（一个贵的 tile 不算，codex-audit 第十八节 X2：也不能被中间一个快的清零）。
      */
     static final double PROBE_OK = 1.2, PROBE_BAD = 1.5;
-    static final int PROBE_GOOD = 3, PROBE_HOLD = 30, PROBE_SLOW = 2;
+    static final int PROBE_GOOD = 3, PROBE_SLOW = 2, PROBE_WINDOW = 6;
+    /**
+     * 回退以后多久不再往上探（毫秒，按时间不按结果数：codex-audit 第十八节，延迟翻倍时 30 个结果要等几十秒）。
+     * 一个一个做的 donor 不来回试。
+     */
+    static final long PROBE_HOLD_MS = Config.getLong("probeHoldMs", 20_000);
 
     /** worker → {lanes, 连续好的个数, 还要等几个结果才能再往上探}。 */
     private final Map<Integer, int[]> probes = new HashMap<>();
 
-    private void probe(int worker, long durationMs, int k) {
+    private void probe(int worker, long durationMs, int k, long completedAtMs) {
         if (k == 1) {
             // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
             long[] solo = samples.get(worker).stream().filter(s -> s[4] == 1 && s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
             soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
         }
-        // {lanes, 连续好的个数, 冷却还剩几个结果, 连续慢的个数}
-        int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0, 0, 0});
-        if (st[2] > 0) {
-            st[2]--;
-        }
+        // {lanes, 连续好的个数}
+        int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0});
         long base = soloLatencyMs(worker);
-        if (k >= 2 && durationMs > PROBE_BAD * base) {
-            // 和别的一起做、明显慢了：不管当时占没占满 lanes 都算（codex-audit 第十六节：冷启动一次派 4 个、一个一个做的 donor，
-            // 原来只看占满的那一个，退到 3 就停了）。连着两个才退（11-10：一个贵的 tile 不等于并行多了变慢）。
-            // 只往下退，退到派出时手上的个数 − 1
-            st[1] = 0;
-            if (++st[3] >= PROBE_SLOW) {
-                st[0] = Math.max(1, Math.min(st[0], k - 1));
-                st[2] = PROBE_HOLD;
-                st[3] = 0;
+        if (k >= 2) {
+            // 和别的一起做的：最近 PROBE_WINDOW 个里有 PROBE_SLOW 个明显慢（> 1.5 倍单独做的）就退，退到派出时手上的个数 − 1（只往下退）。
+            // codex-audit 第十六节：不管当时占没占满 lanes 都算（冷启动一次派 4 个、一个一个做的 donor）。
+            // 11-10：一个贵的 tile 不算（要 2 个）。codex-audit 第十八节 X2：原来"连着两个"、中间夹一个快的就清零，
+            // 真 2 并行的 donor 在 lanes 3 时慢快交替，永远退不下来、一半迟到；改成窗口里数
+            Deque<Boolean> win = slowWindows.computeIfAbsent(worker, w -> new ArrayDeque<>());
+            boolean slow = durationMs > PROBE_BAD * base;
+            win.addLast(slow);
+            while (win.size() > PROBE_WINDOW) {
+                win.pollFirst();
             }
-            return;
-        }
-        if (k >= Math.max(2, st[0]) && durationMs <= PROBE_OK * base) {
-            st[3] = 0; // 占满 lanes 时也不慢：前面那个慢的是 tile 贵（没占满时的快样本不算，2 个并行的 donor 探到 3 时第 2 个总是快的）
+            if (slow && win.stream().filter(x -> x).count() >= PROBE_SLOW) {
+                st[0] = Math.max(1, Math.min(st[0], k - 1));
+                st[1] = 0;
+                win.clear();
+                holdUntil.put(worker, completedAtMs + PROBE_HOLD_MS);
+                return;
+            }
+            if (slow) {
+                st[1] = 0;
+                return;
+            }
         }
         if (k < st[0]) {
             return; // 没占满 lanes：看不出多一个行不行
         }
         if (durationMs <= PROBE_OK * base) {
-            if (++st[1] >= PROBE_GOOD && st[2] == 0) {
+            if (++st[1] >= PROBE_GOOD && completedAtMs >= holdUntil.getOrDefault(worker, Long.MIN_VALUE)) {
                 st[0] = Math.min(ceilings.getOrDefault(worker, MAX_CONCURRENCY), st[0] + 1);
                 st[1] = 0;
             }
@@ -122,6 +133,11 @@ final class DonorThroughput {
             st[1] = 0;
         }
     }
+
+    /** worker → 最近几个"和别的一起做"的前方样本慢不慢。 */
+    private final Map<Integer, Deque<Boolean>> slowWindows = new HashMap<>();
+    /** worker → 回退以后到什么时候（毫秒时间戳）之前不再往上探。 */
+    private final Map<Integer, Long> holdUntil = new HashMap<>();
 
     /** worker → lanes 往上探的上限（默认 MAX_CONCURRENCY；开了加速的按它的在途上限，11-09）。 */
     private final Map<Integer, Integer> ceilings = new HashMap<>();
@@ -148,7 +164,9 @@ final class DonorThroughput {
             return DEFAULT_MS;
         }
         if (!probes.containsKey(worker)) {
-            return latencyMs(worker); // 没记派出时手上几个：按全部的中位数
+            // 没记派出时手上几个：按前方样本的中位数；只有后台的样本时按默认（X1 补充：不拿后台的补）
+            long[] fg = d.stream().filter(s -> s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
+            return fg.length == 0 ? DEFAULT_MS : fg[fg.length / 2];
         }
         // 派出时手上不超过 lanes 个、也不比单独做慢一半以上的（慢一半以上的是在 worker 上排了队，codex-audit 第十六节）
         int lanes = lanes(worker);
@@ -164,7 +182,8 @@ final class DonorThroughput {
             return solo;
         }
         Deque<long[]> d = samples.get(worker);
-        return d == null ? DEFAULT_MS : Math.max(1, d.stream().mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
+        // 从来没有单独做的前方样本：取前方样本里最短的，没有前方样本按默认（X1 补充：不拿后台的补，100 ms 的缓存命中会让正常的都像慢了）
+        return d == null ? DEFAULT_MS : Math.max(1, d.stream().filter(s -> s[5] == 0).mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
     }
 
     /** worker 断开：忘掉它的记录（重连后是新的编号）。 */
@@ -173,6 +192,8 @@ final class DonorThroughput {
         probes.remove(worker);
         ceilings.remove(worker);
         soloMs.remove(worker);
+        slowWindows.remove(worker);
+        holdUntil.remove(worker);
     }
 
     /** 延迟的中位数（毫秒）。 */
@@ -235,6 +256,10 @@ final class DonorThroughput {
         int[] st = probes.get(worker);
         if (st != null) {
             return st[0];
+        }
+        if (d.stream().allMatch(s -> s[5] == 1)) {
+            // codex-audit 第十八节 X1：只做过后台（没有前方的样本）：照冷启动。按后台的低在途算会把 lanes 算成 1、后台半额变 0、再也不派
+            return MAX_CONCURRENCY;
         }
         return (int) Math.max(1, Math.round(parallelism(worker)));
     }

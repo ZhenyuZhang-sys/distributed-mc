@@ -188,6 +188,7 @@ final class CoordinatorServer {
     /** 第 7 步对比用（/donor reset）：清掉队列、撤回在租的（发 cancel）、放开所有闸门。返回撤回了几个。 */
     int reset() {
         List<TaskQueue.Cancelled> cancel = tasks.reset();
+        importQueues.clear(); // codex-audit 第十八节：旧一轮排着导入的结果（导了也会被丢弃）不再占背压名额
         for (TaskQueue.Cancelled c : cancel) {
             waitDonor.release(c.taskId());
             Connection conn = workers.get(c.worker());
@@ -436,7 +437,7 @@ final class CoordinatorServer {
                     // 11-09（A10）：排进导入队列，每个 tick 结束时按预算做（drainImports），不再各自 server.execute
                     // codex-audit 第十七节 B1：后台的单独排队，主线程闲时才导，前方的先导
                     if (tasks.currentlyBackground(r.taskId())) {
-                        importQueues.addBackground(() -> importResult(c, r, epoch));
+                        importQueues.addBackground(r.taskId(), () -> importResult(c, r, epoch));
                     } else {
                         importQueues.addForeground(() -> importResult(c, r, epoch));
                     }
@@ -556,7 +557,8 @@ final class CoordinatorServer {
 
     /** 主线程上，每个 tick 结束时调：按预算做排着的导入。 */
     void drainImports() {
-        importQueues.drain(IMPORT_BUDGET_MS * 1_000_000, System::nanoTime, server.getAverageTickTimeNanos() / 1e6);
+        importQueues.drain(IMPORT_BUDGET_MS * 1_000_000, System::nanoTime, server.getAverageTickTimeNanos() / 1e6,
+                id -> !tasks.currentlyBackground(id));
     }
 
     /** 排队剪枝估一个 tile 要多久：最快那个 donor 的延迟；没有 donor 是 0。纯函数。 */

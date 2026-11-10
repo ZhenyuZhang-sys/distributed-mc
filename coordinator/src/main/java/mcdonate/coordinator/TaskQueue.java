@@ -474,7 +474,8 @@ public final class TaskQueue {
             }
         }
         int excess = bg.size() - BoostPolicy.backgroundSlots(Math.max(1, cap));
-        bg.sort(java.util.Comparator.comparingLong((Task t) -> t.leasedAt).reversed());
+        // 最近派的先收（多半还没开始做）；同一毫秒派出的按编号，大的是后派的（codex-audit 第十八节 X4）
+        bg.sort(java.util.Comparator.comparingLong((Task t) -> t.leasedAt).thenComparingLong(t -> t.id).reversed());
         for (int i = 0; i < excess; i++) {
             Task t = bg.get(i);
             out.add(new Cancelled(t.id, worker));
@@ -565,7 +566,8 @@ public final class TaskQueue {
             return;
         }
         Task t = tasks.get(id);
-        if (t.state == State.QUEUED || t.state == State.LEASED) {
+        // codex-audit 第十八节 X3：做完了还排着导入的（DONE）也记截止时间：交回的后台结果在玩家要它时要挪到前方的导入队列
+        if (t.state == State.QUEUED || t.state == State.LEASED || t.state == State.DONE) {
             t.due = due;
             t.importBy = importBy;
             t.lateral = lateral;
