@@ -56,6 +56,7 @@ tile 大小这类两边必须一样的配置，用它保证服务器和 donor �
 | `backgroundPendingCap` | 4 | 加速模式：等着导入的后台结果有这么多个时不再派新的后台任务 | 背压 |
 | `boostMaxInFlight` | 8 | 加速模式：开了加速的 donor 在途上限（按它报的生成线程数 ÷ `boostInFlightDivisor`，不比不开时少），lanes 往上探也到这里为止 | |
 | `boostInFlightDivisor` | 1 | 加速模式：在途上限 = 线程数 ÷ 这个数 | |
+| `importTrustDisk` | false | **只给演示服务器用，正式服不开**：导入时不读存档查旧状态（主线程上 36 次读盘），只看内存（照样拒收）和导入账本（服务器接手过的当服务器的；我们写的核心不被外圈覆盖；没有记录的当空的直接写） | 11-10 演示：开不开 donor 的差别要明显。代价：存档里服务器自己生成、没导入过的 chunk 认不出来，可能被覆盖 |
 | `skipNoDeadline` | true | 开 deadline 时，找需求算过、玩家不会去的 tile（侧后方，没有截止时间）不派 | false 退回原来的（donor 空着时也派），对照用 |
 | `maxLeaseTotalMs` | 120000 | 一个任务从派出起，心跳最多续租到多久，过了收回重派 | 11-09：worker 卡死时心跳照发，原来能无限续租 |
 | `importBudgetMs` | 10 | 软预算：每个 tick 结束时导入用到这么多毫秒就停，其余留到下个 tick。每个 tick 至少提交 1 个 tile，单个 tile 本身就可能超过 10 ms，所以**不保证导入那一 tick 的 MSPT 在 10 ms 以内**，只是不再几个 tile 挤在同一 tick 里 | 11-09 codex-audit A10：几个结果一起到时同一 tick 里做完，MSPT 最大 305 ms |

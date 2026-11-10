@@ -249,6 +249,11 @@ final class TileImporter {
         if (inMemory) {
             return RegionRules.ChunkInfo.loaded();
         }
+        if (TrustDisk.ON) {
+            // 11-10 演示服务器用：不读存档，只看导入账本（见 TrustDisk）
+            return TrustDisk.info(Ownership.LEDGER.get(key), false, ChunkPos.getX(key), ChunkPos.getZ(key),
+                    ChunkStatus.INITIALIZE_LIGHT.getIndex());
+        }
         // 主线程上等读取结果；第 6.3 步找需求时换成只看 region 文件头
         Optional<CompoundTag> old = chunkMap.read(new ChunkPos(key)).join();
         if (old.isEmpty()) {

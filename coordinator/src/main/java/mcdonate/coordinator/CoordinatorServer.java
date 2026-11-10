@@ -592,6 +592,7 @@ final class CoordinatorServer {
                 + ",\"backgroundRadius\":" + DemandScanner.BACKGROUND_RADIUS + ",\"backgroundQueueCap\":" + DemandScanner.BACKGROUND_QUEUE_CAP
                 + ",\"backgroundCenter\":\"" + (DemandScanner.BACKGROUND_CENTER == null ? "" : DemandScanner.BACKGROUND_CENTER[0] + "," + DemandScanner.BACKGROUND_CENTER[1]) + "\""
                 + ",\"boostMaxInFlight\":" + BoostPolicy.MAX_IN_FLIGHT
+                + ",\"importTrustDisk\":" + TrustDisk.ON
                 + ",\"features\":\"" + Config.get("features", "").replace("\"", "") + "\""
                 + ",\"genThreads\":" + Math.max(1, Math.min(Runtime.getRuntime().availableProcessors() - 1, Integer.getInteger("max.bg.threads", 255)))
                 + "}";
