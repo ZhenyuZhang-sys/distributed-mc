@@ -86,6 +86,10 @@ public final class TaskQueue {
         String doneWorld;
         /** 派出时间（对冲用）。 */
         long leasedAt;
+        /** 派出过几次（重派的结果分不清是哪一次的，不拿来估延迟，codex-audit 第十五节 V4）。 */
+        int leaseCount;
+        /** 派出时这个 worker 手上一共几个（含这个）：往上探 lanes 用。 */
+        int inFlightAtLease;
         /** 对冲撤回过：之后回来的结果不导入，算浪费。 */
         boolean hedged;
         /** 7.2：预计玩家什么时候看到这个 tile（毫秒时间戳）；不知道是 Long.MAX_VALUE。 */
@@ -173,12 +177,23 @@ public final class TaskQueue {
         return owners;
     }
 
+    /** worker → 在途表（11-09 codex-audit 第十五节：实测并行度）。所有租约的开始、结束都经过 leaseAdd/leaseRemove。 */
+    private final Map<Integer, LoadMeter> meters = new HashMap<>();
+
     private void leaseAdd(int worker, long id) {
-        leases.computeIfAbsent(worker, k -> new java.util.LinkedHashSet<>()).add(id);
+        if (leases.computeIfAbsent(worker, k -> new java.util.LinkedHashSet<>()).add(id)) {
+            meters.computeIfAbsent(worker, k -> new LoadMeter()).start(clock.getAsLong());
+        }
     }
 
     private void leaseRemove(int worker, long id) {
         Set<Long> s = leases.get(worker);
+        if (s != null && s.contains(id)) {
+            LoadMeter m = meters.get(worker);
+            if (m != null) {
+                m.end(clock.getAsLong());
+            }
+        }
         if (s != null && s.remove(id) && s.isEmpty()) {
             leases.remove(worker);
         }
@@ -263,6 +278,27 @@ public final class TaskQueue {
     }
 
     /** 派出时间（对冲判断用）；不是 LEASED 返回 -1。 */
+    /**
+     * 估延迟用的派出时刻：任务正租给这个 worker、而且只派出过一次才给，否则 -1（不取样）。
+     * 11-09（codex-audit 第十五节 V4）：租约过期重派给别人后旧结果回来，原来拿新租约的派出时间算旧 worker 的延迟（1 秒记成 1 毫秒）。
+     */
+    public synchronized long sampleLeasedAt(int worker, long taskId) {
+        Task t = tasks.get(taskId);
+        return t != null && t.state == State.LEASED && t.worker == worker && t.leaseCount == 1 ? t.leasedAt : -1;
+    }
+
+    /** 派出时这个 worker 手上一共几个（含这个）；不认识的任务是 0。 */
+    public synchronized int inFlightAtLease(long taskId) {
+        Task t = tasks.get(taskId);
+        return t == null ? 0 : t.inFlightAtLease;
+    }
+
+    /** 这个 worker 的在途表读数 {手上有活的累计毫秒, 在途数 × 时间的累计}；没派过是 {0, 0}。 */
+    public synchronized long[] load(int worker) {
+        LoadMeter m = meters.get(worker);
+        return m == null ? new long[] {0, 0} : m.read(clock.getAsLong());
+    }
+
     public synchronized long leasedAt(long taskId) {
         Task t = tasks.get(taskId);
         return t != null && t.state == State.LEASED ? t.leasedAt : -1;
@@ -363,11 +399,13 @@ public final class TaskQueue {
         }
         t.state = State.LEASED;
         t.leasedAt = clock.getAsLong();
+        t.leaseCount++;
         long key = deadlineKey(t);
         t.slackAtLease = key == Long.MAX_VALUE ? -1 : key - t.leasedAt;
         t.worker = worker;
         t.deadline = Math.min(t.leasedAt + leaseMs, t.leasedAt + MAX_LEASE_TOTAL_MS);
         leaseAdd(worker, t.id);
+        t.inFlightAtLease = inFlight(worker);
         return Optional.of(new Assignment(t.id, t.tx, t.tz, leaseMs));
     }
 
@@ -511,6 +549,8 @@ public final class TaskQueue {
         tasks.clear();
         byTile.clear();
         queue.clear();
+        long now = clock.getAsLong();
+        leases.forEach((w, ids) -> ids.forEach(id -> meters.get(w).end(now))); // 在途表的累计量留着，只把在途数归零
         leases.clear();
         return out;
     }
@@ -551,7 +591,12 @@ public final class TaskQueue {
     }
 
     /** 一个 donor 的估计：延迟（毫秒）、速率（个/毫秒）、手上在做几个。 */
-    public record DonorEstimate(long latencyMs, double ratePerMs, int inFlight) {}
+    public record DonorEstimate(long latencyMs, double ratePerMs, int inFlight, int slots) {
+        /** 不知道名额数：按 1 个（一个一个做）。 */
+        public DonorEstimate(long latencyMs, double ratePerMs, int inFlight) {
+            this(latencyMs, ratePerMs, inFlight, 1);
+        }
+    }
 
     /**
      * 11-09（codex-audit G5）：按每个 donor 分别估。排队的任务按派活顺序，依次假设给能最早做完的那个 donor
@@ -585,7 +630,7 @@ public final class TaskQueue {
                 if (d.ratePerMs() <= 0) {
                     continue;
                 }
-                double f = DonorThroughput.predictFinish(now, d.latencyMs(), d.ratePerMs(), ahead[i]);
+                double f = DonorThroughput.predictFinish(now, d.latencyMs(), d.ratePerMs(), ahead[i], d.slots());
                 if (f < finish) {
                     finish = f;
                     best = i;
