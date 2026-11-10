@@ -706,7 +706,8 @@ class DonorThroughputTest {
         t.record(1, 1_400, now, r[0], r[1], 1);   // 单独做也是 1.4 秒：整台机器变慢了
         m.end(now);
         assertTrue(!t.calibrating(1));
-        assertEquals(4, t.lanes(1), "恢复到退之前的");
+        // codex-audit 第二十节 Z3：不直接恢复到退之前的（真的少了并行、同时也变慢时会误恢复），基线换新、从现在的 lanes 重新往上探
+        assertTrue(t.lanes(1) < 4, "不直接跳回 4");
         assertEquals(1_400, t.laneLatencyMs(1));
     }
 
