@@ -40,33 +40,37 @@ class TaskQueueTerritoryTest {
 
     @Test
     void betweenTwoDonorsDroppedToServer() {
+        // 11-10 起领地按块认主（TERRITORY_BLOCK 个 tile 一块）：同一块里第二个 donor 领不了，两个 donor 放在块的两边
         TaskQueue q = queue(true);
         q.setWorkerWorld(1, "W");
         q.setWorkerWorld(2, "V");
-        q.enqueue(0, 0);
-        q.enqueue(2, 0);
+        int blk = TaskQueue.TERRITORY_BLOCK;
+        q.enqueue(blk - 1, 0);
+        q.enqueue(blk + 1, 0);
         long a = q.assign(1).orElseThrow().taskId();
         long b = q.assign(2).orElseThrow().taskId();
         q.onResult(1, a, true);
         q.markImported(a, "W");
         q.onResult(2, b, true);
         q.markImported(b, "V");
-        q.enqueue(1, 0); // 夹在 W 和 V 中间
+        q.enqueue(blk, 0); // 夹在 W 和 V 中间
         assertTrue(q.assign(1).isEmpty());
         assertTrue(q.assign(2).isEmpty());
-        assertEquals(State.DROPPED, q.state(q.find(1, 0)));
+        assertEquals(State.DROPPED, q.state(q.find(blk, 0)));
     }
 
     @Test
     void discardedImportIsNotTerritory() {
+        // 11-10 起按块认主：挨着的 tile 放在下一块（同一块归领过它的 worker）
         TaskQueue q = queue(true);
+        int blk = TaskQueue.TERRITORY_BLOCK;
         q.setWorkerWorld(1, "W");
-        q.enqueue(0, 0);
+        q.enqueue(blk - 1, 0);
         long a = q.assign(1).orElseThrow().taskId();
         q.onResult(1, a, true); // 结果整个丢弃：不调 markImported
-        q.enqueue(1, 0);
+        q.enqueue(blk, 0);
         q.setWorkerWorld(2, "V");
-        assertEquals(1, q.assign(2).orElseThrow().tx());
+        assertEquals(blk, q.assign(2).orElseThrow().tx());
     }
 
     @Test
