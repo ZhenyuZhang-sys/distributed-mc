@@ -131,6 +131,7 @@ final class DonorThroughput {
                     win.clear();
                 }
                 holdUntil.remove(worker);
+                levelLatencies.remove(worker); // 各档的旧延迟也作废
                 return;
             }
             // 单独做照样快：慢是并行多了造成的，退得对；照常往下更新基线
@@ -143,13 +144,22 @@ final class DonorThroughput {
         // {lanes, 连续好的个数}
         int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0});
         long base = soloLatencyMs(worker);
+        // 11-10：按"多这一条速率涨不涨"判断（调度：用户的 M5 一起做时每个约 0.8 秒、单独约 0.7 秒，速率在涨，不能退）。
+        // 手上 k 个时速率约 k ÷ 延迟；和手上 k − 1 个时比：k 个的延迟超过 k/(k−1) × (k − 1 个时的延迟) 就是多这一条不多出活。
+        // 不知道 k − 1 个时的延迟（还没在那个档做过）时照旧比单独做的
+        double prev = levelLatency(worker, k - 1);
+        double ratio = k / (double) Math.max(1, k - 1);
+        boolean slow = prev > 0 ? durationMs > ratio * prev * PROBE_MARGINAL_SLOW : durationMs > PROBE_BAD * base;
+        boolean good = durationMs <= PROBE_OK * base || (prev > 0 && durationMs <= ratio * prev / PROBE_MARGINAL_GAIN);
+        double[] lat = levelLatencies.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]);
+        int lv = Math.min(k, MAX_LEVEL);
+        lat[lv] = lat[lv] == 0 ? durationMs : lat[lv] + LEVEL_ALPHA * (durationMs - lat[lv]);
         if (k >= 2) {
-            // 和别的一起做的：最近 PROBE_WINDOW 个里有 PROBE_SLOW 个明显慢（> 1.5 倍单独做的）就退，退到派出时手上的个数 − 1（只往下退）。
+            // 和别的一起做的：最近 PROBE_WINDOW 个里有 PROBE_SLOW 个"多这一条不多出活"就退，退到派出时手上的个数 − 1（只往下退）。
             // codex-audit 第十六节：不管当时占没占满 lanes 都算（冷启动一次派 4 个、一个一个做的 donor）。
             // 11-10：一个贵的 tile 不算（要 2 个）。codex-audit 第十八节 X2：原来"连着两个"、中间夹一个快的就清零，
             // 真 2 并行的 donor 在 lanes 3 时慢快交替，永远退不下来、一半迟到；改成窗口里数
             Deque<Boolean> win = slowWindows.computeIfAbsent(worker, w -> new ArrayDeque<>());
-            boolean slow = durationMs > PROBE_BAD * base;
             win.addLast(slow);
             while (win.size() > PROBE_WINDOW) {
                 win.pollFirst();
@@ -175,7 +185,7 @@ final class DonorThroughput {
         if (k < st[0]) {
             return; // 没占满 lanes：看不出多一个行不行
         }
-        if (durationMs <= PROBE_OK * base) {
+        if (good) {
             if (++st[1] >= PROBE_GOOD && completedAtMs >= holdUntil.getOrDefault(worker, Long.MIN_VALUE)) {
                 st[0] = Math.min(ceilings.getOrDefault(worker, MAX_CONCURRENCY), st[0] + 1);
                 st[1] = 0;
@@ -195,6 +205,27 @@ final class DonorThroughput {
     /** 这个 worker 是不是在退了以后单独量一次（这时只派 1 个，也不派后台）。 */
     synchronized boolean calibrating(int worker) {
         return calibrateFrom.containsKey(worker);
+    }
+
+    /** 判断"多这一条不多出活"时留的余量：超过 k/(k−1) 倍的 0.95 就算（测量有噪声，宁可退）。 */
+    static final double PROBE_MARGINAL_SLOW = 0.95;
+    /** 往上探：多这一条速率至少涨一成才算还在涨。 */
+    static final double PROBE_MARGINAL_GAIN = 1.1;
+    static final int MAX_LEVEL = 16;
+    static final double LEVEL_ALPHA = 0.3;
+    /** worker → 派出时手上 k 个的前方任务的平均延迟（指数平均；下标 k，0 是没有）。 */
+    private final Map<Integer, double[]> levelLatencies = new HashMap<>();
+
+    /** 手上 k 个时的延迟：k = 1 优先用单独做的基线；没做过这一档是 0。 */
+    private double levelLatency(int worker, int k) {
+        if (k < 1) {
+            return 0;
+        }
+        if (k == 1 && soloMs.containsKey(worker)) {
+            return soloMs.get(worker);
+        }
+        double[] lat = levelLatencies.get(worker);
+        return lat == null ? 0 : lat[Math.min(k, MAX_LEVEL)];
     }
 
     /** worker → 最近几个"和别的一起做"的前方样本慢不慢。 */
@@ -267,6 +298,7 @@ final class DonorThroughput {
         calibrateFrom.remove(worker);
         calibrateUntil.remove(worker);
         holdUntil.remove(worker);
+        levelLatencies.remove(worker);
     }
 
     /** 延迟的中位数（毫秒）。 */
