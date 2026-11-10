@@ -69,6 +69,32 @@ EOF
   mkdir -p "$TEST_DATA"
 }
 
+# compose 会看到的变量值：shell 环境变量优先，否则按 --env-file 的顺序后面的覆盖前面的（和 tc 传的顺序一致）。
+env_value() {
+  local name="$1" v="" f x
+  if [[ -n "${!name+x}" ]]; then
+    printf '%s' "${!name}"
+    return
+  fi
+  for f in "$TEST_ENV" "$LIMITS_ENV" "$LOCAL_ENV" "$WORLD_ENV"; do
+    [[ -f "$f" ]] || continue
+    x="$(sed -n "s/^$name=//p" "$f" | tail -1)"
+    [[ -n "$x" ]] && v="$x"
+  done
+  printf '%s' "$v"
+}
+
+# worker 的生成线程数：明确设了（WORKER_GEN_THREADS）就用它，否则 = 核数取整、至少 1（和真客户端一样，池 = 设的线程数）。
+gen_threads() {
+  local set="$1" cpus="$2"
+  if [[ -n "$set" ]]; then
+    [[ "$set" =~ ^[1-9][0-9]*$ ]] || die "生成线程数要是正整数：$set"
+    printf '%s' "$set"
+    return
+  fi
+  awk -v c="$cpus" 'BEGIN { n = int(c); if (n < c) n++; if (n < 1) n = 1; print n }'
+}
+
 # 对测试服务器执行 docker compose：compose.yaml 叠加 compose.test.yaml（挂我们的 mod）。
 # 后面的 env 文件覆盖前面的：.env.test < n100.env（资源限制）< world.env（new_world.sh 写的）。
 # shell 里的环境变量优先级最高，可以临时覆盖，比如 MC_CPUS=2 MC_CPUSET=12-13。
@@ -91,6 +117,14 @@ tc() {
     export MCD_COORD_HOST_PORT="$coord_port"
     args+=(-f "$DOCKER_DIR/compose.coord-port.yaml")
   fi
+  # 11-10：worker 的 -XX:ActiveProcessorCount = 生成线程数 + 1（真客户端 WorkerLaunch 也是这样），compose 不会算术，这里算
+  # 默认核数和 compose.test.yaml 里的一致（worker 4、worker3 0.5）
+  local wc w3c wt w3t
+  wc="$(env_value WORKER_CPUS)"
+  w3c="$(env_value WORKER3_CPUS)"
+  wt="$(gen_threads "$(env_value WORKER_GEN_THREADS)" "${wc:-4}")" || return 1
+  w3t="$(gen_threads "$(env_value WORKER3_GEN_THREADS)" "${w3c:-0.5}")" || return 1
+  export MCD_WORKER_APC=$((wt + 1)) MCD_WORKER3_APC=$((w3t + 1))
   # 停服、关服时总带上 worker（它是按需启动的），免得漏关
   case "${1:-}" in
     stop|down) args+=(--profile worker --profile worker2 --profile worker3) ;;

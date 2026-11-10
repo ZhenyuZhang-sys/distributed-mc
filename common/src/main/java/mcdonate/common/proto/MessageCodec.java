@@ -50,6 +50,8 @@ public final class MessageCodec {
                 t.putBoolean("paused", b.paused());
                 t.putBoolean("boost", b.boost());
                 t.putInt("threads", b.threads());
+                t.putInt("cpus", b.cpus());
+                t.putInt("genPool", b.genPool());
             }
         }
         return t;
@@ -70,7 +72,8 @@ public final class MessageCodec {
                 case "result" -> new Result(l(t, "taskId"), bool(t, "ok"), str(t, "error"), compound(t, "tile"));
                 case "cancel" -> new Cancel(l(t, "taskId"));
                 case "heartbeat" -> new Heartbeat(l(t, "sentAtMs"), l(t, "taskId"), t.contains("paused") && bool(t, "paused"),
-                        t.contains("boost") && bool(t, "boost"), t.contains("threads") ? i(t, "threads") : 0);
+                        t.contains("boost") && bool(t, "boost"), t.contains("threads") ? i(t, "threads") : 0,
+                        t.contains("cpus") ? i(t, "cpus") : 0, t.contains("genPool") ? i(t, "genPool") : 0);
                 default -> throw new ProtocolException("未知消息类型：" + type);
             };
         } catch (IllegalArgumentException e) {
