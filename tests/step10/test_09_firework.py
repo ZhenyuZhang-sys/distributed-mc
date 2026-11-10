@@ -389,3 +389,24 @@ def test_blank_time_split_by_distance_from_start():
     far = blank_times(ev, rows, run=run, view=2, cache_radius_blocks=24, min_chunks=6)
     assert [round(d, 3) for d, _ in near] == [2.0] and [round(d, 3) for d, _ in far] == [4.0]
     assert blank_summary(near)['blank_median_s'] == 2.0
+
+
+def test_blank_breakdown_by_import_timing():
+    # 调度 11-10：后台导入过的 chunk 到达时还空白 6～8 秒，卡在哪：按 chunk 对齐导入（provenance 的 donor 事件）、服务器做完
+    # （resumed / vanilla / loaded）、进视野（enter）、可发送（ready），分"进视野前就导入了""进视野后才导入""没导入（服务器自己做）"
+    from analysis.firework import blank_breakdown
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0) for t in range(0, 11)]
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))
+    ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=4000, cx=4, cz=0, ev='ready'),
+          dict(t_ms=2000, cx=5, cz=0, ev='enter'), dict(t_ms=3000, cx=5, cz=0, ev='ready'),
+          dict(t_ms=3000, cx=6, cz=0, ev='enter'), dict(t_ms=8000, cx=6, cz=0, ev='ready')]
+    prov = [dict(t_ms=200, cx=4, cz=0, kind='donor'), dict(t_ms=500, cx=4, cz=0, kind='donor'),   # 进视野前 0.8 秒导入（取第一个）
+            dict(t_ms=3500, cx=4, cz=0, kind='resumed'),                                         # 进视野后 2.5 秒做完，再 0.5 秒可发送
+            dict(t_ms=2500, cx=5, cz=0, kind='donor'), dict(t_ms=2900, cx=5, cz=0, kind='resumed'),   # 进视野后才导入
+            dict(t_ms=7000, cx=6, cz=0, kind='vanilla')]                                          # 服务器自己做
+    b = blank_breakdown(ev, prov, rows, run=run, view=2, cache_radius_blocks=24)
+    pre, post, none = b['pre'], b['post'], b['none']
+    assert pre['n'] == 1 and pre['blank_median_s'] == 3.0 and pre['import_to_enter_s'] == 0.8
+    assert pre['enter_to_full_s'] == 2.5 and pre['full_to_ready_s'] == 0.5
+    assert post['n'] == 1 and post['blank_median_s'] == 1.0 and post['enter_to_import_s'] == 0.5
+    assert none['n'] == 1 and none['enter_to_full_s'] == 4.0 and none['full_to_ready_s'] == 1.0

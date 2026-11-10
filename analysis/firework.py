@@ -203,11 +203,13 @@ def _pos_at(rows, t):
     return a['x'] + (b['x'] - a['x']) * f, a['z'] + (b['z'] - a['z']) * f
 
 
-def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blocks=0, start=None, min_chunks=None, max_chunks=None):
+def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blocks=0, start=None, min_chunks=None, max_chunks=None,
+                with_keys=False):
     """前方空白时长（调度 11-09 用户定的主指标）：进视野时 chunk 中心在飞行方向左右各 half_angle 度以内、又在缓存区（预生成的方形）
     外面的 chunk，从 enter 到第一个 ready（服务器 getChunkToSend 就绪）的秒数。进来就就绪是 0。没就绪就离开视野、或到飞行结束也没就绪的
     记到那一刻为止，标截尾（实际只会更长）。返回 [(秒, 是否截尾)]。
-    min_chunks / max_chunks：只算离起点所在 chunk（方形距离）在这个范围里的（加速演示：后台走廊半径内外分开报）。"""
+    min_chunks / max_chunks：只算离起点所在 chunk（方形距离）在这个范围里的（加速演示：后台走廊半径内外分开报）。
+    with_keys：返回 [((cx, cz), 进视野的秒, 秒, 是否截尾)]，给 blank_breakdown 按 chunk 对齐用。"""
     if not rows:
         return []
     heading = _route_heading(run)
@@ -245,8 +247,42 @@ def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blo
             open_[key] = t
         elif key in open_:
             t0 = open_.pop(key)
-            out.append((t - t0, e['ev'] != 'ready'))
-    out += [(max(0.0, end - t0), True) for t0 in open_.values()]
+            out.append((key, t0, t - t0, e['ev'] != 'ready'))
+    out += [(k, t0, max(0.0, end - t0), True) for k, t0 in open_.items()]
+    return out if with_keys else [(d, c) for _, _, d, c in out]
+
+
+FULL_KINDS = ('resumed', 'vanilla', 'loaded')
+
+
+def blank_breakdown(events, prov, rows, **kw):
+    """前方空白按导入时机拆开（调度 11-10）：pre = 进视野前就有 donor 导入（多半是加速的后台），post = 进视野后才导入，
+    none = 没有 donor 导入（服务器自己做）。每类：个数、空白中位、截尾比例，以及按 chunk 对齐的中位间隔（秒）：
+    导入→进视野（pre）/ 进视野→导入（post）、进视野→服务器做完（provenance 里第一个 resumed / vanilla / loaded）、做完→可发送（ready）。
+    导入取这个 chunk 的第一个 donor 事件（tile 带一圈，同一个 chunk 会被导入好几次）。"""
+    imp, full = {}, {}
+    for e in sorted(prov, key=lambda e: e['t_ms']):
+        k, t = (e['cx'], e['cz']), e['t_ms'] / 1000
+        if e['kind'] == 'donor':
+            imp.setdefault(k, t)
+        elif e['kind'] in FULL_KINDS:
+            full.setdefault(k, t)
+    cats = {c: [] for c in ('pre', 'post', 'none')}
+    for k, te, d, cens in blank_times(events, rows, with_keys=True, **kw):
+        cat = 'none' if k not in imp else 'pre' if imp[k] <= te else 'post'
+        cats[cat].append((k, te, d, cens))
+    out = {}
+    for cat, xs in cats.items():
+        r = dict(n=len(xs), blank_median_s=_median([d for _, _, d, _ in xs]),
+                 censored_share=sum(1 for *_, c in xs if c) / len(xs) if xs else None,
+                 full_before_enter_share=sum(1 for k, te, _, _ in xs if k in full and full[k] <= te) / len(xs) if xs else None,
+                 enter_to_full_s=_median([full[k] - te for k, te, _, _ in xs if k in full and full[k] > te]),
+                 full_to_ready_s=_median([te + d - max(full[k], te) for k, te, d, c in xs if not c and k in full and full[k] <= te + d]))
+        if cat == 'pre':
+            r['import_to_enter_s'] = _median([te - imp[k] for k, te, _, _ in xs])
+        if cat == 'post':
+            r['enter_to_import_s'] = _median([imp[k] - te for k, te, _, _ in xs])
+        out[cat] = r
     return out
 
 

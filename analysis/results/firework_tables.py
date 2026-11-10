@@ -202,6 +202,97 @@ def experiments_evening():
     return L
 
 
+def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
+    """后台导入过的 chunk 到达时为什么还空白（调度 11-10）：按 chunk 对齐导入、服务器做完、进视野、可发送；邻居导没导入；服务器 CPU。"""
+    import json
+    from bench.demo.ab import DEFAULT_START
+    base = HERE / name
+    if not base.exists():
+        return []
+    sx, sz = DEFAULT_START
+    per = {}   # (boost, 区, 类) -> [每轮的值 dict]
+    nb = {}    # (boost, 区, 邻居) -> [每轮中位]
+    cpu = {}   # (boost, 阶段) -> [每轮核数]
+    for cell in sorted(base.iterdir()):
+        tries = sorted(cell.glob('attempt-*')) if cell.is_dir() else []
+        if not tries or not (tries[-1] / 'manifest.json').exists():
+            continue
+        a = tries[-1]
+        m = json.loads((a / 'manifest.json').read_text())
+        if m.get('status') != 'passed' or not m['params'].get('donors'):
+            continue
+        boost, raw = m['params'].get('boost'), a / 'flight' / 'raw'
+        L = lambda n: [json.loads(l) for l in (raw / n).read_text().splitlines() if l.strip()]
+        rows, ev, prov, run = L('seconds.jsonl'), L('chunks.jsonl'), L('provenance.jsonl'), json.loads((raw / 'run.json').read_text())
+        imp, full = {}, {}
+        for e in sorted(prov, key=lambda e: e['t_ms']):
+            k = (e['cx'], e['cz'])
+            if e['kind'] == 'donor':
+                imp.setdefault(k, e['t_ms'] / 1000)
+            elif e['kind'] in f.FULL_KINDS:
+                full.setdefault(k, e['t_ms'] / 1000)
+        for zone, kw in (('≤48', dict(max_chunks=f.NEAR_CHUNKS)), ('>48', dict(min_chunks=f.NEAR_CHUNKS + 1))):
+            common = dict(run=run, view=10, cache_radius_blocks=(m['params'].get('cache_radius') or 0) * 16, start=DEFAULT_START, **kw)
+            b = f.blank_breakdown(ev, prov, rows, **common)
+            for cat in ('pre', 'none'):
+                per.setdefault((boost, zone, cat), []).append(b[cat])
+            g = {'8 个邻居都导入了': [], '有邻居没导入': []}
+            for k, te, d, c in f.blank_times(ev, rows, with_keys=True, **common):
+                if k in imp and k in full and full[k] > te:
+                    ok = all((k[0] + dx, k[1] + dz) in imp and imp[(k[0] + dx, k[1] + dz)] <= te
+                             for dx in (-1, 0, 1) for dz in (-1, 0, 1) if dx or dz)
+                    g['8 个邻居都导入了' if ok else '有邻居没导入'].append(full[k] - te)
+            for kk, v in g.items():
+                nb.setdefault((boost, zone, kk), []).append((f._median(v), len(v)))
+        cs = [json.loads(l) for l in (a / 'flight' / 'cpu-samples.jsonl').read_text().splitlines() if l.strip()]
+        t0 = cs[0]['time_ns']
+        dist = lambda r: max(abs(r['x'] - sx), abs(r['z'] - sz))
+        stand = m['params'].get('stand_s') or 0
+        for phase, ts in (('站着', [r['t_s'] for r in rows if r['t_s'] <= stand]),
+                          ('≤48 那段', [r['t_s'] for r in rows if 256 < dist(r) <= f.NEAR_CHUNKS * 16 - 160]),
+                          ('>48 那段', [r['t_s'] for r in rows if dist(r) > f.NEAR_CHUNKS * 16])):
+            pts = [c for c in cs if ts and min(ts) - 1 <= (c['time_ns'] - t0) / 1e9 <= max(ts)]
+            if len(pts) > 1:
+                cpu.setdefault((boost, phase), []).append((pts[-1]['usage_usec'] - pts[0]['usage_usec']) / 1e6 / ((pts[-1]['time_ns'] - pts[0]['time_ns']) / 1e9))
+    if not per:
+        return []
+    med = lambda xs: f._median([x for x in xs if x is not None])
+    show = lambda v, d=1: '—' if v is None else f'{v:.{d}f}'
+    L = ['## 后台导入过的 chunk 到达时为什么还空白（v2.3 56b4eee，站 60 秒，k3）', '',
+         '按 chunk 对齐：导入时刻（provenance 里这个 chunk 的第一个 donor 事件）、服务器做完（第一个 resumed / vanilla / loaded）、'
+         '进视野（enter）、可发送（ready，getChunkToSend 就绪）。只看前方 90 度扇形、缓存区外的 chunk；"≤48"是离起点 48 个 chunk 以内'
+         '（后台走廊半径），"进视野前导入了"多半是加速后台和提前量做的，"没导入"是服务器自己做的。每格是 3 轮各自中位数的中位数。', '',
+         '| boost | 区 | 类 | 每轮个数 | 空白中位（秒） | 截尾比例 | 进视野前已做完 | 导入→进视野（秒） | 进视野→做完（秒） | 做完→可发送（秒） |',
+         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+    for (boost, zone, cat), bs in sorted(per.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2] != 'pre')):
+        L.append(f"| {'开' if boost else '关'} | {zone} | {'进视野前导入了' if cat == 'pre' else '没导入'} | {show(med([b['n'] for b in bs]), 0)} "
+                 f"| {show(med([b['blank_median_s'] for b in bs]))} | {show(100 * med([b['censored_share'] for b in bs]), 0)}% "
+                 f"| {show(100 * med([b['full_before_enter_share'] for b in bs]), 0)}% | {show(med([b.get('import_to_enter_s') for b in bs]))} "
+                 f"| {show(med([b['enter_to_full_s'] for b in bs]))} | {show(med([b['full_to_ready_s'] for b in bs]))} |")
+    L += ['', '进视野→做完，按 8 个邻居是不是都在进视野前导入了分开（秒，括号是每轮个数）：', '',
+          '| boost | 区 | 8 个邻居都导入了 | 有邻居没导入 |', '| --- | --- | --- | --- |']
+    for boost in sorted({k[0] for k in nb}):
+        for zone in ('≤48', '>48'):
+            a8, sm = nb.get((boost, zone, '8 个邻居都导入了'), []), nb.get((boost, zone, '有邻居没导入'), [])
+            L.append(f"| {'开' if boost else '关'} | {zone} | {show(med([x for x, _ in a8]))}（{show(med([n for _, n in a8]), 0)}） "
+                     f"| {show(med([x for x, _ in sm]))}（{show(med([n for _, n in sm]), 0)}） |")
+    L += ['', '服务器容器 CPU（核，2 核上限；cgroup 采样）：', '', '| boost | 站着 | ≤48 那段 | >48 那段 |', '| --- | --- | --- | --- |']
+    for boost in sorted({k[0] for k in cpu}):
+        L.append(f"| {'开' if boost else '关'} | " + ' | '.join(show(med(cpu.get((boost, ph), [])), 2) for ph in ('站着', '≤48 那段', '>48 那段')) + ' |')
+    L += ['', '读法（11-10 kexu）：',
+          '- 导入过的前方 chunk **没有一个在玩家进视野前被服务器做完**（"进视野前已做完" 0%）：导入只是把半成品写进存档，'
+          '玩家进视距、票加上以后服务器才读盘、点光照、做到 FULL。这一步在 ≤48 那段要 4～5 秒、后面 2.3～2.6 秒，再过约 0.6～0.8 秒可发送。'
+          '后台导入的 tile 在进视野前 8～29 秒就到了，时间不是花在等导入。',
+          '- 不是"等邻居"：8 个邻居都导入了的 chunk 也要这么久；有邻居没导入的再慢 0.3～3 秒，但只占少数。',
+          '- 不是主线程忙：≤48 那段服务器 MSPT 只有约 4 ms，但容器 CPU 用到约 1.55 核（2 核上限），活在 chunk 工作线程上（读盘续完、光照）。'
+          '站着那 60 秒服务器只用 0.2～0.35 核，有一核半闲着，却没有把已导入的半成品先做完。',
+          '- 没导入的（服务器从头生成）空白 9～12 秒、一半以上截尾；加速的好处主要是把这类变成"进视野前导入了"（≤48 那段\"进视野前导入了\"每轮 193 → 289 个、\"没导入\" 351 → 255 个），'
+          '而不是让导入过的更快。',
+          '- 票准入（玩家票节流）、读盘、续做各占多少，这些归档分不开：要在 bench 里按 chunk 记加票、读盘完成、各状态完成的时刻。'
+          '可试的方向：站着（服务器闲）时让服务器把走廊里已导入的半成品先做到 FULL（预热），到达时就只剩发送。', '']
+    return L
+
+
 def sweep():
     """直线参数扫描（调度 11-09 傍晚，用户定的目标：直线往前飞时前方空白 chunk 的加载速度）。主指标前方空白时长、前方已就绪距离，按空白时长排序。"""
     have = [(n, code) for n, code in SWEEP if (HERE / n).exists()]
@@ -240,6 +331,6 @@ def sweep():
     return L
 
 
-md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(experiments_evening()) + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
+md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(boost_breakdown()) + '\n'.join(experiments_evening()) + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
 (Path(__file__).parent / 'firework-3arm.md').write_text(md)
 print(md)
