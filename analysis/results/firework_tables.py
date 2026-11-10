@@ -146,6 +146,50 @@ def _same_cell(name, old, cell):
     return bool(a) and len(a) == len(b) and all(x.read_bytes() == y.read_bytes() for x, y in zip(a, b))
 
 
+AB_COLS = (('前方空白 中位（秒）', 'blank_median_s', False, 1), ('p90（秒）', 'blank_p90_s', False, 1),
+           ('视野里等到就绪', 'blank_ready_share', True, 1), ('前方已就绪（中位，格）', 'forward_ready_median', False, 0),
+           ('卡住（参考）', 'stall_after_exit', True, 1), ('交回被接受', 'imports_accepted', False, 0), ('hopeless 丢弃', 'hopeless', False, 0),
+           ('飞过丢弃', 'stale_dropped', False, 0), ('worker 核', 'worker_cores', False, 2), ('tile/s', 'tile_s', False, 2),
+           ('MSPT p95', 'mspt_p95', False, 1), ('MSPT max', 'mspt_max', False, 0))
+
+
+def ab(title, intro, campaigns, arm):
+    """同槽位 A/B 的通用表：campaigns 是 firework-runs 下的目录名，arm(行) 给臂的名字（None 不要）。"""
+    rows = []
+    for name in campaigns:
+        if (HERE / name).exists():
+            for r in f.rows_recomputed(HERE / name):
+                r['hopeless'] = _hopeless(name, r['cell_id']) if r.get('donors') else None
+                r['_arm'] = arm(r, name)
+                rows.append(r)
+    rows = [r for r in rows if r['_arm']]
+    if not rows:
+        return []
+    names = sorted({r['_arm'] for r in rows}, key=lambda n: (not n.startswith('原版'), n))
+    L = [f'## {title}', '', intro, '', '| 臂 | ' + ' | '.join(c[0] for c in AB_COLS) + ' |', '| --- ' * (len(AB_COLS) + 1) + '|']
+    for n in names:
+        rs = [r for r in rows if r['_arm'] == n]
+        L.append(f'| {n} | ' + ' | '.join(f._stat(rs, k, pct, d) for _, k, pct, d in AB_COLS) + ' |')
+    fails = sum(_crashes(c) for c in campaigns if (HERE / c).exists())
+    return L + ['', f'任务失败 {fails} 次。', '']
+
+
+def experiments_evening():
+    L = ab('前方优先扫描 demandForwardFirst（fish-fwd 295dcb2，k3）',
+           '2 核，预算 2000，1×8 donor，直线 33.5，lookahead 24、corridor 6；同槽位交替各 3 轮；每轮核对 status 的 config.demandForwardFirst。'
+           '开了以后空白中位、p90、前方已就绪三项的范围都不和关的重叠（稳定地好一点），MSPT 基本不变；hopeless 两臂一样多。',
+           ['k3-295dcb2fwd-ufw-fwd'], lambda r, n: f"前方优先 {'开' if r.get('forward_first') else '关'}")
+    L += ab('玩家票节流 playerTicketThrottle（fish-throttle 7f48ebe，k4）',
+            '2 核，预算 2000，1×8 donor，直线 33.5，L16 C6，前方优先关；donor 臂同槽位交替各 3 轮，原版各 1 轮；每轮核对 status 的 '
+            'playerTicketThrottle.actual 主世界值。16 没有帮上忙：donor 臂空白不比 4 好、前方已就绪更近、MSPT p95 高约 1.4 ms；原版臂各 1 轮，不下结论。',
+            ['u1-7f48ebethr-ufw-throttle'], lambda r, n: f"{'1×8 donor' if r.get('donors') else '原版'} · 节流 {r.get('ticket_throttle')}")
+    L += ab('donor 速率估计（fish-rate，k2，按轮切代码交替）',
+            '2 核，预算 2000，1×8 donor，直线 33.5，L16 C6。0dfd6c9 那组按调度只跑了 4 格就换成 ba95fde（每格 1～2 轮，粗测）；ba95fde 那组各 3 轮。',
+            ['k2-rate-e7fed5f', 'k2-rate-0dfd6c9', 'k2-rate2-e7fed5f', 'k2-rate2-ba95fde'],
+            lambda r, n: f"{n.split('-')[-1]} · mc{r.get('max_concurrency')}" + (' · 第二批' if 'rate2' in n else ''))
+    return L
+
+
 def sweep():
     """直线参数扫描（调度 11-09 傍晚，用户定的目标：直线往前飞时前方空白 chunk 的加载速度）。主指标前方空白时长、前方已就绪距离，按空白时长排序。"""
     have = [(n, code) for n, code in SWEEP if (HERE / n).exists()]
@@ -184,6 +228,6 @@ def sweep():
     return L
 
 
-md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
+md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(experiments_evening()) + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
 (Path(__file__).parent / 'firework-3arm.md').write_text(md)
 print(md)
