@@ -264,10 +264,19 @@ class DonorThroughputTest {
      * 返回 {最后的 lanes, 迟到的个数, 总个数}。
      */
     static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds) {
+        return simulate(real, serviceMs, deadlineMs, seconds, true, 0, deadlineMs);
+    }
+
+    /**
+     * 同上。history：开始前先有 10 个一个一个做的历史；false 是冷启动（没有样本，按 maxConcurrency 探路）。
+     * 前 looseMs 毫秒截止用 looseDeadlineMs（冷启动按默认 3 秒估，太紧的派不出去），之后用 deadlineMs；迟到只数之后的。
+     * 返回 {最后的 lanes, 迟到的个数, 总个数, 最后的 laneLatencyMs}。
+     */
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs) {
         DonorThroughput t = new DonorThroughput();
         LoadMeter meter = new LoadMeter();
         long now = 0;
-        for (int i = 0; i < 10; i++) {     // 历史：一个一个做
+        for (int i = 0; history && i < 10; i++) {     // 历史：一个一个做
             meter.start(now);
             now += serviceMs;
             long[] r = meter.read(now);
@@ -277,11 +286,12 @@ class DonorThroughputTest {
         // 在途：{派出时刻, 开始做的时刻（排队的是 -1）, 截止, 派出时手上几个}
         List<long[]> work = new ArrayList<>();
         int late = 0, total = 0;
-        long end = now + seconds * 1_000;
+        long start = now, end = now + seconds * 1_000;
         while (now < end) {
-            while (work.size() < DonorThroughput.MAX_CONCURRENCY && t.canMeet(1, work.size(), now, now + deadlineMs)) {
+            long dl = now - start < looseMs ? looseDeadlineMs : deadlineMs;
+            while (work.size() < DonorThroughput.MAX_CONCURRENCY && t.canMeet(1, work.size(), now, now + dl)) {
                 meter.start(now);
-                work.add(new long[] {now, -1, now + deadlineMs, work.size() + 1});
+                work.add(new long[] {now, -1, now + dl, work.size() + 1});
             }
             int running = 0;
             for (long[] w : work) {
@@ -313,14 +323,14 @@ class DonorThroughputTest {
                     t.record(1, now - w[0], now, r[0], r[1], (int) w[3]);
                     meter.end(now);
                     total++;
-                    if (now > w[2]) {
+                    if (now > w[2] && w[0] - start >= looseMs) {
                         late++;
                     }
                     it.remove();
                 }
             }
         }
-        return new int[] {t.lanes(1), late, total};
+        return new int[] {t.lanes(1), late, total, (int) t.laneLatencyMs(1)};
     }
 
     @Test
@@ -348,5 +358,52 @@ class DonorThroughputTest {
         System.out.println("2 并行：lanes=" + r[0] + " 迟到 " + r[1] + "/" + r[2]);
         assertTrue(r[0] >= 2 && r[0] <= 3, "lanes " + r[0]);
         assertTrue(r[1] * 10 <= r[2], "迟到不超过一成：" + r[1] + "/" + r[2]);
+    }
+
+    @Test
+    void serialDonorColdStartDoesNotGetStuck() {
+        // codex-audit 第十六节 P1：真一个一个做的 donor 冷启动，一次派 4 个，延迟 0.7/1.4/2.1/2.8 秒。
+        // 原来只看占满 lanes 的那个慢样本，退到 3；没排队的延迟又混进排队的样本估成 1.4 秒，空着也拒掉 1 秒截止的，卡死。
+        // 前 10 秒截止宽（3.5 秒），之后全是 1 秒的紧任务
+        int[] r = simulate(1, 700, 1_000, 60, false, 10_000, 3_500);
+        System.out.println("冷启动 1 并行：lanes=" + r[0] + " 迟到 " + r[1] + "/" + r[2] + " laneLatency=" + r[3]);
+        assertTrue(r[0] <= 2, "lanes " + r[0]);
+        assertTrue(r[3] <= 800, "没排队的延迟按单独做的估：" + r[3]);
+        assertTrue(r[2] >= 70, "没卡住：60 秒做了 " + r[2]);
+        assertTrue(r[1] * 10 <= r[2], "迟到不超过一成：" + r[1] + "/" + r[2]);
+    }
+
+    @Test
+    void parallelDonorColdStartKeepsFourLanes() {
+        int[] r = simulate(4, 700, 1_000, 60, false, 10_000, 3_500);
+        System.out.println("冷启动 4 并行：lanes=" + r[0] + " 迟到 " + r[1] + "/" + r[2] + " laneLatency=" + r[3]);
+        assertEquals(4, r[0]);
+        assertEquals(0, r[1]);
+    }
+
+    @Test
+    void slowSoloTileDoesNotDropLanes() {
+        // 单独做的一个 tile 慢（地形复杂）：不是并行造成的，不退 lanes。先按 4 个一批做出 4 lanes
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int k = 0; k < 6; k++) {
+            for (int i = 0; i < 4; i++) {
+                m.start(now);
+            }
+            now += 700;
+            for (int i = 0; i < 4; i++) {
+                long[] r = m.read(now);
+                t.record(1, 700, now, r[0], r[1], i + 1);
+                m.end(now);
+            }
+        }
+        int before = t.lanes(1);
+        assertEquals(4, before);
+        m.start(now);
+        now += 2_000;
+        long[] r = m.read(now);
+        t.record(1, 2_000, now, r[0], r[1], 1);
+        assertEquals(before, t.lanes(1));
     }
 }
