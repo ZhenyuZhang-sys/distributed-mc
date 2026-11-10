@@ -69,32 +69,6 @@ EOF
   mkdir -p "$TEST_DATA"
 }
 
-# compose 会看到的变量值：shell 环境变量优先，否则按 --env-file 的顺序后面的覆盖前面的（和 tc 传的顺序一致）。
-env_value() {
-  local name="$1" v="" f x
-  if [[ -n "${!name+x}" ]]; then
-    printf '%s' "${!name}"
-    return
-  fi
-  for f in "$TEST_ENV" "$LIMITS_ENV" "$LOCAL_ENV" "$WORLD_ENV"; do
-    [[ -f "$f" ]] || continue
-    x="$(sed -n "s/^$name=//p" "$f" | tail -1)"
-    [[ -n "$x" ]] && v="$x"
-  done
-  printf '%s' "$v"
-}
-
-# worker 的生成线程数：明确设了（WORKER_GEN_THREADS）就用它，否则 = 核数取整、至少 1（和真客户端一样，池 = 设的线程数）。
-gen_threads() {
-  local set="$1" cpus="$2"
-  if [[ -n "$set" ]]; then
-    [[ "$set" =~ ^[1-9][0-9]*$ ]] || die "生成线程数要是正整数：$set"
-    printf '%s' "$set"
-    return
-  fi
-  awk -v c="$cpus" 'BEGIN { n = int(c); if (n < c) n++; if (n < 1) n = 1; print n }'
-}
-
 # 对测试服务器执行 docker compose：compose.yaml 叠加 compose.test.yaml（挂我们的 mod）。
 # 后面的 env 文件覆盖前面的：.env.test < n100.env（资源限制）< world.env（new_world.sh 写的）。
 # shell 里的环境变量优先级最高，可以临时覆盖，比如 MC_CPUS=2 MC_CPUSET=12-13。
@@ -117,14 +91,31 @@ tc() {
     export MCD_COORD_HOST_PORT="$coord_port"
     args+=(-f "$DOCKER_DIR/compose.coord-port.yaml")
   fi
-  # 11-10：worker 的 -XX:ActiveProcessorCount = 生成线程数 + 1（真客户端 WorkerLaunch 也是这样），compose 不会算术，这里算
-  # 默认核数和 compose.test.yaml 里的一致（worker 4、worker3 0.5）
-  local wc w3c wt w3t
-  wc="$(env_value WORKER_CPUS)"
-  w3c="$(env_value WORKER3_CPUS)"
-  wt="$(gen_threads "$(env_value WORKER_GEN_THREADS)" "${wc:-4}")" || return 1
-  w3t="$(gen_threads "$(env_value WORKER3_GEN_THREADS)" "${w3c:-0.5}")" || return 1
-  export MCD_WORKER_APC=$((wt + 1)) MCD_WORKER3_APC=$((w3t + 1))
+  # 11-10：worker 的 -XX:ActiveProcessorCount = 生成线程数 + 1（真客户端 WorkerLaunch 也是这样）。compose 不会算术，这里算。
+  # 取值让 compose 自己渲染（codex-audit 第二十二节：dotenv 的引号、注释、插值、后层空值、只认 export 的环境变量，都按 compose 的规则），
+  # 只在建容器、渲染配置时算：down、stop、ps、exec 不受线程参数影响（写错了也能清理）
+  case "${1:-}" in
+    up|run|create|config)
+      local apc
+      apc="$(MC_UID="${MC_UID:-$(id -u)}" MC_GID="${MC_GID:-$(id -g)}" docker compose "${args[@]}" --profile worker --profile worker3 \
+        config --format json | python3 -c '
+import json, math, sys
+d = json.load(sys.stdin)
+x = d.get("x-mcd-gen-threads") or {}
+s = d["services"]
+def threads(name, svc):
+    v = x.get(name)
+    if v not in (None, ""):
+        if not str(v).isdigit() or int(v) < 1:
+            sys.exit("错误：生成线程数要是正整数：" + str(v))
+        return int(v)
+    return max(1, math.ceil(float(s[svc]["cpus"])))   # 核数向上取整、至少 1
+print(threads("worker", "worker") + 1, threads("worker3", "worker3") + 1)
+')" || return 1
+      read -r MCD_WORKER_APC MCD_WORKER3_APC <<<"$apc"
+      export MCD_WORKER_APC MCD_WORKER3_APC
+      ;;
+  esac
   # 停服、关服时总带上 worker（它是按需启动的），免得漏关
   case "${1:-}" in
     stop|down) args+=(--profile worker --profile worker2 --profile worker3) ;;
