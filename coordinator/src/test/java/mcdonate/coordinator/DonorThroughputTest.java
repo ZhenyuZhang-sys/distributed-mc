@@ -288,13 +288,22 @@ class DonorThroughputTest {
                 lateAfter, serviceMs);
     }
 
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
+            int slots, int realAfter, long changeAfterMs, int[] lateAfter, long serviceAfter) {
+        return simulate(real, serviceMs, deadlineMs, seconds, history, looseMs, looseDeadlineMs, slots, realAfter, changeAfterMs,
+                lateAfter, serviceAfter, null);
+    }
+
     /**
      * 同上，跑到 changeAfterMs 以后 donor 真能同时做的个数变成 realAfter（用户开了游戏抢 CPU）。
      * lateAfter 不为 null 时，lateAfter[0] 记变化之后的迟到个数，lateAfter[1] 记变化之后的总个数。
      */
     /** 同上，变化之后每个 tile 要 serviceAfter 毫秒（整台机器变慢，并行没变）。 */
+    /**
+     * 同上，shared 不为 null 时：一个 tile 开始做时一共有几个在做（含它） → 这个 tile 要多久（几个一起做时每个变慢，比如 CPU 被分走）。
+     */
     static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
-            int slots, int realAfter, long changeAfterMs, int[] lateAfter, long serviceAfter) {
+            int slots, int realAfter, long changeAfterMs, int[] lateAfter, long serviceAfter, java.util.function.IntToLongFunction shared) {
         DonorThroughput t = new DonorThroughput();
         LoadMeter meter = new LoadMeter();
         long now = 0;
@@ -325,7 +334,8 @@ class DonorThroughputTest {
             for (long[] w : work) {
                 if (w[1] < 0 && running < (now - start >= changeAfterMs ? realAfter : real)) {
                     w[1] = now;
-                    w[4] = now - start >= changeAfterMs ? serviceAfter : serviceMs;
+                    w[4] = shared != null ? shared.applyAsLong(running + 1)
+                            : now - start >= changeAfterMs ? serviceAfter : serviceMs;
                     running++;
                 }
             }
@@ -698,5 +708,25 @@ class DonorThroughputTest {
         assertTrue(!t.calibrating(1));
         assertEquals(4, t.lanes(1), "恢复到退之前的");
         assertEquals(1_400, t.laneLatencyMs(1));
+    }
+
+    // ---- 11-10：lanes 按"多一条速率涨不涨"定（调度：用户的 M5 在途 3～4 时每个约 0.8 秒、单独约 0.7 秒，不能被误退） ----
+
+    @Test
+    void parallelismThatStillPaysIsKeptEvenIfEachTileIsSlower() {
+        // 几个一起做时每个慢 15%（4 个一起每个约 1 秒，单独 0.7 秒），但速率还在涨（4 个 3.9/s，1 个 1.4/s）：lanes 要到 4。
+        // 截止 5 秒（1 秒的话 4 个一起本来就赶不上）
+        int[] r = simulate(4, 700, 5_000, 60, true, 0, 5_000, 4, 4, Long.MAX_VALUE, null, 700,
+                running -> Math.round(700 * (1 + 0.15 * (running - 1))));
+        System.out.println("一起做每个慢 15%：lanes=" + r[0] + " 总 " + r[2]);
+        assertEquals(4, r[0], "多并行还能多出活：留着");
+    }
+
+    @Test
+    void parallelismThatAddsNothingIsDropped() {
+        // CPU 被平分（几个一起做每个就慢几倍）：速率不涨，lanes 退到 1（kexu k3 那个 donor 的情形）
+        int[] r = simulate(4, 500, 5_000, 60, true, 0, 5_000, 4, 4, Long.MAX_VALUE, null, 500, running -> 500L * running);
+        System.out.println("CPU 平分：lanes=" + r[0] + " 总 " + r[2]);
+        assertEquals(1, r[0], "多并行不多出活、只是更慢：退到 1");
     }
 }
