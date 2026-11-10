@@ -235,7 +235,6 @@ public final class Coordinator implements ModInitializer {
         return n == null ? 0 : n.workerCount();
     }
 
-    /** worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；coordinator 没开或 worker 不在线返回空。在主线程上调。 */
     /**
      * 导入账本里这个 chunk 是谁导入的（主线程上调，overlay 给续完的 chunk 上色，用户 11-10）。这个 worker 还连着、donor 世界也一样时
      * 用在线的名字；否则按账本里的玩家 UUID（在线玩家的名字、没有就用服务器的玩家缓存），稳定名字和在线时一样。
@@ -264,6 +263,7 @@ public final class Coordinator implements ModInitializer {
         return java.util.Optional.of(WorkerName.ofLedger(e.player, name, e.world));
     }
 
+    /** worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；coordinator 没开或 worker 不在线返回空。在主线程上调。 */
     public static java.util.Optional<WorkerName> workerName(int workerId) {
         CoordinatorServer n = network;
         return n == null ? java.util.Optional.empty() : n.workerName(workerId);
