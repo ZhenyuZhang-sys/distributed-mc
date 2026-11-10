@@ -109,6 +109,8 @@ public final class TaskQueue {
         boolean background;
         /** 这次是当后台任务派出去的（统计用）。 */
         boolean leasedAsBackground;
+        /** 当后台任务领走它的 worker（交回后 worker 字段会清掉，统计接受数用这个）。 */
+        int backgroundWorker = -1;
 
         Task(long id, int tx, int tz) {
             this.id = id;
@@ -152,8 +154,8 @@ public final class TaskQueue {
         Task t = tasks.get(taskId);
         if (t != null) {
             t.doneWorld = world;
-            if (t.leasedAsBackground) {
-                backgroundAccepted.merge(t.worker, 1, Integer::sum);
+            if (t.leasedAsBackground && t.backgroundWorker >= 0) {
+                backgroundAccepted.merge(t.backgroundWorker, 1, Integer::sum);
             }
         }
     }
@@ -380,6 +382,7 @@ public final class TaskQueue {
         t.leasedAsBackground = t == bg;
         if (t.leasedAsBackground) {
             backgroundLeased.merge(worker, 1, Integer::sum);
+            t.backgroundWorker = worker;
         }
         queue.remove(t.id);
         if (t.hardWorld == null) {
