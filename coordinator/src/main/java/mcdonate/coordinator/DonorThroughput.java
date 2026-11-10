@@ -153,7 +153,8 @@ final class DonorThroughput {
                     win.clear();
                 }
                 holdUntil.remove(worker);
-                levelLatencies.remove(worker); // 各档的旧延迟也作废
+                levelLatencies.remove(worker);
+            recentLevels.remove(worker); // 各档的旧延迟也作废
                 return;
             }
             // 单独做照样快：慢是并行多了造成的，退得对；照常往下更新基线
@@ -180,11 +181,28 @@ final class DonorThroughput {
             warm[Math.min(k, MAX_LEVEL)] = durationMs;
             return;
         }
-        double ratio = k / (double) Math.max(1, k - 1);
-        boolean slow = prev > 0 ? durationMs > ratio * prev * PROBE_MARGINAL_SLOW : durationMs > PROBE_BAD * base;
-        boolean good = durationMs <= PROBE_OK * base || (prev > 0 && durationMs <= ratio * prev / PROBE_MARGINAL_GAIN);
-        double[] lat = warmup ? warm : levelLatencies.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]);
+        boolean measuredSolo = soloMs.containsKey(worker);
+        if (!warmup && prev == 0 && k >= 2 && !measuredSolo) {
+            // 11-10 kexu k3 A/B：没量过 k − 1 档（冷启动 4 个一起开始，之后补派的都是 k 4），原来拿"单独做的基线"比，
+            // 而没有单独样本时基线是窗口里最短的那个（便宜的 tile 0.47 秒），几乎每个都"慢"，一个 k 2 的样本把 lanes 4 直接退到 1。
+            // 改：有量过的单独基线照旧和它比；没有就拿预热那批同一档的比（偏慢，只会少退）；也没有就不知道，不判慢
+            double[] w0 = warmLevels.get(worker);
+            prev = w0 == null ? 0 : w0[Math.min(k - 1, MAX_LEVEL)];
+        }
+        // 每档记最近几个（上一档按它们的中位数比，见 levelLatency）
         int lv = Math.min(k, MAX_LEVEL);
+        long cur = durationMs;
+        if (!warmup) {
+            Deque<Long>[] rw = recentLevels.computeIfAbsent(worker, w -> newLevelWindows());
+            rw[lv].addLast(durationMs);
+            while (rw[lv].size() > LEVEL_RECENT) {
+                rw[lv].pollFirst();
+            }
+        }
+        double ratio = k / (double) Math.max(1, k - 1);
+        boolean slow = prev > 0 ? cur > ratio * prev * PROBE_MARGINAL_SLOW : (k >= 2 && !measuredSolo) ? false : cur > PROBE_BAD * base;
+        boolean good = cur <= PROBE_OK * base || (prev > 0 && cur <= ratio * prev / PROBE_MARGINAL_GAIN);
+        double[] lat = warmup ? warm : levelLatencies.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]);
         lat[lv] = lat[lv] == 0 ? durationMs : lat[lv] + LEVEL_ALPHA * (durationMs - lat[lv]);
         if (k >= 2) {
             // 和别的一起做的：最近 PROBE_WINDOW 个里有 PROBE_SLOW 个"多这一条不多出活"就退，退到派出时手上的个数 − 1（只往下退）。
@@ -261,6 +279,20 @@ final class DonorThroughput {
     static final double PROBE_MARGINAL_GAIN = 1.1;
     static final int MAX_LEVEL = 16;
     static final double LEVEL_ALPHA = 0.3;
+    /** 上一档的延迟按最近几个的中位数。 */
+    static final int LEVEL_RECENT = 5;
+    /** worker → 每档最近 LEVEL_RECENT 个正常前方样本的延迟。 */
+    private final Map<Integer, Deque<Long>[]> recentLevels = new HashMap<>();
+
+    @SuppressWarnings("unchecked")
+    private static Deque<Long>[] newLevelWindows() {
+        Deque<Long>[] w = new Deque[MAX_LEVEL + 1];
+        for (int i = 0; i <= MAX_LEVEL; i++) {
+            w[i] = new ArrayDeque<>();
+        }
+        return w;
+    }
+
     /** worker → 派出时手上 k 个的前方任务的平均延迟（指数平均；下标 k，0 是没有）。 */
     private final Map<Integer, double[]> levelLatencies = new HashMap<>();
 
@@ -271,6 +303,12 @@ final class DonorThroughput {
         }
         if (k == 1 && soloMs.containsKey(worker)) {
             return soloMs.get(worker);
+        }
+        // 有最近几个就用它们的中位数（偏高的那个）：上一档被便宜的 tile 拉低，这一档就都像慢了（kexu k3：k 2 只有收尾时的两三个）
+        Deque<Long>[] rw = recentLevels.get(worker);
+        if (rw != null && !rw[Math.min(k, MAX_LEVEL)].isEmpty()) {
+            long[] v = rw[Math.min(k, MAX_LEVEL)].stream().mapToLong(Long::longValue).sorted().toArray();
+            return v[v.length / 2];
         }
         double[] lat = levelLatencies.get(worker);
         return lat == null ? 0 : lat[Math.min(k, MAX_LEVEL)];
@@ -370,6 +408,7 @@ final class DonorThroughput {
         calibrateStart.remove(worker);
         holdUntil.remove(worker);
         levelLatencies.remove(worker);
+        recentLevels.remove(worker);
         idleRejectSince.remove(worker);
         idleRejects.remove(worker);
         explorations.remove(worker);
@@ -543,12 +582,12 @@ final class DonorThroughput {
             // 空着全拒了 EXPLORE_MS：估计是错的（codex-audit 第二十一节 R4：CPU 平分冷启动学到 4 个一起的 2 秒，
             // 探路单独 500 ms 回来后仍按 lanes 4 补满，4 个一起又是 2 秒，40 个里 36 个迟到）。
             // 从 1 重新往上探，旧的各档延迟作废；探路那个回来时当新的单独基线（不和旧的单独样本混）
-            int[] st = probes.get(worker);
-            if (st != null) {
-                st[0] = 1;
-                st[1] = 0;
-            }
+            // codex-audit 8f0cf99 R7：只做过后台的没有 probes 记录，原来只改已有的，lanes 照旧 4
+            int[] st = probes.computeIfAbsent(worker, w -> new int[2]);
+            st[0] = 1;
+            st[1] = 0;
             levelLatencies.remove(worker);
+            recentLevels.remove(worker);
             slowWindows.remove(worker);
             holdUntil.remove(worker);
             exploreAt.put(worker, nowMs);
