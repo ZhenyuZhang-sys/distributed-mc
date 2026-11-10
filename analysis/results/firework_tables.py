@@ -156,7 +156,16 @@ AB_COLS = (('前方空白 中位（秒）', 'blank_median_s', False, 1), ('p90�
            ('站着时后台导入', 'stand_bg_imported', False, 0), ('站着 MSPT p95', 'stand_mspt_p95', False, 1), ('站着 MSPT max', 'stand_mspt_max', False, 0))
 
 
-def ab(title, intro, campaigns, arm):
+TERR_COLS = (('碎片数', 'territory_fragments', False, 0), ('接缝边', 'seam_edges', False, 0),
+             ('夹在中间给服务器的 tile', 'server_between', False, 0), ('打回的 chunk', 'rejected_chunks', False, 0),
+             ('整 tile 没被接受', 'imports_rejected', False, 0), ('站着时碎片', 'stand_territory_fragments', False, 0),
+             ('站着时夹缝 tile', 'stand_server_between', False, 0),
+             ('前方空白中位', 'blank_median_s', False, 1), ('接缝附近空白', 'blank_seam_median_s', False, 1), ('其余空白', 'blank_rest_median_s', False, 1),
+             ('前方已就绪', 'forward_ready_median', False, 0), ('被接受', 'imports_accepted', False, 0), ('hopeless', 'hopeless', False, 0),
+             ('worker 核', 'worker_cores', False, 2), ('MSPT p95', 'mspt_p95', False, 1))
+
+
+def ab(title, intro, campaigns, arm, cols=None):
     """同槽位 A/B 的通用表：campaigns 是 firework-runs 下的目录名，arm(行) 给臂的名字（None 不要）。"""
     rows = []
     for name in campaigns:
@@ -169,10 +178,11 @@ def ab(title, intro, campaigns, arm):
     if not rows:
         return []
     names = sorted({r['_arm'] for r in rows}, key=lambda n: (not n.startswith('原版'), n))
-    L = [f'## {title}', '', intro, '', '| 臂 | ' + ' | '.join(c[0] for c in AB_COLS) + ' |', '| --- ' * (len(AB_COLS) + 1) + '|']
+    cols = cols or AB_COLS
+    L = [f'## {title}', '', intro, '', '| 臂 | ' + ' | '.join(c[0] for c in cols) + ' |', '| --- ' * (len(cols) + 1) + '|']
     for n in names:
         rs = [r for r in rows if r['_arm'] == n]
-        L.append(f'| {n} | ' + ' | '.join(f._stat(rs, k, pct, d) for _, k, pct, d in AB_COLS) + ' |')
+        L.append(f'| {n} | ' + ' | '.join(f._stat(rs, k, pct, d) for _, k, pct, d in cols) + ' |')
     fails = sum(_crashes(c) for c in campaigns if (HERE / c).exists())
     return L + ['', f'任务失败 {fails} 次。', '']
 
@@ -295,6 +305,16 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60', title='后台导入
             '同上一组条件；k3 boost 关各 3 轮，k4 boost 开各 2 轮。boost 关时 lanes 回到 4 / 4 / 3（不再掉到 1），前方持平；boost 开时略好。',
             ['k3-solo2-56b4eee', 'k3-solo2-2736827', 'u1-solo2-56b4eee', 'u1-solo2-2736827'],
             lambda r, n: f"{n.split('-')[-1]} · boost {'开' if r.get('boost') else '关'}")
+    for slot in ('k2', 'k3', 'u1'):
+        L += ab(f'领地连续分块（fish-territory 40dd535）对 main 03eaa9e，{slot.replace("u1", "k4")}（同槽位按轮切代码）',
+                '用户真机两人两 donor 时预生成区领地被交错切开、夹缝落给服务器。2 个 donor 各 4 核（k2、k3）/ 对照 1 个 8 核（k4），生成池 = 核数；'
+                'boost 开，不用缓存区（预生成全靠 donor），站 60 秒或只站 15 秒（!warm 风格）再直线 33.5。领地按 tile、按 imports.jsonl 认主；'
+                '"夹在中间给服务器"= 没被 donor 接受、4 邻里有 ≥2 个不同 donor 的 tile；接缝附近 = 接缝 / 夹缝 tile 两格以内。只认同槽位比较。',
+                [f'{slot}-terrab-main', f'{slot}-terrab-40dd535'],
+                lambda r, n: f"{n.split('-')[-1]} · 站 {r.get('stand_s')} 秒", cols=TERR_COLS)
+    L += ab('领地接缝：修之前的基线（main 03eaa9e + kexu，k3 2×4、k4 1×8）', '同上一组条件。',
+            ['k3-terr-ufw-terr-2x4', 'u1-terr-ufw-terr-1x8'],
+            lambda r, n: f"{'2×4' if r.get('donors') == 2 else '1×8'} · 站 {r.get('stand_s')} 秒", cols=TERR_COLS)
     L += ab('新基线：worker 生成池 = 核数（main b9b8f42 = 2736827 + 生成池改动，站 60 秒朝航线再飞）',
             '**条件变了：worker 生成池 = 核数**（1×8 donor：genPool 8、cpus 9，驱动每轮核对）；之前各节都是生成池 = 核数 − 1，不和这一节直接比。'
             '2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒；k3 boost 关、k4 boost 开，各 3 轮。'
