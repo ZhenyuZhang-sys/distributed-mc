@@ -652,7 +652,7 @@ class DonorThroughputTest {
         System.out.println("整体变慢 4 并行：lanes=" + r[0] + " laneLatency=" + r[3] + " 变化后 " + after[0] + "/" + after[1] + " 迟到");
         assertEquals(4, r[0], "并行没变：lanes 回到 4");
         assertTrue(r[3] >= 1_200, "马上开始的延迟按新的（约 1.4 秒）：" + r[3]);
-        assertTrue(after[1] >= 200, "照样做满：变化后 " + after[1] + " 个");
+        assertTrue(after[1] >= 180, "照样做满（70 秒、4 个并行、1.4 秒一个最多 200）：变化后 " + after[1] + " 个");
     }
 
     @Test

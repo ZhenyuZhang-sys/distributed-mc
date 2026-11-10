@@ -99,6 +99,42 @@ final class DonorThroughput {
     private final Map<Integer, int[]> probes = new HashMap<>();
 
     private void probe(int worker, long durationMs, int k, long completedAtMs) {
+        Long cal = calibrateUntil.get(worker);
+        if (cal != null && completedAtMs > cal) {
+            calibrateUntil.remove(worker); // 量了太久没有单独做的前方任务（只有后台、没人飞）：不量了
+            calibrateFrom.remove(worker);
+            cal = null;
+        }
+        if (cal != null && k == 1) {
+            // 退了以后单独做的这一个：和原来单独做的基线比
+            long old = soloLatencyMs(worker);
+            int from = calibrateFrom.remove(worker);
+            calibrateUntil.remove(worker);
+            if (durationMs > PROBE_BAD * old) {
+                // 单独做也慢了：是整台机器变慢（用户开了游戏），不是并行多了。基线换成新的，旧的前方样本作废，lanes 恢复
+                soloMs.put(worker, Math.max(1, durationMs));
+                Deque<long[]> f = frontSamples.get(worker);
+                if (f != null) {
+                    long[] last = f.peekLast();
+                    f.clear();
+                    if (last != null) {
+                        f.addLast(last);
+                    }
+                }
+                int[] st = probes.get(worker);
+                if (st != null) {
+                    st[0] = Math.max(st[0], from);
+                    st[1] = 0;
+                }
+                Deque<Boolean> win = slowWindows.get(worker);
+                if (win != null) {
+                    win.clear();
+                }
+                holdUntil.remove(worker);
+                return;
+            }
+            // 单独做照样快：慢是并行多了造成的，退得对；照常往下更新基线
+        }
         if (k == 1) {
             // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
             long[] solo = front(worker).stream().filter(s -> s[4] == 1).mapToLong(s -> s[0]).sorted().toArray();
@@ -119,7 +155,13 @@ final class DonorThroughput {
                 win.pollFirst();
             }
             if (slow && win.stream().filter(x -> x).count() >= PROBE_SLOW) {
+                int from = st[0];
                 st[0] = Math.max(1, Math.min(st[0], k - 1));
+                if (st[0] < from && !calibrateFrom.containsKey(worker)) {
+                    // 11-10：退了先单独做一个量一下：整台机器变慢（并行没变）时基线是旧的，会被误当成并行多了变慢
+                    calibrateFrom.put(worker, from);
+                    calibrateUntil.put(worker, completedAtMs + CALIBRATE_MS);
+                }
                 st[1] = 0;
                 win.clear();
                 holdUntil.put(worker, completedAtMs + PROBE_HOLD_MS);
@@ -141,6 +183,18 @@ final class DonorThroughput {
         } else {
             st[1] = 0;
         }
+    }
+
+    /** 退了以后单独量一次最多等多久（毫秒）。 */
+    static final long CALIBRATE_MS = Config.getLong("probeCalibrateMs", 10_000);
+    /** worker → 退之前的 lanes（在单独量的时候）。 */
+    private final Map<Integer, Integer> calibrateFrom = new HashMap<>();
+    /** worker → 单独量到什么时候为止。 */
+    private final Map<Integer, Long> calibrateUntil = new HashMap<>();
+
+    /** 这个 worker 是不是在退了以后单独量一次（这时只派 1 个，也不派后台）。 */
+    synchronized boolean calibrating(int worker) {
+        return calibrateFrom.containsKey(worker);
     }
 
     /** worker → 最近几个"和别的一起做"的前方样本慢不慢。 */
@@ -210,6 +264,8 @@ final class DonorThroughput {
         soloMs.remove(worker);
         slowWindows.remove(worker);
         frontSamples.remove(worker);
+        calibrateFrom.remove(worker);
+        calibrateUntil.remove(worker);
         holdUntil.remove(worker);
     }
 
@@ -294,6 +350,9 @@ final class DonorThroughput {
      * 一个一个做的 donor 延迟涨到 6.8 秒，后来的紧任务都排在它们后面）。往上探照样能探：占满 lanes 时延迟没变长 lanes 就 +1。
      */
     synchronized int inFlightCap(int worker, int slots) {
+        if (calibrating(worker)) {
+            return 1;
+        }
         return Math.max(1, Math.min(slots, lanes(worker)));
     }
 
