@@ -19,7 +19,7 @@
   "MC_MAX_MEMORY": "2G",
   "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
  },
- "note": "调度 11-10：fish-v23 1409315（097bea7 的 X1～X4 修复 + 928cbbc 探索模式 + 后台先沿朝向往前铺）+kexu 实验工具：不站、直接飞，boost 关/开各 2 轮，看飞完 lanes 是否保持约 4。用户同款 2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒。",
+ "note": "调度 11-10：fish-v23 56b4eee（1409315 后台往前铺 + df9c0e2 前方样本单独窗口 + 0356ba9 朝向修复，v2.3 包）+kexu 实验工具+kexu 实验工具：不站、直接飞，boost 关/开各 2 轮，看飞完 lanes 是否保持约 4。用户同款 2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒。",
  "experiments": {
   "flight": [
    {
