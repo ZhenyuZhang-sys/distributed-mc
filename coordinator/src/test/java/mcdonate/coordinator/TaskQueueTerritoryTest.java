@@ -40,7 +40,7 @@ class TaskQueueTerritoryTest {
 
     @Test
     void betweenTwoDonorsDroppedToServer() {
-        // 11-10 起领地按块认主（TERRITORY_BLOCK 个 tile 一块）：同一块里第二个 donor 领不了，两个 donor 放在块的两边
+        // 11-10 领地可以按块认主（territoryBlock 个 tile 一块，默认 0 关）：开着时同一块里第二个 donor 领不了，两个 donor 放在块的两边
         TaskQueue q = queue(true);
         q.setWorkerWorld(1, "W");
         q.setWorkerWorld(2, "V");

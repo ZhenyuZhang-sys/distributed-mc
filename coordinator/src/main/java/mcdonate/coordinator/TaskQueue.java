@@ -49,11 +49,19 @@ public final class TaskQueue {
      * 11-10：领地按 TERRITORY_BLOCK × TERRITORY_BLOCK 个 tile 的块认主（开 territory 时；0 是不按块）。
      * 用户两人一起飞（M5 + Windows，1 核服务器）："两人一起跑前面一段比一个人还卡"：两个 donor 交错领 tile，领地切成很多片，
      * 夹在两个 donor 中间的 tile 全落给服务器。按块认主、先长自己的块、新开的块不挨着别人的，领地就是连续的大块，
-     * 接缝只在块和块之间（沿飞行方向一段一段）。默认 4 个 tile = 16 个 chunk：codex-audit 第二十三节的路线模型里
-     * 直飞、45 度斜飞、沿块边界飞、慢 donor 先拿块都比不按块好（按时 183～189/192，不按块 138～186）；8 在沿边界飞时没改善。
-     * 块只管"有时间的"：离截止不到 TERRITORY_URGENT_MS 的谁能做谁做（见下）。
+     * 接缝只在块和块之间（沿飞行方向一段一段）。11-10 收尾：**默认 0（关），实验性**——kexu 的两 donor A/B 和 codex-audit 复核没做完。
+     * 块 = 4（16 chunk）时 codex-audit 第二十三节的路线模型里直飞、45 度斜飞、沿块边界飞、慢 donor 先拿块都比不按块好
+     * （按时 183～189/192，不按块 138～186）；8 在沿边界飞时没改善。块只管"有时间的"：离截止不到 TERRITORY_URGENT_MS 的谁能做谁做。
      */
-    static final int TERRITORY_BLOCK = Config.getInt("territoryBlock", 4);
+    static final int TERRITORY_BLOCK = Config.getInt("territoryBlock", 0);
+    /** 这个队列用的块大小（默认 TERRITORY_BLOCK；测试里单独设）。 */
+    private int territoryBlock = TERRITORY_BLOCK;
+
+    /** 测试用：换块大小（0 关）。 */
+    synchronized void setTerritoryBlock(int tiles) {
+        territoryBlock = Math.max(0, tiles);
+        blockOwners.clear();
+    }
     /**
      * 离截止（importBy，不知道时 due）不到这么多毫秒的是"紧的"：紧的只按截止先后，谁能做谁做，别人的块也能领
      * （codex-audit 第二十三节 T1/T2：块被慢 donor 或后台占着时前方紧任务没人能派、剪枝却按快 donor 估；块优先压过截止）。
@@ -182,12 +190,12 @@ public final class TaskQueue {
     /** 块 → 认主的 donor（ownerKey）。 */
     private final Map<Long, String> blockOwners = new HashMap<>();
 
-    private static long blockOf(int tx, int tz) {
-        return tileKey(Math.floorDiv(tx, TERRITORY_BLOCK), Math.floorDiv(tz, TERRITORY_BLOCK));
+    private long blockOf(int tx, int tz) {
+        return tileKey(Math.floorDiv(tx, territoryBlock), Math.floorDiv(tz, territoryBlock));
     }
 
     private boolean blocksOn(Task c) {
-        return features.on(Features.TERRITORY) && TERRITORY_BLOCK > 0 && c.hardWorld == null;
+        return features.on(Features.TERRITORY) && territoryBlock > 0 && c.hardWorld == null;
     }
 
     /**
@@ -199,7 +207,7 @@ public final class TaskQueue {
             return 0;
         }
         String me = ownerKey(worker);
-        int bx = Math.floorDiv(c.tx, TERRITORY_BLOCK), bz = Math.floorDiv(c.tz, TERRITORY_BLOCK);
+        int bx = Math.floorDiv(c.tx, territoryBlock), bz = Math.floorDiv(c.tz, territoryBlock);
         String o = blockOwners.get(tileKey(bx, bz));
         if (o != null) {
             if (!o.equals(me) && owners != null && owners.size() == 1 && owners.contains(me) && mineInBlock(c, worker)) {

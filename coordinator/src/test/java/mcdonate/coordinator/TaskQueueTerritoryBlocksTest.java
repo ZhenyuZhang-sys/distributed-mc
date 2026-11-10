@@ -18,6 +18,9 @@ import org.junit.jupiter.api.Test;
  * 要：领地按连续大块分，两块之间接缝短；手动 /donor enqueue 的一批也一样。
  */
 class TaskQueueTerritoryBlocksTest {
+    /** 11-10 收尾时 territoryBlock 默认 0（实验性）；这里按 4 测（路线模型里最好的那个）。 */
+    static final int BLOCK = 4;
+
     /** stuck：最后还在排队、谁也领不了的（也落给服务器）。 */
     record Outcome(int done, int dropped, int stuck, int pieces, int tiles) {}
 
@@ -56,6 +59,7 @@ class TaskQueueTerritoryBlocksTest {
     static Outcome run(int cols, int width, boolean corridor) {
         AtomicLong now = new AtomicLong(1_000_000);
         TaskQueue q = new TaskQueue(now::get, 30_000, 3, new Features("deadline,territory"));
+        q.setTerritoryBlock(BLOCK);
         q.setWorkerWorld(1, "W");
         q.setWorkerWorld(2, "V");
         // 快的 0.7 秒（演示里一台 M5 就跟得上 20 格/秒）、慢的 3 秒（Windows 那台），和 codex-audit 第二十三节的路线模型一样
@@ -158,6 +162,7 @@ class TaskQueueTerritoryBlocksTest {
         final TaskQueue q = new TaskQueue(now::get, 30_000, 3, new Features("territory,deadline"));
 
         S() {
+            q.setTerritoryBlock(BLOCK);
             q.setWorkerWorld(1, "W");
             q.setWorkerWorld(2, "V");
         }
@@ -232,7 +237,7 @@ class TaskQueueTerritoryBlocksTest {
         s.seed(1, 0, 0, false);
         s.q.enqueue(2, 0);
         s.due(2, 0, 10_000);
-        int b = TaskQueue.TERRITORY_BLOCK;
+        int b = BLOCK;
         s.q.enqueue(b, 0);
         s.due(b, 0, 600);
         assertEquals(b, s.q.assign(1, 1, d -> s.now.get() + 500 <= d).orElseThrow().tx());
@@ -280,6 +285,7 @@ class TaskQueueTerritoryBlocksTest {
         // 不知道世界时领的块（worker:1），知道世界后归这个世界；断开后同世界的新编号接着用
         AtomicLong now = new AtomicLong(1_000_000);
         TaskQueue q = new TaskQueue(now::get, 30_000, 3, new Features("territory"));
+        q.setTerritoryBlock(BLOCK);
         q.enqueue(0, 0);
         long id = q.assign(1).orElseThrow().taskId();
         q.setWorkerWorld(1, "W");
@@ -294,7 +300,7 @@ class TaskQueueTerritoryBlocksTest {
     @Test
     void negativeCoordinatesUseFloorDivision() {
         S s = new S();
-        int b = TaskQueue.TERRITORY_BLOCK;
+        int b = BLOCK;
         s.seed(1, -1, 0, false);
         s.q.enqueue(-b, 0);
         assertTrue(s.q.assign(2).isEmpty(), "-b～-1 同一块（W 的），不急的不给 V");
