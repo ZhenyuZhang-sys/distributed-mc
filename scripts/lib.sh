@@ -103,17 +103,21 @@ import json, math, sys
 d = json.load(sys.stdin)
 x = d.get("x-mcd-gen-threads") or {}
 s = d["services"]
-def threads(name, svc):
+def apc(name, svc):
     v = x.get(name)
     if v not in (None, ""):
         if not str(v).isdigit() or int(v) < 1:
             sys.exit("错误：生成线程数要是正整数：" + str(v))
-        return int(v)
-    return max(1, math.ceil(float(s[svc]["cpus"])))   # 核数向上取整、至少 1
-print(threads("worker", "worker") + 1, threads("worker3", "worker3") + 1)
+        return str(int(v) + 1)
+    if svc not in s or "cpus" not in s[svc]:
+        return "-"   # 渲染结果里没有这个 worker（不叠 compose.test.yaml 的环境）：不设，用 compose 里的默认
+    return str(max(1, math.ceil(float(s[svc]["cpus"]))) + 1)   # 核数向上取整、至少 1
+print(apc("worker", "worker"), apc("worker3", "worker3"))
 ')" || return 1
-      read -r MCD_WORKER_APC MCD_WORKER3_APC <<<"$apc"
-      export MCD_WORKER_APC MCD_WORKER3_APC
+      local w w3
+      read -r w w3 <<<"$apc"
+      if [[ "$w" != "-" ]]; then export MCD_WORKER_APC="$w"; fi
+      if [[ "$w3" != "-" ]]; then export MCD_WORKER3_APC="$w3"; fi
       ;;
   esac
   # 停服、关服时总带上 worker（它是按需启动的），免得漏关
