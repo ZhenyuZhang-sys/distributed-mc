@@ -317,8 +317,10 @@ final class CoordinatorServer {
         // 7.3：按实测耗时决定同时派几个，慢的只派来得及的；关着时一次一个。
         // 11-09：开 deadline 时"来不及就不派"也生效（不开 throughput 也按实测耗时估，区域进前沿之前做不完的留给服务器）
         // 11-09（正式服 hopeless 398）：实测能并行的几个马上开始，不按"前面几个 ÷ 速率"排队估（codex-audit 第十五节：按实测并行度，不按租约名额）
-        // 11-09 加速模式：开了加速的按它报的线程数放宽在途上限
-        int max = BoostPolicy.maxInFlight(slots(c), c.boost, c.threads);
+        // 11-09 加速模式：开了加速的按它报的线程数放宽在途上限；11-10：再不超过实测能同时做的个数（lanes），不只用来估
+        int boostMax = BoostPolicy.maxInFlight(slots(c), c.boost, c.threads);
+        throughput.setCeiling(c.workerId, Math.max(DonorThroughput.MAX_CONCURRENCY, boostMax));
+        int max = throughput.inFlightCap(c.workerId, boostMax);
         boolean thr = features.on(Features.THROUGHPUT);
         java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
                 ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
