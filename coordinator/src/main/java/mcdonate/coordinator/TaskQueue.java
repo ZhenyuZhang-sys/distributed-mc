@@ -743,10 +743,14 @@ public final class TaskQueue {
     }
 
     /** 一个 donor 的估计：延迟（毫秒）、速率（个/毫秒）、手上在做几个。 */
-    public record DonorEstimate(long latencyMs, double ratePerMs, int inFlight, int slots) {
+    public record DonorEstimate(long latencyMs, double ratePerMs, int inFlight, int slots, boolean explore) {
         /** 不知道名额数：按 1 个（一个一个做）。 */
         public DonorEstimate(long latencyMs, double ratePerMs, int inFlight) {
             this(latencyMs, ratePerMs, inFlight, 1);
+        }
+
+        public DonorEstimate(long latencyMs, double ratePerMs, int inFlight, int slots) {
+            this(latencyMs, ratePerMs, inFlight, slots, false);
         }
     }
 
@@ -782,7 +786,9 @@ public final class TaskQueue {
                 if (d.ratePerMs() <= 0) {
                     continue;
                 }
-                double f = DonorThroughput.predictFinish(now, d.latencyMs(), d.ratePerMs(), ahead[i], d.slots());
+                // 空着、该探路的 donor（R3）：给它留第一个（派的时候 canMeet 放行），不剪
+                double f = d.explore() && ahead[i] == 0 ? now
+                        : DonorThroughput.predictFinish(now, d.latencyMs(), d.ratePerMs(), ahead[i], d.slots());
                 if (f < finish) {
                     finish = f;
                     best = i;

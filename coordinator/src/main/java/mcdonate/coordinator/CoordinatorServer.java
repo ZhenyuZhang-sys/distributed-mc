@@ -267,14 +267,13 @@ final class CoordinatorServer {
                     LOG.info("玩家已经飞过的 tile：删掉排队的 {} 个，撤回派出的 {} 个", stale.dropped().size(), stale.cancelled().size());
                 }
                 // 11-09：按每个在线、没暂停的 donor 的实测延迟、速率、在途数，估每个排队任务最早什么时候做完，来不及的现在就丢掉（G5）
-                List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
+                List<Integer> live = new java.util.ArrayList<>();
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
-                        est.add(new TaskQueue.DonorEstimate(throughput.laneLatencyMs(c.workerId), throughput.ratePerMs(c.workerId),
-                                tasks.inFlight(c.workerId), throughput.lanes(c.workerId)));
+                        live.add(c.workerId);
                     }
                 }
-                List<Long> hopeless = tasks.pruneHopeless(est);
+                List<Long> hopeless = pruneAndNote(tasks, throughput, live, now);
                 if (!hopeless.isEmpty()) {
                     LOG.info("排队的 {} 个 tile 按现在的吞吐来不及，丢掉，交给服务器", hopeless.size());
                 }
@@ -309,6 +308,26 @@ final class CoordinatorServer {
         }
     }
 
+    /**
+     * 剪掉来不及的；空着、该探路的 donor 留一个（codex-audit 第二十一节 R3：原来先剪光，canMeet 从来没被问，
+     * "空着全拒 5 秒放一个"永远不触发）。剪掉了东西时，空着的 donor 记一次"空着却拒掉"（开始计时）。
+     */
+    static List<Long> pruneAndNote(TaskQueue tasks, DonorThroughput throughput, List<Integer> workers, long now) {
+        List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
+        for (int w : workers) {
+            est.add(throughput.estimate(w, tasks.inFlight(w), now));
+        }
+        List<Long> hopeless = tasks.pruneHopeless(est);
+        if (!hopeless.isEmpty()) {
+            for (int w : workers) {
+                if (tasks.inFlight(w) == 0) {
+                    throughput.noteIdleReject(w, now);
+                }
+            }
+        }
+        return hopeless;
+    }
+
     /** 这个 worker 同时能领几个：开 throughput 时按实测耗时（租约内能做完的个数，最多 maxConcurrency），关着时 1 个。 */
     private int slots(Connection c) {
         return features.on(Features.THROUGHPUT) ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
@@ -339,7 +358,8 @@ final class CoordinatorServer {
         boolean boost = c.boost && importQueues.backgroundPending() < BoostPolicy.BACKGROUND_PENDING_CAP;
         while ((a = tasks.assign(c.workerId, max, canMeet, boost)).isPresent()) {
             TaskQueue.Assignment x = a.get();
-            LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
+            boolean explore = throughput.leased(c.workerId, now);
+            LOG.info("任务 {}（tile {}, {}）派给 worker {}{}", x.taskId(), x.tx(), x.tz(), c.workerId, explore ? "（探路）" : "");
             // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
             c.currentTask = x.taskId();
             c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
@@ -349,6 +369,9 @@ final class CoordinatorServer {
                 List<Long> back = tasks.workerGone(c.workerId);
                 LOG.info("worker {} 派活时断开，任务 {} 回到队首", c.workerId, back);
                 return;
+            }
+            if (explore) {
+                return; // 探路单独做（R4）
             }
         }
     }
