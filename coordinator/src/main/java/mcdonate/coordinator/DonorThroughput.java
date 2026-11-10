@@ -63,9 +63,18 @@ final class DonorThroughput {
     synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs, int inFlightAtLease,
             boolean background) {
         Deque<long[]> d = samples.computeIfAbsent(worker, k -> new ArrayDeque<>());
-        d.addLast(new long[] {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0});
+        long[] sample = {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0};
+        d.addLast(sample);
         while (d.size() > WINDOW) {
             d.pollFirst();
+        }
+        if (!background) {
+            // 前方的另存一个窗口（codex-audit 第 162 项：唯一的前方样本被 10 个后台结果挤出窗口，前方延迟退回默认 3 秒）
+            Deque<long[]> f = frontSamples.computeIfAbsent(worker, k -> new ArrayDeque<>());
+            f.addLast(sample);
+            while (f.size() > WINDOW) {
+                f.pollFirst();
+            }
         }
         if (inFlightAtLease > 0 && !background) {
             probe(worker, durationMs, inFlightAtLease, completedAtMs);
@@ -92,7 +101,7 @@ final class DonorThroughput {
     private void probe(int worker, long durationMs, int k, long completedAtMs) {
         if (k == 1) {
             // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
-            long[] solo = samples.get(worker).stream().filter(s -> s[4] == 1 && s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
+            long[] solo = front(worker).stream().filter(s -> s[4] == 1).mapToLong(s -> s[0]).sorted().toArray();
             soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
         }
         // {lanes, 连续好的个数}
@@ -151,6 +160,13 @@ final class DonorThroughput {
         }
     }
 
+    /** worker → 最近 WINDOW 个前方结果（后台的不占位置）：估前方延迟、单独做的基线、冷启动判断用。 */
+    private final Map<Integer, Deque<long[]>> frontSamples = new HashMap<>();
+
+    private Deque<long[]> front(int worker) {
+        return frontSamples.getOrDefault(worker, new ArrayDeque<>());
+    }
+
     /** worker → 单独做一个要多久（最近一次有单独做的样本时的中位数）。 */
     private final Map<Integer, Long> soloMs = new HashMap<>();
 
@@ -163,15 +179,16 @@ final class DonorThroughput {
         if (d == null || d.isEmpty()) {
             return DEFAULT_MS;
         }
+        Deque<long[]> fd = front(worker);
         if (!probes.containsKey(worker)) {
             // 没记派出时手上几个：按前方样本的中位数；只有后台的样本时按默认（X1 补充：不拿后台的补）
-            long[] fg = d.stream().filter(s -> s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
+            long[] fg = fd.stream().mapToLong(s -> s[0]).sorted().toArray();
             return fg.length == 0 ? DEFAULT_MS : fg[fg.length / 2];
         }
         // 派出时手上不超过 lanes 个、也不比单独做慢一半以上的（慢一半以上的是在 worker 上排了队，codex-audit 第十六节）
         int lanes = lanes(worker);
         long cap = (long) (PROBE_BAD * soloLatencyMs(worker));
-        long[] v = d.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap && s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
+        long[] v = fd.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap).mapToLong(s -> s[0]).sorted().toArray();
         return v.length == 0 ? soloLatencyMs(worker) : v[v.length / 2];
     }
 
@@ -181,9 +198,8 @@ final class DonorThroughput {
         if (solo != null) {
             return solo;
         }
-        Deque<long[]> d = samples.get(worker);
         // 从来没有单独做的前方样本：取前方样本里最短的，没有前方样本按默认（X1 补充：不拿后台的补，100 ms 的缓存命中会让正常的都像慢了）
-        return d == null ? DEFAULT_MS : Math.max(1, d.stream().filter(s -> s[5] == 0).mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
+        return Math.max(1, front(worker).stream().mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
     }
 
     /** worker 断开：忘掉它的记录（重连后是新的编号）。 */
@@ -193,6 +209,7 @@ final class DonorThroughput {
         ceilings.remove(worker);
         soloMs.remove(worker);
         slowWindows.remove(worker);
+        frontSamples.remove(worker);
         holdUntil.remove(worker);
     }
 
@@ -257,7 +274,7 @@ final class DonorThroughput {
         if (st != null) {
             return st[0];
         }
-        if (d.stream().allMatch(s -> s[5] == 1)) {
+        if (front(worker).isEmpty()) {
             // codex-audit 第十八节 X1：只做过后台（没有前方的样本）：照冷启动。按后台的低在途算会把 lanes 算成 1、后台半额变 0、再也不派
             return MAX_CONCURRENCY;
         }

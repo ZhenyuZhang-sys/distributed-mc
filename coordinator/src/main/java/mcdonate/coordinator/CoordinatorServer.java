@@ -189,6 +189,7 @@ final class CoordinatorServer {
     int reset() {
         List<TaskQueue.Cancelled> cancel = tasks.reset();
         importQueues.clear(); // codex-audit 第十八节：旧一轮排着导入的结果（导了也会被丢弃）不再占背压名额
+        resultMeta.clear(); // 这些结果的大小、耗时记录也一起清（codex-audit 第 162 项复核 P3）
         for (TaskQueue.Cancelled c : cancel) {
             waitDonor.release(c.taskId());
             Connection conn = workers.get(c.worker());
