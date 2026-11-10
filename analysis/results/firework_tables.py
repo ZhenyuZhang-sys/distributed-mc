@@ -264,15 +264,16 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
          '进视野（enter）、可发送（ready，getChunkToSend 就绪）。只看前方 90 度扇形、缓存区外的 chunk；"≤48"是离起点 48 个 chunk 以内'
          '（后台走廊半径），"进视野前导入了"多半是加速后台和提前量做的，"没导入"是服务器自己做的。每格是 3 轮各自中位数的中位数。', '',
          '| boost | 区 | 类 | 每轮个数 | 空白中位（秒） | 截尾比例 | 进视野前已做完 | 导入→进视野（秒） | 进视野→做完（秒） | 做完→可发送（秒） '
-         '| 进视野→加票 | 加票→读盘完成 | 读盘→full |',
-         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+         '| 进视野→加票 | 加票→读盘完成 | 读盘→full | 进视野→票到 FULL 等级 | 票到 FULL 等级→光照 | 票到 FULL 等级→full |',
+         '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for (boost, zone, cat), bs in sorted(per.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2] != 'pre')):
         L.append(f"| {'开' if boost else '关'} | {zone} | {'进视野前导入了' if cat == 'pre' else '没导入'} | {show(med([b['n'] for b in bs]), 0)} "
                  f"| {show(med([b['blank_median_s'] for b in bs]))} | {show(100 * med([b['censored_share'] for b in bs]), 0)}% "
                  f"| {show(100 * med([b['full_before_enter_share'] for b in bs]), 0)}% | {show(med([b.get('import_to_enter_s') for b in bs]))} "
                  f"| {show(med([b['enter_to_full_s'] for b in bs]))} | {show(med([b['full_to_ready_s'] for b in bs]))} "
                  f"| {show(med([b.get('enter_to_ticket_s') for b in bs]))} | {show(med([b.get('ticket_to_read_s') for b in bs]))} "
-                 f"| {show(med([b.get('read_to_full_s') for b in bs]))} |")
+                 f"| {show(med([b.get('read_to_full_s') for b in bs]))} | {show(med([b.get('enter_to_ticket_full_s') for b in bs]))} "
+                 f"| {show(med([b.get('ticket_full_to_light_s') for b in bs]))} | {show(med([b.get('ticket_full_to_full_s') for b in bs]))} |")
     L += ['', '进视野→做完，按 8 个邻居是不是都在进视野前导入了分开（秒，括号是每轮个数）：', '',
           '| boost | 区 | 8 个邻居都导入了 | 有邻居没导入 |', '| --- | --- | --- | --- |']
     for boost in sorted({k[0] for k in nb}):

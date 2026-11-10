@@ -268,16 +268,20 @@ def blank_breakdown(events, prov, rows, stages=None, **kw):
             imp.setdefault(k, t)
         elif e['kind'] in FULL_KINDS:
             full.setdefault(k, t)
-    tk, rd, fl, disk = {}, {}, {}, {}
+    tk, tf, rd, lt, fl, disk = {}, {}, {}, {}, {}, {}
     for e in sorted(stages or [], key=lambda e: e['t_ms']):
         k, t = (e['cx'], e['cz']), e['t_ms'] / 1000
         if e['ev'] == 'ticket':
             tk.setdefault(k, t)
+        elif e['ev'] == 'ticket_full':
+            tf.setdefault(k, t)
         elif e['ev'] == 'read':
             rd.setdefault(k, t)
             disk.setdefault(k, e.get('disk'))
         elif e['ev'] == 'status' and e.get('status') == 'minecraft:full':
             fl.setdefault(k, t)
+        elif e['ev'] == 'status' and e.get('status') == 'minecraft:light':
+            lt.setdefault(k, t)
     cats = {c: [] for c in ('pre', 'post', 'none')}
     for k, te, d, cens in blank_times(events, rows, with_keys=True, **kw):
         cat = 'none' if k not in imp else 'pre' if imp[k] <= te else 'post'
@@ -297,6 +301,12 @@ def blank_breakdown(events, prov, rows, stages=None, **kw):
             r['enter_to_ticket_s'] = _median([tk[k] - te for k, te, _, _ in xs if k in tk])
             r['ticket_to_read_s'] = _median([rd[k] - tk[k] for k, _, _, _ in xs if k in tk and k in rd])
             r['read_to_full_s'] = _median([fl[k] - rd[k] for k, _, _, _ in xs if k in rd and k in fl])
+            # 票到 FULL 等级（33）→ 光照做完 → full：读盘早就完了，时间花在等票等级和续做上
+            r['enter_to_ticket_full_s'] = _median([tf[k] - te for k, te, _, _ in xs if k in tf])
+            r['ticket_full_to_full_s'] = _median([fl[k] - tf[k] for k, _, _, _ in xs if k in tf and k in fl and fl[k] >= tf[k]])
+            r['ticket_full_to_light_s'] = _median([lt[k] - tf[k] for k, _, _, _ in xs if k in tf and k in lt and lt[k] >= tf[k]])
+            r['light_before_ticket_full_share'] = (sum(1 for k, *_ in xs if k in tf and k in lt and lt[k] < tf[k])
+                                                   / max(1, sum(1 for k, *_ in xs if k in tf and k in lt)))
             r['disk'] = {}
             for k, _, _, _ in xs:
                 if k in disk:

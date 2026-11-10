@@ -25,9 +25,19 @@ public abstract class ChunkMapStagesMixin {
 
     @Inject(method = "updateChunkScheduling", at = @At("HEAD"))
     private void mcdonate$ticket(long pos, int newLevel, @Nullable ChunkHolder holder, int oldLevel, CallbackInfoReturnable<ChunkHolder> cir) {
-        if (ChunkStages.active() && level.dimension() == Level.OVERWORLD && !ChunkLevel.isLoaded(oldLevel) && ChunkLevel.isLoaded(newLevel)) {
+        if (!ChunkStages.active() || level.dimension() != Level.OVERWORLD) {
+            return;
+        }
+        if (!ChunkLevel.isLoaded(oldLevel) && ChunkLevel.isLoaded(newLevel)) {
             ChunkStages.report(ChunkPos.getX(pos), ChunkPos.getZ(pos), ChunkStages.Kind.TICKET, null);
         }
+        if (!full(oldLevel) && full(newLevel)) {
+            ChunkStages.report(ChunkPos.getX(pos), ChunkPos.getZ(pos), ChunkStages.Kind.TICKET_FULL, null);
+        }
+    }
+
+    private static boolean full(int level) {
+        return ChunkLevel.fullStatus(level).isOrAfter(net.minecraft.server.level.FullChunkStatus.FULL);
     }
 
     @Inject(method = "scheduleChunkLoad", at = @At("RETURN"))

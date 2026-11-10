@@ -71,9 +71,12 @@ public class RecordGameTest implements FabricGameTest {
                 FlightGameTest.done(h, run);
                 List<JsonObject> st = FlightGameTest.lines(h, run, "stages.jsonl").stream()
                         .filter(e -> e.get("cx").getAsInt() == cx && e.get("cz").getAsInt() == cz).toList();
-                long ticket = first(st, "ticket", null), read = first(st, "read", null), full = first(st, "status", "minecraft:full");
-                FlightGameTest.check(ticket >= 0 && read >= 0 && full >= 0, "这个 chunk 缺阶段：" + st);
-                FlightGameTest.check(ticket <= read && read <= full, "阶段顺序不对：ticket " + ticket + " read " + read + " full " + full);
+                long ticket = first(st, "ticket", null), ticketFull = first(st, "ticket_full", null), read = first(st, "read", null),
+                        full = first(st, "status", "minecraft:full");
+                FlightGameTest.check(ticket >= 0 && ticketFull >= 0 && read >= 0 && full >= 0, "这个 chunk 缺阶段：" + st);
+                // ticket：第一次进加载等级；ticket_full：票等级第一次到能做成 FULL 的等级（33 及以下）
+                FlightGameTest.check(ticket <= read && read <= full && ticket <= ticketFull && ticketFull <= full,
+                        "阶段顺序不对：ticket " + ticket + " ticket_full " + ticketFull + " read " + read + " full " + full);
                 FlightGameTest.check(st.stream().filter(e -> "read".equals(e.get("ev").getAsString())).allMatch(e -> e.has("disk")),
                         "read 要带存档里的状态：" + st);
                 FlightGameTest.check(st.stream().filter(e -> "status".equals(e.get("ev").getAsString())).count() >= 5,

@@ -420,8 +420,11 @@ def test_blank_breakdown_uses_stages_when_present():
     ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=5000, cx=4, cz=0, ev='ready')]
     prov = [dict(t_ms=200, cx=4, cz=0, kind='donor'), dict(t_ms=4500, cx=4, cz=0, kind='resumed')]
     stages = [dict(t_ms=2000, cx=4, cz=0, ev='ticket'), dict(t_ms=3000, cx=4, cz=0, ev='read', disk='minecraft:initialize_light'),
+              dict(t_ms=3500, cx=4, cz=0, ev='ticket_full'), dict(t_ms=4000, cx=4, cz=0, ev='status', status='minecraft:light'),
               dict(t_ms=4400, cx=4, cz=0, ev='status', status='minecraft:full')]
     pre = blank_breakdown(ev, prov, rows, stages=stages, run=run, view=2, cache_radius_blocks=24)['pre']
     assert pre['enter_to_ticket_s'] == 1.0 and pre['ticket_to_read_s'] == 1.0 and pre['read_to_full_s'] == pytest.approx(1.4)
     assert pre['disk'] == {'minecraft:initialize_light': 1}
+    assert pre['enter_to_ticket_full_s'] == 2.5 and pre['ticket_full_to_light_s'] == 0.5 and pre['ticket_full_to_full_s'] == pytest.approx(0.9)
+    assert pre['light_before_ticket_full_share'] == 0
     assert 'enter_to_ticket_s' not in blank_breakdown(ev, prov, rows, run=run, view=2, cache_radius_blocks=24)['pre']   # 没有 stages 就不报
