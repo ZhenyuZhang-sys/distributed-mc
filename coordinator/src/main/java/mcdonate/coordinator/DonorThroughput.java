@@ -75,14 +75,27 @@ final class DonorThroughput {
     private final Map<Integer, int[]> probes = new HashMap<>();
 
     private void probe(int worker, long durationMs, int k) {
+        if (k == 1) {
+            // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
+            long[] solo = samples.get(worker).stream().filter(s -> s[4] == 1).mapToLong(s -> s[0]).sorted().toArray();
+            soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
+        }
         int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0, 0});
         if (st[2] > 0) {
             st[2]--;
         }
+        long base = soloLatencyMs(worker);
+        if (k >= 2 && durationMs > PROBE_BAD * base) {
+            // 和别的一起做、明显慢了：不管当时占没占满 lanes 都退（codex-audit 第十六节：冷启动一次派 4 个、一个一个做的 donor，
+            // 原来只看占满的那一个，退到 3 就停了）。只往下退，退到派出时手上的个数 − 1
+            st[0] = Math.max(1, Math.min(st[0], k - 1));
+            st[1] = 0;
+            st[2] = PROBE_HOLD;
+            return;
+        }
         if (k < st[0]) {
             return; // 没占满 lanes：看不出多一个行不行
         }
-        long base = soloLatencyMs(worker);
         if (durationMs <= PROBE_OK * base) {
             if (++st[1] >= PROBE_GOOD && st[2] == 0) {
                 st[0] = Math.min(MAX_CONCURRENCY, st[0] + 1);
@@ -90,12 +103,11 @@ final class DonorThroughput {
             }
         } else {
             st[1] = 0;
-            if (durationMs > PROBE_BAD * base) {
-                st[0] = Math.max(1, Math.min(st[0], k - 1)); // 只往下退：派得比 lanes 还多的那个慢了，不能反而退到更高
-                st[2] = PROBE_HOLD;
-            }
         }
     }
+
+    /** worker → 单独做一个要多久（最近一次有单独做的样本时的中位数）。 */
+    private final Map<Integer, Long> soloMs = new HashMap<>();
 
     /**
      * 马上能开始的做完要多久：窗口里派出时手上不超过 lanes 个（没在 worker 上排队）的那些的延迟中位数；
@@ -106,25 +118,31 @@ final class DonorThroughput {
         if (d == null || d.isEmpty()) {
             return DEFAULT_MS;
         }
+        if (!probes.containsKey(worker)) {
+            return latencyMs(worker); // 没记派出时手上几个：按全部的中位数
+        }
+        // 派出时手上不超过 lanes 个、也不比单独做慢一半以上的（慢一半以上的是在 worker 上排了队，codex-audit 第十六节）
         int lanes = lanes(worker);
-        long[] v = d.stream().filter(s -> s[4] > 0 && s[4] <= lanes).mapToLong(s -> s[0]).sorted().toArray();
-        return v.length == 0 ? latencyMs(worker) : v[v.length / 2];
+        long cap = (long) (PROBE_BAD * soloLatencyMs(worker));
+        long[] v = d.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap).mapToLong(s -> s[0]).sorted().toArray();
+        return v.length == 0 ? soloLatencyMs(worker) : v[v.length / 2];
     }
 
-    /** 单独做一个要多久：窗口里派出时手上只有它自己的那些的中位数；没有就取窗口里最短的。 */
+    /** 单独做一个要多久：最近一次有单独做的样本时的中位数；从来没有就取窗口里最短的。 */
     private long soloLatencyMs(int worker) {
-        Deque<long[]> d = samples.get(worker);
-        long[] solo = d.stream().filter(s -> s[4] == 1).mapToLong(s -> s[0]).sorted().toArray();
-        if (solo.length > 0) {
-            return Math.max(1, solo[solo.length / 2]);
+        Long solo = soloMs.get(worker);
+        if (solo != null) {
+            return solo;
         }
-        return Math.max(1, d.stream().mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
+        Deque<long[]> d = samples.get(worker);
+        return d == null ? DEFAULT_MS : Math.max(1, d.stream().mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
     }
 
     /** worker 断开：忘掉它的记录（重连后是新的编号）。 */
     synchronized void forget(int worker) {
         samples.remove(worker);
         probes.remove(worker);
+        soloMs.remove(worker);
     }
 
     /** 延迟的中位数（毫秒）。 */
