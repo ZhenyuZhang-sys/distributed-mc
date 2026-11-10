@@ -202,7 +202,7 @@ def experiments_evening():
     return L
 
 
-def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
+def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60', title='后台导入过的 chunk 到达时为什么还空白（v2.3 56b4eee，站 60 秒，k3）', notes=None):
     """后台导入过的 chunk 到达时为什么还空白（调度 11-10）：按 chunk 对齐导入、服务器做完、进视野、可发送；邻居导没导入；服务器 CPU。"""
     import json
     from bench.demo.ab import DEFAULT_START
@@ -259,7 +259,7 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
         return []
     med = lambda xs: f._median([x for x in xs if x is not None])
     show = lambda v, d=1: '—' if v is None else f'{v:.{d}f}'
-    L = ['## 后台导入过的 chunk 到达时为什么还空白（v2.3 56b4eee，站 60 秒，k3）', '',
+    L = [f'## {title}', '',
          '按 chunk 对齐：导入时刻（provenance 里这个 chunk 的第一个 donor 事件）、服务器做完（第一个 resumed / vanilla / loaded）、'
          '进视野（enter）、可发送（ready，getChunkToSend 就绪）。只看前方 90 度扇形、缓存区外的 chunk；"≤48"是离起点 48 个 chunk 以内'
          '（后台走廊半径），"进视野前导入了"多半是加速后台和提前量做的，"没导入"是服务器自己做的。每格是 3 轮各自中位数的中位数。', '',
@@ -284,17 +284,8 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60'):
     L += ['', '服务器容器 CPU（核，2 核上限；cgroup 采样）：', '', '| boost | 站着 | ≤48 那段 | >48 那段 |', '| --- | --- | --- | --- |']
     for boost in sorted({k[0] for k in cpu}):
         L.append(f"| {'开' if boost else '关'} | " + ' | '.join(show(med(cpu.get((boost, ph), [])), 2) for ph in ('站着', '≤48 那段', '>48 那段')) + ' |')
-    L += ['', '读法（11-10 kexu）：',
-          '- 导入过的前方 chunk **没有一个在玩家进视野前被服务器做完**（"进视野前已做完" 0%）：导入只是把半成品写进存档，'
-          '玩家进视距、票加上以后服务器才读盘、点光照、做到 FULL。这一步在 ≤48 那段要 4～5 秒、后面 2.3～2.6 秒，再过约 0.6～0.8 秒可发送。'
-          '后台导入的 tile 在进视野前 8～29 秒就到了，时间不是花在等导入。',
-          '- 不是"等邻居"：8 个邻居都导入了的 chunk 也要这么久；有邻居没导入的再慢 0.3～3 秒，但只占少数。',
-          '- 不是主线程忙：≤48 那段服务器 MSPT 只有约 4 ms，但容器 CPU 用到约 1.55 核（2 核上限），活在 chunk 工作线程上（读盘续完、光照）。'
-          '站着那 60 秒服务器只用 0.2～0.35 核，有一核半闲着，却没有把已导入的半成品先做完。',
-          '- 没导入的（服务器从头生成）空白 9～12 秒、一半以上截尾；加速的好处主要是把这类变成"进视野前导入了"（≤48 那段\"进视野前导入了\"每轮 193 → 289 个、\"没导入\" 351 → 255 个），'
-          '而不是让导入过的更快。',
-          '- 票准入（玩家票节流）、读盘、续做各占多少，这些归档分不开：要在 bench 里按 chunk 记加票、读盘完成、各状态完成的时刻。'
-          '可试的方向：站着（服务器闲）时让服务器把走廊里已导入的半成品先做到 FULL（预热），到达时就只剩发送。', '']
+    if notes:
+        L += [''] + notes + ['']
     return L
 
 
@@ -336,6 +327,21 @@ def sweep():
     return L
 
 
-md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(boost_breakdown()) + '\n'.join(experiments_evening()) + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
+STAGE_NOTES = [
+    '读法（11-10 kexu，用下面"按阶段"那一轮核对过）：',
+    '- 导入过的前方 chunk 没有一个在进视野前被做完（"进视野前已做完" 0%），时间全在"进视野→做完"：≤48 那段 4～5 秒，后面 2.3～2.6 秒。',
+    '- 拆开以后（下一节，bench 的 stages.jsonl）：读盘早就完了（第一次进加载等级后 0.03～0.07 秒，比进视野早 2～4 秒），'
+    '**时间几乎全花在等票等级到 FULL（33）**：进视野→票到 FULL 等级 ≤48 那段 4.2 秒、后面 2.2 秒；票一到，0.13 秒就做完 FULL、'
+    '再 0.6 秒可发送。所以卡的是玩家票的准入（DistanceManager 的节流队列），不是读盘、不是续做光照、也基本不是等邻居'
+    '（8 个邻居都导入了的照样要这么久，有邻居没导入的只是少数）。和 codex-server"前方空白大头是原版玩家票排队"一致。',
+    '- 本节第一版（b83e3f9）把原因写成"服务器读盘续完、光照"，是在没有 stages 时按 CPU 推的，**是错的**，以这里为准。',
+    '- 服务器 CPU：站着时 0.2～0.35 核，飞起来约 1.55 核（2 核上限）。站着时有空闲，但只要票等级没到 33，导入的半成品就不会被做完。',
+    '- 加速的好处主要是把"没导入（服务器从头生成，空白 10～11 秒）"变成"进视野前导入了"（≤48 那段每轮 193 → 289 个、没导入 351 → 255 个）。',
+    '- 可试的方向：给走廊里已导入的 chunk 提前加一张 FULL 等级的票（绕过玩家票节流队列），到达时就只剩发送；'
+    '之前的 playerTicketThrottle 4 → 16 没见效，可能是名额以外还有"等 5×5 FULL 才放下一个"的条件。',
+]
+
+md = '# 烟花鞘翅：几套代码对比（11-09）\n\n' + '\n'.join(boost_breakdown(notes=STAGE_NOTES))
+md += '\n'.join(boost_breakdown('k3-stages2-ufw-stages-smoke', '按阶段拆开（bench stages.jsonl，v2.3 56b4eee + kexu，站 60 秒、boost 开，k3，1 轮）')) + '\n'.join(experiments_evening()) + '\n'.join(sweep()) + conclusion() + '\n## 下面是全部数据\n\n' + WARN + '\n\n' + f.report(rows, note=NOTE)
 (Path(__file__).parent / 'firework-3arm.md').write_text(md)
 print(md)
