@@ -1,0 +1,75 @@
+{
+ "name": "ufw-boost-fly3",
+ "seed": 424242,
+ "repeats": 2,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-10：fish-v23 097bea7（codex-audit 第十八节 X1～X4：回退看最近 6 个前方样本 2 慢才退、冷却 20 秒、只做后台时按冷启动并发）+ 928cbbc 探索模式（31d2e96）+kexu 实验工具：不站、直接飞，boost 关/开各 2 轮，看飞完 lanes 是否保持约 4。用户同款 2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "boost-fly3",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "boost": [
+     0,
+     1
+    ],
+    "stand_s": [
+     0
+    ],
+    "repeats": 2
+   }
+  ]
+ }
+}
