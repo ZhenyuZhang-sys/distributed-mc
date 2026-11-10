@@ -66,12 +66,19 @@ final class DonorThroughput {
         // 跨过回退的单独任务（回退之前派出、之后交回）：它的延迟分不清是回退前还是后的，不进基线（codex-audit 第二十一节）
         Long backoff = lastBackoffAt.get(worker);
         boolean straddle = inFlightAtLease == 1 && backoff != null && completedAtMs - durationMs < backoff && completedAtMs >= backoff;
-        long[] sample = {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0, straddle ? 1 : 0};
+        // 预热（11-10 codex-pipe：新 donor 冷启动第一批 16 秒，延迟估成 16 秒、slots 1，120 秒只交回 1 个）：
+        // 第一个结果回来之前派出的那批。照样算进并行度，但不进任何延迟估计、不拿来往上探或回退。只看带在途表读数的（生产路径都带）
+        boolean warmup = false;
+        if (busyMs >= 0 && completedAtMs != Long.MIN_VALUE) {
+            Long first = firstDoneAt.putIfAbsent(worker, completedAtMs);
+            warmup = completedAtMs - durationMs < (first == null ? completedAtMs : first);
+        }
+        long[] sample = {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0, straddle ? 1 : 0, warmup ? 1 : 0};
         d.addLast(sample);
         while (d.size() > WINDOW) {
             d.pollFirst();
         }
-        if (!background) {
+        if (!background && !warmup) {
             // 前方的另存一个窗口（codex-audit 第 162 项：唯一的前方样本被 10 个后台结果挤出窗口，前方延迟退回默认 3 秒）
             Deque<long[]> f = frontSamples.computeIfAbsent(worker, k -> new ArrayDeque<>());
             f.addLast(sample);
@@ -80,7 +87,7 @@ final class DonorThroughput {
             }
         }
         if (inFlightAtLease > 0 && !background && !straddle) {
-            probe(worker, durationMs, inFlightAtLease, completedAtMs);
+            probe(worker, durationMs, inFlightAtLease, completedAtMs, warmup);
         }
     }
 
@@ -101,7 +108,7 @@ final class DonorThroughput {
     /** worker → {lanes, 连续好的个数, 还要等几个结果才能再往上探}。 */
     private final Map<Integer, int[]> probes = new HashMap<>();
 
-    private void probe(int worker, long durationMs, int k, long completedAtMs) {
+    private void probe(int worker, long durationMs, int k, long completedAtMs, boolean warmup) {
         Long cal = calibrateUntil.get(worker);
         if (cal != null && completedAtMs > cal) {
             calibrateUntil.remove(worker); // 量了太久没有单独做的前方任务（只有后台、没人飞）：不量了
@@ -141,7 +148,7 @@ final class DonorThroughput {
             }
             // 单独做照样快：慢是并行多了造成的，退得对；照常往下更新基线
         }
-        if (k == 1) {
+        if (k == 1 && !warmup) {
             // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
             long[] solo = front(worker).stream().filter(s -> s[4] == 1 && s[6] == 0).mapToLong(s -> s[0]).sorted().toArray();
             if (solo.length > 0) {
@@ -150,15 +157,18 @@ final class DonorThroughput {
         }
         // {lanes, 连续好的个数}
         int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0});
-        long base = soloLatencyMs(worker);
+        // 预热那批（冷启动第一批，绝对延迟不可信）：只在这一批里互相比（同一批的 k=1 当基线、同一批的各档），
+        // 一批都一样慢（JIT 没热）不会退，越多越慢（真一个一个做）照样退；不进正常的基线和各档延迟
+        double[] warm = warmup ? warmLevels.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]) : null;
+        long base = !warmup ? soloLatencyMs(worker) : warm[1] > 0 ? (long) warm[1] : k == 1 ? durationMs : soloLatencyMs(worker);
         // 11-10：按"多这一条速率涨不涨"判断（调度：用户的 M5 一起做时每个约 0.8 秒、单独约 0.7 秒，速率在涨，不能退）。
         // 手上 k 个时速率约 k ÷ 延迟；和手上 k − 1 个时比：k 个的延迟超过 k/(k−1) × (k − 1 个时的延迟) 就是多这一条不多出活。
         // 不知道 k − 1 个时的延迟（还没在那个档做过）时照旧比单独做的
-        double prev = levelLatency(worker, k - 1);
+        double prev = !warmup ? levelLatency(worker, k - 1) : k >= 2 ? warm[Math.min(k - 1, MAX_LEVEL)] : 0;
         double ratio = k / (double) Math.max(1, k - 1);
         boolean slow = prev > 0 ? durationMs > ratio * prev * PROBE_MARGINAL_SLOW : durationMs > PROBE_BAD * base;
         boolean good = durationMs <= PROBE_OK * base || (prev > 0 && durationMs <= ratio * prev / PROBE_MARGINAL_GAIN);
-        double[] lat = levelLatencies.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]);
+        double[] lat = warmup ? warm : levelLatencies.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]);
         int lv = Math.min(k, MAX_LEVEL);
         lat[lv] = lat[lv] == 0 ? durationMs : lat[lv] + LEVEL_ALPHA * (durationMs - lat[lv]);
         if (k >= 2) {
@@ -326,6 +336,8 @@ final class DonorThroughput {
         idleRejects.remove(worker);
         explorations.remove(worker);
         lastBackoffAt.remove(worker);
+        firstDoneAt.remove(worker);
+        warmLevels.remove(worker);
     }
 
     /** 延迟的中位数（毫秒）。 */
@@ -334,8 +346,8 @@ final class DonorThroughput {
         if (d == null || d.isEmpty()) {
             return DEFAULT_MS;
         }
-        long[] v = d.stream().mapToLong(s -> s[0]).sorted().toArray();
-        return v[v.length / 2];
+        long[] v = d.stream().filter(s -> s[7] == 0).mapToLong(s -> s[0]).sorted().toArray();
+        return v.length == 0 ? DEFAULT_MS : v[v.length / 2]; // 只有预热那批时按默认
     }
 
     /** 平均延迟（毫秒）；对冲、等 donor 用。 */
@@ -344,7 +356,7 @@ final class DonorThroughput {
         if (d == null || d.isEmpty()) {
             return DEFAULT_MS;
         }
-        return (long) d.stream().mapToLong(s -> s[0]).average().orElse(DEFAULT_MS);
+        return (long) d.stream().filter(s -> s[7] == 0).mapToLong(s -> s[0]).average().orElse(DEFAULT_MS);
     }
 
     /**
@@ -459,6 +471,12 @@ final class DonorThroughput {
         }
         return false;
     }
+
+    /** worker → 预热那批里各档的延迟（只在这一批里比较用）。 */
+    private final Map<Integer, double[]> warmLevels = new HashMap<>();
+
+    /** worker → 第一个结果回来的时刻（在这之前派出的算预热）。 */
+    private final Map<Integer, Long> firstDoneAt = new HashMap<>();
 
     /** 空着却全拒了这么久就放一个探路（毫秒）。 */
     static final long EXPLORE_MS = Config.getLong("probeExploreMs", 5_000);
