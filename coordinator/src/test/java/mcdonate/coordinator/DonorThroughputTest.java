@@ -470,4 +470,61 @@ class DonorThroughputTest {
         assertEquals(8, t.lanes(1));
         assertEquals(DonorThroughput.MAX_CONCURRENCY, new DonorThroughput().lanes(5), "没设的照旧");
     }
+
+    // ---- 11-10 kexu k4（92f40c4 直接飞）：boost 开的那轮 lanes 退到 1、parallelism 1.0：
+    //      后台 tile（离得远、单独做，比前方相邻的贵一倍）的慢样本触发了"一起做、慢过单独做 1.5 倍"的回退 ----
+
+    /** 先按 4 个一批做出 4 lanes（前方的），返回在途表和时间。 */
+    private static long[] fourLanes(DonorThroughput t, LoadMeter m) {
+        long now = 10_000;
+        for (int k = 0; k < 6; k++) {
+            for (int i = 0; i < 4; i++) {
+                m.start(now);
+            }
+            now += 700;
+            for (int i = 0; i < 4; i++) {
+                long[] r = m.read(now);
+                t.record(1, 700, now, r[0], r[1], i + 1);
+                m.end(now);
+            }
+        }
+        return new long[] {now};
+    }
+
+    @Test
+    void slowBackgroundSamplesDoNotDropLanes() {
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = fourLanes(t, m)[0];
+        assertEquals(4, t.lanes(1));
+        for (int i = 0; i < 6; i++) {
+            m.start(now);
+            now += 1_500;
+            long[] r = m.read(now);
+            t.record(1, 1_500, now, r[0], r[1], 3, true);   // 后台的：贵，和别的一起做
+            m.end(now);
+        }
+        assertEquals(4, t.lanes(1), "后台 tile 的延迟不拿来判断并行（地形贵不等于并行多了变慢）");
+        assertTrue(t.laneLatencyMs(1) <= 800, "马上开始的延迟也不混进后台的：" + t.laneLatencyMs(1));
+    }
+
+    @Test
+    void oneSlowSharedSampleIsNotEnoughToBackOff() {
+        // 前方的一个 tile 贵（新地形），一起做时慢了一次：不退；连着两次才退
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = fourLanes(t, m)[0];
+        m.start(now);
+        now += 1_500;
+        long[] r = m.read(now);
+        t.record(1, 1_500, now, r[0], r[1], 3);
+        m.end(now);
+        assertEquals(4, t.lanes(1), "慢一次不退");
+        m.start(now);
+        now += 1_500;
+        r = m.read(now);
+        t.record(1, 1_500, now, r[0], r[1], 3);
+        m.end(now);
+        assertEquals(2, t.lanes(1), "连着两次慢：退到派出时手上的个数 − 1");
+    }
 }
