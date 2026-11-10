@@ -38,6 +38,15 @@ final class BoostPolicy {
         return Math.max(0, max / 2);
     }
 
+    /**
+     * 派活的在途上限（按 lanes 算出来的 cap 之后）：开了加速的至少 2 个（线程数够时），1 个后台、1 个留给前方。
+     * 11-10 f2 端到端：worker 之前一直一个一个派、lanes 学成 1，开了加速在途上限 1、后台名额 0，后台排满 64 个一个都不派。
+     * 代价：真一个一个做的 donor，前方的可能在 worker 上排在那 1 个后台后面（开加速是玩家自己选的）。
+     */
+    static int dispatchCap(int cap, boolean boost, int boostMax) {
+        return boost ? Math.max(cap, Math.min(2, boostMax)) : cap;
+    }
+
     /** 后台结果的导入：平均 tick 超过这么多毫秒就不导（codex-audit 第十七节 B1）。 */
     static final double BACKGROUND_IMPORT_MAX_MSPT = Config.getDouble("backgroundImportMaxMspt", 30);
     /** 后台结果最多每这么多 tick 导一个。 */

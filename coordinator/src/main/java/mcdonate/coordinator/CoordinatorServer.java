@@ -320,7 +320,7 @@ final class CoordinatorServer {
         // 11-09 加速模式：开了加速的按它报的线程数放宽在途上限；11-10：再不超过实测能同时做的个数（lanes），不只用来估
         int boostMax = BoostPolicy.maxInFlight(slots(c), c.boost, c.threads);
         throughput.setCeiling(c.workerId, Math.max(DonorThroughput.MAX_CONCURRENCY, boostMax));
-        int max = throughput.inFlightCap(c.workerId, boostMax);
+        int max = BoostPolicy.dispatchCap(throughput.inFlightCap(c.workerId, boostMax), c.boost, boostMax);
         boolean thr = features.on(Features.THROUGHPUT);
         java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
                 ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
