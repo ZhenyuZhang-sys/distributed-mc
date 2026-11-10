@@ -113,8 +113,7 @@ class DonorThroughputTest {
         // 有在途记录：4 个一起做了 4 秒，1 个/秒
         DonorThroughput m = new DonorThroughput();
         feed(m, List.of(new long[] {46_000, 50_000}, new long[] {46_001, 50_001}, new long[] {46_002, 50_002}, new long[] {46_003, 50_003}));
-        // 11-10 起这一批是预热（第一个结果之前派出的），绝对延迟不算，按默认 3 秒估：不会估成几十个/秒
-        assertTrue(m.ratePerMs(1) * 1000 < 1.5, "不会爆：" + m.ratePerMs(1) * 1000);
+        assertEquals(1.0, m.ratePerMs(1) * 1000, 0.01);
     }
 
     @Test
@@ -253,8 +252,7 @@ class DonorThroughputTest {
         // 只有一个样本：不按最大并发推断并行度（codex-audit V2）
         DonorThroughput t = new DonorThroughput();
         feed(t, List.of(new long[] {49_300, 50_000}));
-        // 11-10 起唯一的这个样本是预热（第一个结果），不拿来定并行：照冷启动
-        assertEquals(DonorThroughput.MAX_CONCURRENCY, t.lanes(1));
+        assertEquals(1, t.lanes(1));
         assertEquals(DonorThroughput.MAX_CONCURRENCY, new DonorThroughput().lanes(9), "冷启动：按最大并发探路（F5/G4）");
     }
 
@@ -634,11 +632,6 @@ class DonorThroughputTest {
         DonorThroughput t = new DonorThroughput();
         LoadMeter m = new LoadMeter();
         long now = 10_000;
-        m.start(now);   // 先有一个后台结果回来（不然下面那个前方的是预热，不算延迟）
-        now += 1_500;
-        long[] r0 = m.read(now);
-        t.record(1, 1_500, now, r0[0], r0[1], 1, true);
-        m.end(now);
         for (int i = 0; i < 3; i++) {
             m.start(now);
         }
