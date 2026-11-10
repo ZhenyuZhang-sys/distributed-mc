@@ -63,7 +63,10 @@ final class DonorThroughput {
     synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs, int inFlightAtLease,
             boolean background) {
         Deque<long[]> d = samples.computeIfAbsent(worker, k -> new ArrayDeque<>());
-        long[] sample = {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0};
+        // 跨过回退的单独任务（回退之前派出、之后交回）：它的延迟分不清是回退前还是后的，不进基线（codex-audit 第二十一节）
+        Long backoff = lastBackoffAt.get(worker);
+        boolean straddle = inFlightAtLease == 1 && backoff != null && completedAtMs - durationMs < backoff && completedAtMs >= backoff;
+        long[] sample = {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0, straddle ? 1 : 0};
         d.addLast(sample);
         while (d.size() > WINDOW) {
             d.pollFirst();
@@ -76,7 +79,7 @@ final class DonorThroughput {
                 f.pollFirst();
             }
         }
-        if (inFlightAtLease > 0 && !background) {
+        if (inFlightAtLease > 0 && !background && !straddle) {
             probe(worker, durationMs, inFlightAtLease, completedAtMs);
         }
     }
@@ -140,8 +143,10 @@ final class DonorThroughput {
         }
         if (k == 1) {
             // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
-            long[] solo = front(worker).stream().filter(s -> s[4] == 1).mapToLong(s -> s[0]).sorted().toArray();
-            soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
+            long[] solo = front(worker).stream().filter(s -> s[4] == 1 && s[6] == 0).mapToLong(s -> s[0]).sorted().toArray();
+            if (solo.length > 0) {
+                soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
+            }
         }
         // {lanes, 连续好的个数}
         int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0});
@@ -169,6 +174,7 @@ final class DonorThroughput {
             if (slow && win.stream().filter(x -> x).count() >= PROBE_SLOW) {
                 int from = st[0];
                 st[0] = Math.max(1, Math.min(st[0], k - 1));
+                lastBackoffAt.put(worker, completedAtMs);
                 if (st[0] < from && !calibrateFrom.containsKey(worker)) {
                     // 11-10：退了先单独做一个量一下：整台机器变慢（并行没变）时基线是旧的，会被误当成并行多了变慢
                     calibrateFrom.put(worker, from);
@@ -283,13 +289,13 @@ final class DonorThroughput {
         Deque<long[]> fd = front(worker);
         if (!probes.containsKey(worker)) {
             // 没记派出时手上几个：按前方样本的中位数；只有后台的样本时按默认（X1 补充：不拿后台的补）
-            long[] fg = fd.stream().mapToLong(s -> s[0]).sorted().toArray();
+            long[] fg = fd.stream().filter(s -> s[6] == 0).mapToLong(s -> s[0]).sorted().toArray();
             return fg.length == 0 ? DEFAULT_MS : fg[fg.length / 2];
         }
         // 派出时手上不超过 lanes 个、也不比单独做慢一半以上的（慢一半以上的是在 worker 上排了队，codex-audit 第十六节）
         int lanes = lanes(worker);
         long cap = (long) (PROBE_BAD * soloLatencyMs(worker));
-        long[] v = fd.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap).mapToLong(s -> s[0]).sorted().toArray();
+        long[] v = fd.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap && s[6] == 0).mapToLong(s -> s[0]).sorted().toArray();
         return v.length == 0 ? soloLatencyMs(worker) : v[v.length / 2];
     }
 
@@ -300,7 +306,7 @@ final class DonorThroughput {
             return solo;
         }
         // 从来没有单独做的前方样本：取前方样本里最短的，没有前方样本按默认（X1 补充：不拿后台的补，100 ms 的缓存命中会让正常的都像慢了）
-        return Math.max(1, front(worker).stream().mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
+        return Math.max(1, front(worker).stream().filter(s -> s[6] == 0).mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
     }
 
     /** worker 断开：忘掉它的记录（重连后是新的编号）。 */
@@ -316,6 +322,10 @@ final class DonorThroughput {
         calibrateStart.remove(worker);
         holdUntil.remove(worker);
         levelLatencies.remove(worker);
+        idleRejectSince.remove(worker);
+        idleRejects.remove(worker);
+        explorations.remove(worker);
+        lastBackoffAt.remove(worker);
     }
 
     /** 延迟的中位数（毫秒）。 */
@@ -433,7 +443,38 @@ final class DonorThroughput {
             // 冷启动：还没有样本，按默认延迟估一个、不乘在途数（codex-audit F5：原来 3/6/9/12 秒，少派就测不出并行）
             return nowMs + DEFAULT_MS <= deadlineMs;
         }
-        return predictFinish(nowMs, laneLatencyMs(worker), ratePerMs(worker), inFlight, lanes(worker)) <= deadlineMs;
+        boolean ok = predictFinish(nowMs, laneLatencyMs(worker), ratePerMs(worker), inFlight, lanes(worker)) <= deadlineMs;
+        if (ok || inFlight > 0) {
+            idleRejectSince.remove(worker);
+            return ok;
+        }
+        // 空着却拒掉（codex-audit 第二十一节：CPU 平分冷启动学到的延迟太长，收紧截止以后空着也全拒、学不到新的）：记数；
+        // 一直拒了 EXPLORE_MS 就放一个探路（单独做，刷新样本），可能迟到一个
+        idleRejects.merge(worker, 1L, Long::sum);
+        Long since = idleRejectSince.putIfAbsent(worker, nowMs);
+        if (since != null && nowMs - since >= EXPLORE_MS) {
+            idleRejectSince.remove(worker);
+            explorations.merge(worker, 1L, Long::sum);
+            return true;
+        }
+        return false;
+    }
+
+    /** 空着却全拒了这么久就放一个探路（毫秒）。 */
+    static final long EXPLORE_MS = Config.getLong("probeExploreMs", 5_000);
+    private final Map<Integer, Long> idleRejectSince = new HashMap<>();
+    private final Map<Integer, Long> idleRejects = new HashMap<>();
+    private final Map<Integer, Long> explorations = new HashMap<>();
+    /** worker → 最近一次回退的时刻。 */
+    private final Map<Integer, Long> lastBackoffAt = new HashMap<>();
+
+    /** 空着却拒掉的次数（/donor status；"已派的不迟到"不等于需求都满足了）。 */
+    synchronized long idleRejects(int worker) {
+        return idleRejects.getOrDefault(worker, 0L);
+    }
+
+    synchronized long explorations(int worker) {
+        return explorations.getOrDefault(worker, 0L);
     }
 
     /**

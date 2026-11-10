@@ -633,6 +633,8 @@ final class CoordinatorServer {
                     .append(",\"slots\":").append(slots(c))
                     .append(",\"parallelism\":").append(Math.round(throughput.parallelism(c.workerId) * 100) / 100.0)
                     .append(",\"lanes\":").append(throughput.lanes(c.workerId))
+                    .append(",\"idleRejects\":").append(throughput.idleRejects(c.workerId))
+                    .append(",\"explorations\":").append(throughput.explorations(c.workerId))
                     .append('}');
         }
         return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"playerTicketThrottle\":").append(PlayerTicketThrottle.json(server)).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())
