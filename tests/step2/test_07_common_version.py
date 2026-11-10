@@ -13,7 +13,7 @@ from mcd import REPO_ROOT
 MODS = {
     "coordinator": REPO_ROOT / "build" / "mods",
     "bench": REPO_ROOT / "build" / "mods",
-    "worker": REPO_ROOT / "build" / "mods-worker",
+    "worker": REPO_ROOT / "worker" / "build" / "libs",
 }
 VERSION = re.compile(r"^0\.1\.0-b([0-9a-f]{7,}(\.dirty)?|dev)$")
 
@@ -33,7 +33,7 @@ def mod_json(jar_bytes):
 def jars():
     out = {}
     for module, d in MODS.items():
-        (j,) = [p for p in d.glob(f"mcdonate-{module}-*.jar")]
+        (j,) = [p for p in d.glob(f"mcdonate-{module}-*.jar") if "sources" not in p.name]
         out[module] = j.read_bytes()
     (c,) = [p for p in (REPO_ROOT / "client" / "build" / "libs").glob("mcdonate-client-*.jar") if "sources" not in p.name]
     out["client"] = c.read_bytes()

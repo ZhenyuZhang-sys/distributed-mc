@@ -49,10 +49,13 @@ subprojects {
         it.options.encoding = 'UTF-8'
     }
 
+    // 11-10：fabric.mod.json 里的版本带上构建它的提交（scripts/gradle.sh 传 MCD_BUILD_ID），放在预发布那一段：
+    // Fabric 比版本时不看 "+" 后面的构建元数据，放那里分不出来。jar 文件名照旧用 project.version
+    def metaVersion = "${project.mod_version}-b${System.getenv('MCD_BUILD_ID') ?: 'dev'}"
     processResources {
-        inputs.property 'version', project.version
+        inputs.property 'version', metaVersion
         filesMatching('fabric.mod.json') {
-            expand 'version': project.version
+            expand 'version': metaVersion
         }
     }
 

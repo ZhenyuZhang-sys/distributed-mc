@@ -19,8 +19,17 @@ take_checkout_lock
 take_shared_lock
 
 # 仓库挂在同一个路径，报错里的文件路径和本机一致。
+# 11-10：每个 jar 嵌的 mcdonate-common 版本带上构建它的提交（build.gradle 读 MCD_BUILD_ID），
+# 来自不同提交的 jar 放在一起时 Fabric 启动就报错（原来都是 0.1.0，只加载其中一份，跑到一半 NoSuchMethodError）。
+# 在宿主机上算（JDK 镜像里不一定有 git）；有没提交的改动加 .dirty
+BUILD_ID="$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo dev)"
+if [[ "$BUILD_ID" != dev && -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+  BUILD_ID="$BUILD_ID.dirty"
+fi
+
 docker run --rm \
   --cpuset-cpus "$(build_cpus)" \
+  -e MCD_BUILD_ID="$BUILD_ID" \
   --user "$(id -u):$(id -g)" \
   -e GRADLE_USER_HOME=/gradle-home \
   -v "$GRADLE_HOME_DIR:/gradle-home" \
