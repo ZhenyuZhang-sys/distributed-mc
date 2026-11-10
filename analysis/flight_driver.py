@@ -96,7 +96,7 @@ def _prop_matches(want, used):
 
 # fish-rate（11-09）status 里每个 worker 的速度估计；老代码没有这些就不记
 WORKER_STATUS_KEYS = ('lanes', 'parallelism', 'ratePerSec', 'laneLatencyMs', 'latencyMs', 'busyMs', 'slots', 'capacityPerSec',
-                      'boost', 'backgroundLeased', 'backgroundAccepted')
+                      'boost', 'backgroundLeased', 'backgroundAccepted', 'idleRejects', 'explorations')
 
 
 def _status_counts(controller) -> dict:

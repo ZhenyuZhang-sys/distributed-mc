@@ -1,0 +1,74 @@
+{
+ "name": "ufw-solo-b0-r1",
+ "seed": 424242,
+ "repeats": 1,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x8": {
+   "donors": 1,
+   "env": {
+    "WORKER_CPUS": "8",
+    "WORKER_CPUSET": "@WORKER_CPUSET+WORKER2_CPUSET"
+   }
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G",
+  "MCD_JVM_EXTRA": "-Xlog:gc:stdout:time,uptime"
+ },
+ "note": "调度 11-10：fish-solo 8f0cf99（v2.4 候选：lanes 按速率探、整机变慢重新测基线、冷启动预热批）对 main 56b4eee，同槽位按轮切代码交替；站 60 秒朝航线再飞 33.5，boost 关，第 1 轮。用户同款 2 核，预算 2000，1×8 donor，L16 C6，带 stages。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "solo-b0-r1",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "territory+deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "donor_profile": [
+     "1x8"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ],
+    "corridor_chunks": [
+     6
+    ],
+    "boost": [
+     0
+    ],
+    "stand_s": [
+     60
+    ],
+    "repeats": 1
+   }
+  ]
+ }
+}
