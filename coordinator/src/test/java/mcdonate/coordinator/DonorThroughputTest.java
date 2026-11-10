@@ -606,4 +606,31 @@ class DonorThroughputTest {
         assertEquals(4, t.lanes(1));
         assertTrue(t.laneLatencyMs(1) >= 600, "马上开始的延迟按前方的：" + t.laneLatencyMs(1));
     }
+
+    @Test
+    void backgroundResultsDoNotPushOutForegroundSamples() {
+        // codex-audit 第十八节复核（第 162 项）：唯一一个前方样本（k3、700 ms）被 10 个后台结果挤出样本窗口，
+        // 前方延迟退回默认 3 秒，2 秒截止的就被拒了。演示正好是"站着大量后台 + 起飞少量前方"
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int i = 0; i < 3; i++) {
+            m.start(now);
+        }
+        now += 700;
+        long[] r = m.read(now);
+        t.record(1, 700, now, r[0], r[1], 3, false);
+        for (int i = 0; i < 3; i++) {
+            m.end(now);
+        }
+        for (int i = 0; i < 12; i++) {
+            m.start(now);
+            now += 1_500;
+            r = m.read(now);
+            t.record(1, 1_500, now, r[0], r[1], 1, true);
+            m.end(now);
+        }
+        assertEquals(700, t.laneLatencyMs(1), "前方延迟还是那个前方样本的");
+        assertTrue(t.canMeet(1, 0, now, now + 2_000), "空着的 donor 能接 2 秒截止的前方任务");
+    }
 }
