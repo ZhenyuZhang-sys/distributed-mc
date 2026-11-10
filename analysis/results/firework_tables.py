@@ -286,6 +286,11 @@ def boost_breakdown(name='k3-56b4eeeboost-ufw-boost-face60', title='后台导入
         L.append(f"| {'开' if boost else '关'} | " + ' | '.join(show(med(cpu.get((boost, ph), [])), 2) for ph in ('站着', '≤48 那段', '>48 那段')) + ' |')
     if notes:
         L += [''] + notes + ['']
+    L += ab('v2.4 候选 fish-solo 8f0cf99 对 main 56b4eee（站 60 秒朝航线再飞，同槽位按轮切代码）',
+            '2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒；k3 boost 关、k4 boost 开，每版 2 轮。boost 关时 8f0cf99 退步：'
+            '飞完 lanes 1 / parallelism 1.0（56b4eee 是 4 / 4.0），空白、前方就绪、被接受都更差，两轮对两轮不重叠；boost 开时持平。',
+            ['k3-solo-56b4eee', 'k3-solo-8f0cf99', 'u1-solo-56b4eee', 'u1-solo-8f0cf99'],
+            lambda r, n: f"{n.split('-')[-1]} · boost {'开' if r.get('boost') else '关'}")
     return L
 
 
