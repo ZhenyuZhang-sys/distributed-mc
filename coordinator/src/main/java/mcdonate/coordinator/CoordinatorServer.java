@@ -322,6 +322,7 @@ final class CoordinatorServer {
         // 11-09 加速模式：开了加速的按它报的线程数放宽在途上限；11-10：再不超过实测能同时做的个数（lanes），不只用来估
         int boostMax = BoostPolicy.maxInFlight(slots(c), c.boost, c.threads);
         throughput.setCeiling(c.workerId, Math.max(DonorThroughput.MAX_CONCURRENCY, boostMax));
+        throughput.expireCalibration(c.workerId, now); // Z1：单独量到期不靠结果到来
         // 退了以后单独量一次的时候只派 1 个，也不派后台（后台一起跑会把这个单独的拖慢）
         int max = throughput.calibrating(c.workerId) ? 1
                 : BoostPolicy.dispatchCap(throughput.inFlightCap(c.workerId, boostMax), c.boost, boostMax);

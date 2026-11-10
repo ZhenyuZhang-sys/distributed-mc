@@ -103,13 +103,15 @@ final class DonorThroughput {
         if (cal != null && completedAtMs > cal) {
             calibrateUntil.remove(worker); // 量了太久没有单独做的前方任务（只有后台、没人飞）：不量了
             calibrateFrom.remove(worker);
+            calibrateStart.remove(worker);
             cal = null;
         }
-        if (cal != null && k == 1) {
-            // 退了以后单独做的这一个：和原来单独做的基线比
+        if (cal != null && k == 1 && completedAtMs - durationMs >= calibrateStart.getOrDefault(worker, Long.MAX_VALUE)) {
+            // 退了以后新派出、单独做的这一个（codex-audit 第二十节 Z2：回退之前就派出去的不算）：和原来单独做的基线比
             long old = soloLatencyMs(worker);
-            int from = calibrateFrom.remove(worker);
+            calibrateFrom.remove(worker);
             calibrateUntil.remove(worker);
+            calibrateStart.remove(worker);
             if (durationMs > PROBE_BAD * old) {
                 // 单独做也慢了：是整台机器变慢（用户开了游戏），不是并行多了。基线换成新的，旧的前方样本作废，lanes 恢复
                 soloMs.put(worker, Math.max(1, durationMs));
@@ -121,9 +123,9 @@ final class DonorThroughput {
                         f.addLast(last);
                     }
                 }
+                // Z3：lanes 不直接恢复到退之前的（真的少了并行、同时也变慢时会误恢复），按新的基线从现在的 lanes 往上探
                 int[] st = probes.get(worker);
                 if (st != null) {
-                    st[0] = Math.max(st[0], from);
                     st[1] = 0;
                 }
                 Deque<Boolean> win = slowWindows.get(worker);
@@ -171,6 +173,7 @@ final class DonorThroughput {
                     // 11-10：退了先单独做一个量一下：整台机器变慢（并行没变）时基线是旧的，会被误当成并行多了变慢
                     calibrateFrom.put(worker, from);
                     calibrateUntil.put(worker, completedAtMs + CALIBRATE_MS);
+                    calibrateStart.put(worker, completedAtMs);
                 }
                 st[1] = 0;
                 win.clear();
@@ -201,6 +204,19 @@ final class DonorThroughput {
     private final Map<Integer, Integer> calibrateFrom = new HashMap<>();
     /** worker → 单独量到什么时候为止。 */
     private final Map<Integer, Long> calibrateUntil = new HashMap<>();
+
+    /** worker → 从什么时候开始单独量（这之后派出的单独任务才算测量，Z2）。 */
+    private final Map<Integer, Long> calibrateStart = new HashMap<>();
+
+    /** 单独量到期了就结束（codex-audit 第二十节 Z1：原来只在有前方结果回来时检查，没有结果时一直只派 1 个）。派活时调。 */
+    synchronized void expireCalibration(int worker, long nowMs) {
+        Long until = calibrateUntil.get(worker);
+        if (until != null && nowMs > until) {
+            calibrateUntil.remove(worker);
+            calibrateFrom.remove(worker);
+            calibrateStart.remove(worker);
+        }
+    }
 
     /** 这个 worker 是不是在退了以后单独量一次（这时只派 1 个，也不派后台）。 */
     synchronized boolean calibrating(int worker) {
@@ -297,6 +313,7 @@ final class DonorThroughput {
         frontSamples.remove(worker);
         calibrateFrom.remove(worker);
         calibrateUntil.remove(worker);
+        calibrateStart.remove(worker);
         holdUntil.remove(worker);
         levelLatencies.remove(worker);
     }
