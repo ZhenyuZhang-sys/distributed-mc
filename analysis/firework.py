@@ -203,10 +203,11 @@ def _pos_at(rows, t):
     return a['x'] + (b['x'] - a['x']) * f, a['z'] + (b['z'] - a['z']) * f
 
 
-def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blocks=0, start=None):
+def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blocks=0, start=None, min_chunks=None, max_chunks=None):
     """前方空白时长（调度 11-09 用户定的主指标）：进视野时 chunk 中心在飞行方向左右各 half_angle 度以内、又在缓存区（预生成的方形）
     外面的 chunk，从 enter 到第一个 ready（服务器 getChunkToSend 就绪）的秒数。进来就就绪是 0。没就绪就离开视野、或到飞行结束也没就绪的
-    记到那一刻为止，标截尾（实际只会更长）。返回 [(秒, 是否截尾)]。"""
+    记到那一刻为止，标截尾（实际只会更长）。返回 [(秒, 是否截尾)]。
+    min_chunks / max_chunks：只算离起点所在 chunk（方形距离）在这个范围里的（加速演示：后台走廊半径内外分开报）。"""
     if not rows:
         return []
     heading = _route_heading(run)
@@ -231,6 +232,9 @@ def blank_times(events, rows, run=None, view=10, half_angle=45, cache_radius_blo
         if e['ev'] == 'enter':
             ccx, ccz = e['cx'] * 16 + 8, e['cz'] * 16 + 8
             if max(abs(ccx - sx), abs(ccz - sz)) <= cache_radius_blocks:
+                continue
+            dc = max(abs(e['cx'] - math.floor(sx / 16)), abs(e['cz'] - math.floor(sz / 16)))
+            if (min_chunks is not None and dc < min_chunks) or (max_chunks is not None and dc > max_chunks):
                 continue
             d = direction(t)
             x, z = _pos_at(rows, t)
@@ -322,6 +326,9 @@ def gc_max_ms(path):
 SPIKE_MS = 200
 
 
+NEAR_CHUNKS = 48   # 和 coordinator 的 backgroundRadius 默认值一样
+
+
 def recompute(attempt_dir, params) -> dict:
     """按归档的逐秒行重算出缓存区以后的指标（报告用；11-09 第一轮的速度比按错的速度算过）。"""
     import json
@@ -343,6 +350,10 @@ def recompute(attempt_dir, params) -> dict:
         out.update(forward_summary(forward_ready(ev, rows, view=view, run=run, initial=initial), rows, DEFAULT_START, radius))
         out.update(sector_summary(front_sector_ready(ev, rows, view=view, run=run, initial=initial), rows, DEFAULT_START, radius))
         out.update(blank_summary(blank_times(ev, rows, run=run, view=view, cache_radius_blocks=radius, start=DEFAULT_START)))
+        # 加速演示：后台走廊半径（backgroundRadius 48 个 chunk）内外分开
+        for tag, kw in (('near', dict(max_chunks=NEAR_CHUNKS)), ('far', dict(min_chunks=NEAR_CHUNKS + 1))):
+            sm = blank_summary(blank_times(ev, rows, run=run, view=view, cache_radius_blocks=radius, start=DEFAULT_START, **kw))
+            out.update({k.replace('blank_', f'blank_{tag}_'): v for k, v in sm.items()})
     return out
 
 

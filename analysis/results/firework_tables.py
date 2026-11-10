@@ -151,6 +151,8 @@ AB_COLS = (('前方空白 中位（秒）', 'blank_median_s', False, 1), ('p90�
            ('卡住（参考）', 'stall_after_exit', True, 1), ('交回被接受', 'imports_accepted', False, 0), ('hopeless 丢弃', 'hopeless', False, 0),
            ('飞过丢弃', 'stale_dropped', False, 0), ('worker 核', 'worker_cores', False, 2), ('tile/s', 'tile_s', False, 2),
            ('MSPT p95', 'mspt_p95', False, 1), ('MSPT max', 'mspt_max', False, 0),
+           ('≤48 chunk 空白中位', 'blank_near_median_s', False, 1), ('≤48 等到就绪', 'blank_near_ready_share', True, 1),
+           ('>48 chunk 空白中位', 'blank_far_median_s', False, 1),
            ('站着时后台导入', 'stand_bg_imported', False, 0), ('站着 MSPT p95', 'stand_mspt_p95', False, 1), ('站着 MSPT max', 'stand_mspt_max', False, 0))
 
 
@@ -189,7 +191,8 @@ def experiments_evening():
             ['k2-rate-e7fed5f', 'k2-rate-0dfd6c9', 'k2-rate2-e7fed5f', 'k2-rate2-ba95fde'],
             lambda r, n: f"{n.split('-')[-1]} · mc{r.get('max_concurrency')}" + (' · 第二批' if 'rate2' in n else ''))
     for code, note in (('92f40c4', '第一版'), ('f9d27c0', '修了后台导入节流（codex-audit 第十七节）'), ('60efd48', '修了 lanes 回退（含 0163fc8）'),
-                       ('097bea7', 'fish-v23，codex-audit 第十八节 X1～X4'), ('1409315', 'fish-v23，后台先沿朝向往前铺；假玩家站着朝航线看')):
+                       ('097bea7', 'fish-v23，codex-audit 第十八节 X1～X4'), ('1409315', 'fish-v23，后台先沿朝向往前铺；假玩家站着朝航线看'),
+                       ('56b4eee', 'v2.3 包：1409315 + df9c0e2 前方样本单独窗口 + 朝向修复')):
         L += ab(f'加速模式 boost（fish-boost {code}，{note}）',
                 '2 核，预算 2000，1×8 donor，L16 C6，直线 33.5 格/秒 120 秒；测试环境用 worker 的 /donor boost 代替客户端开关，每轮核对 coordinator status。'
                 '"先站 60 秒"是起飞前在原地站着（后台先算周围）；不站的是直接飞。f9d27c0：开的那臂飞完时 lanes 都退到 1，前方变差。',

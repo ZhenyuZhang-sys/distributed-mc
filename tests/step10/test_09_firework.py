@@ -376,3 +376,16 @@ def test_blank_time_counts_front_chunks_outside_cache():
     assert s['blank_p90_s'] == pytest.approx(4.0)
     assert s['blank_ready_share'] == pytest.approx(3 / 5)
     assert blank_summary([]) == dict(blank_median_s=None, blank_p90_s=None, blank_n=0, blank_censored=0, blank_ready_share=None)
+
+
+def test_blank_time_split_by_distance_from_start():
+    # 调度 11-10 加速演示：后台走廊只铺到起点外 48 个 chunk，整段平均会把差别冲淡；按离起点的 chunk 距离（方形）分两段报
+    from analysis.firework import blank_times, blank_summary
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0) for t in range(0, 11)]
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))
+    ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=3000, cx=4, cz=0, ev='ready'),     # 离起点 4：2 秒
+          dict(t_ms=3000, cx=6, cz=1, ev='enter'), dict(t_ms=7000, cx=6, cz=1, ev='ready')]     # 离起点 6：4 秒
+    near = blank_times(ev, rows, run=run, view=2, cache_radius_blocks=24, max_chunks=5)
+    far = blank_times(ev, rows, run=run, view=2, cache_radius_blocks=24, min_chunks=6)
+    assert [round(d, 3) for d, _ in near] == [2.0] and [round(d, 3) for d, _ in far] == [4.0]
+    assert blank_summary(near)['blank_median_s'] == 2.0
