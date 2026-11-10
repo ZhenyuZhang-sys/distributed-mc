@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 
 from mcd import donor_imports, wait_until, worker_id
 
@@ -37,9 +38,10 @@ def test_status_reports_frontier(server):
 
 
 def test_status_reports_forward_scan(server):
-    # 11-09 找需求先看正前方：默认关，开关和前方组计数写进 /donor status（直线 A/B 看候选够不够）
+    # 11-09 找需求先看正前方：默认开（A/B 后定），开关和前方组计数写进 /donor status（直线 A/B 看候选够不够）
     s = json.loads(server.rcon("donor status"))
-    assert s["config"]["demandForwardFirst"] is False, s["config"]
+    off = "-Dmcdonate.demandForwardFirst=0" in os.environ.get("MCD_JVM_EXTRA", "")
+    assert s["config"]["demandForwardFirst"] is (not off), s["config"]
     assert {"on", "candidates", "visited", "avgCandidates", "visitedRatio"} <= set(s["scan"]["forward"]), s["scan"]
 
 

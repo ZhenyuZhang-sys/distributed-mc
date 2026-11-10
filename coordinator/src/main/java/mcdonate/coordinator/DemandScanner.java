@@ -96,9 +96,11 @@ public final class DemandScanner {
     /**
      * 11-09 找需求先看正前方：每个玩家的候选先扫前方走廊里的（在飞行方向前面、离线不超过 corridorChunks），再扫其余的。
      * 直线飞时前方远处的 tile 按远近排在后面，扫描预算用完就轮不到（codex-pipe：待齐邻居里 39% 的 tile 整轮没派过）。
-     * 不记游标，每次扫描从头来；前方组的时间片和读盘额度按玩家平分。默认关（0）。
+     * 不记游标，每次扫描从头来；前方组的时间片和读盘额度按玩家平分。
+     * 11-09 起默认开（kexu 1×8 三轮：前方空白中位 4.6→4.2 秒、前方就绪 57→62 格；codex-bench ABABAB 3 对：43.2→47.4 格；MSPT 不变）。
+     * -Dmcdonate.demandForwardFirst=0 关（对照用）。
      */
-    static final boolean FORWARD_FIRST = on(Config.get("demandForwardFirst", "0"));
+    static final boolean FORWARD_FIRST = on(Config.get("demandForwardFirst", "1"));
 
     private static boolean on(String v) {
         return v.equals("1") || v.equalsIgnoreCase("true");
