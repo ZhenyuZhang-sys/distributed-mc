@@ -75,23 +75,32 @@ def test_dotenv_syntax_is_parsed_like_compose(tmp_path):
     assert apc(config("worker", MCD_LOCAL_ENV=local_env(tmp_path, "WORKER_CPUS=2\nWORKER_GEN_THREADS=${WORKER_CPUS}\n"))["worker"]) == 3
 
 
+def tc_config(script: str, **env) -> dict:
+    """source lib.sh 后跑一段 bash（最后是 tc config），返回渲染出来的 services。打开 worker、worker3 的 profile。"""
+    e = {k: v for k, v in os.environ.items() if not k.startswith(("WORKER", "MCD_WORKER"))}
+    e.update(env, COMPOSE_PROFILES="worker,worker2,worker3")
+    out = subprocess.run(["bash", "-c", f"source scripts/lib.sh; {script}"], capture_output=True, text=True, cwd=REPO_ROOT, env=e)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)["services"]
+
+
 def test_empty_value_overrides_earlier_one(tmp_path):
-    # L2：后面写了空值就是空（compose 的 ${X:-默认} 取默认），不保留前面的
-    env = local_env(tmp_path, "WORKER3_CPUS=4\nWORKER3_CPUS=\nWORKER_GEN_THREADS=8\nWORKER_GEN_THREADS=\n")
-    s = config("worker,worker3", MCD_LOCAL_ENV=env)
-    assert apc(s["worker3"]) == 2, "worker3 回到默认 0.5 核"
-    assert apc(s["worker"]) == threads_for(s["worker"]["cpus"]) + 1, "线程数回到按核数"
+    # L2：后一层 env 文件写了空值就是空（compose 的 ${X:-默认} 取默认），不保留前一层的
+    early = tmp_path / "early.env"
+    early.write_text("WORKER_CPUS=8\nWORKER3_CPUS=4\nWORKER_GEN_THREADS=8\n")
+    late = tmp_path / "late.env"
+    late.write_text("WORKER_CPUS=\nWORKER3_CPUS=\nWORKER_GEN_THREADS=\n")
+    s = tc_config(f'LIMITS_ENV="{early}"; LOCAL_ENV="{late}"; tc config --format json')
+    assert s["worker3"]["cpus"] == 0.5 and apc(s["worker3"]) == 2, ("worker3 回到默认 0.5 核", s["worker3"]["cpus"], apc(s["worker3"]))
+    assert s["worker"]["cpus"] == 4 and apc(s["worker"]) == 5, ("worker 回到默认 4 核", s["worker"]["cpus"], apc(s["worker"]))
 
 
 def test_unexported_shell_variable_is_not_compose_env():
-    # L3：没 export 的 Bash 变量 compose 看不到，派生值也不能用它
-    script = 'source scripts/lib.sh; WORKER_CPUS=1; tc config --format json'
-    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=REPO_ROOT,
-                         env={k: v for k, v in os.environ.items() if k != "WORKER_CPUS"})
-    assert out.returncode == 0, out.stderr
-    w = json.loads(out.stdout)["services"].get("worker")
-    if w is not None:   # worker 不在默认 profile 里时 config 不输出它；输出了就要对得上
-        assert apc(w) == threads_for(w["cpus"]) + 1, (w["cpus"], w["environment"]["JVM_OPTS"])
+    # L3：没 export 的 Bash 变量 compose 看不到，派生值也不能用它；export 的照常
+    s = tc_config("WORKER_CPUS=1; tc config --format json")
+    assert apc(s["worker"]) == threads_for(s["worker"]["cpus"]) + 1, (s["worker"]["cpus"], apc(s["worker"]))
+    s = tc_config("export WORKER_CPUS=2; tc config --format json")
+    assert s["worker"]["cpus"] == 2 and apc(s["worker"]) == 3
 
 
 def test_bad_thread_setting_does_not_block_non_creating_commands(tmp_path):
