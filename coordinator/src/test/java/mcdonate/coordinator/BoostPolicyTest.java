@@ -88,4 +88,56 @@ class BoostPolicyTest {
         assertEquals(4, BoostPolicy.dispatchCap(4, true, 8));
         assertEquals(1, BoostPolicy.backgroundSlots(BoostPolicy.dispatchCap(1, true, 3)));
     }
+
+    // ---- 11-10 演示：后台先沿玩家朝向往前铺（站着看视线方向、走着看移动方向），再做两侧 ----
+
+    @Test
+    void forwardCorridorFirst() {
+        // 玩家在 chunk (0,0)、朝 +x，起始圈 4、半径 32、走廊半宽 10 chunk：先把正前方一条铺到 32 圈，再做两侧
+        List<TilePos> c = BoostPolicy.backgroundOrder(new int[][] {{0, 0, 4}}, new double[][] {{1, 0}}, 32, 10);
+        boolean sides = false;
+        int lastAhead = -1;
+        for (TilePos t : c) {
+            boolean corridor = BoostPolicy.inCorridor(t, 0, 0, 1, 0, 10);
+            if (!corridor) {
+                sides = true;
+                continue;
+            }
+            assertTrue(!sides, "走廊里的都排在两侧前面：" + t);
+            int d = Demand.minChunkDistance(t, 0, 0);
+            assertTrue(d >= lastAhead, "走廊里按远近往前：" + t);
+            lastAhead = d;
+        }
+        assertTrue(sides, "走廊铺完以后两侧照样做");
+        for (TilePos t : c.subList(0, 10)) {
+            assertTrue(BoostPolicy.inCorridor(t, 0, 0, 1, 0, 10), "最先做的都在前方走廊里：" + t);
+        }
+        assertTrue(lastAhead >= 28, "走廊一直铺到半径附近：" + lastAhead);
+    }
+
+    @Test
+    void corridorIsAheadOnly() {
+        assertTrue(BoostPolicy.inCorridor(new TilePos(5, 0), 0, 0, 1, 0, 10));
+        assertTrue(!BoostPolicy.inCorridor(new TilePos(-5, 0), 0, 0, 1, 0, 10), "身后的不算");
+        assertTrue(!BoostPolicy.inCorridor(new TilePos(5, 5), 0, 0, 1, 0, 10), "离线 20 chunk：两侧");
+        assertTrue(!BoostPolicy.inCorridor(new TilePos(5, 0), 0, 0, 0, 0, 10), "没有方向：没有走廊");
+    }
+
+    @Test
+    void noDirectionKeepsRings() {
+        List<TilePos> a = BoostPolicy.backgroundOrder(new int[][] {{0, 0, 12}}, 24);
+        List<TilePos> b = BoostPolicy.backgroundOrder(new int[][] {{0, 0, 12}}, new double[][] {{0, 0}}, 24, 10);
+        assertEquals(a, b, "没有方向（预设中心、不知道朝向）：照旧一圈一圈");
+    }
+
+    @Test
+    void directionFromYaw() {
+        // Minecraft 的 yaw：0 朝 +z（南），90 朝 -x（西），-90 朝 +x（东）
+        double[] east = BoostPolicy.directionFromYaw(-90);
+        assertEquals(1, east[0], 1e-9);
+        assertEquals(0, east[1], 1e-9);
+        double[] south = BoostPolicy.directionFromYaw(0);
+        assertEquals(0, south[0], 1e-9);
+        assertEquals(1, south[1], 1e-9);
+    }
 }

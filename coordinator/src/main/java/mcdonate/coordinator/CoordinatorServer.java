@@ -188,6 +188,8 @@ final class CoordinatorServer {
     /** 第 7 步对比用（/donor reset）：清掉队列、撤回在租的（发 cancel）、放开所有闸门。返回撤回了几个。 */
     int reset() {
         List<TaskQueue.Cancelled> cancel = tasks.reset();
+        importQueues.clear(); // codex-audit 第十八节：旧一轮排着导入的结果（导了也会被丢弃）不再占背压名额
+        resultMeta.clear(); // 这些结果的大小、耗时记录也一起清（codex-audit 第 162 项复核 P3）
         for (TaskQueue.Cancelled c : cancel) {
             waitDonor.release(c.taskId());
             Connection conn = workers.get(c.worker());
@@ -265,14 +267,13 @@ final class CoordinatorServer {
                     LOG.info("玩家已经飞过的 tile：删掉排队的 {} 个，撤回派出的 {} 个", stale.dropped().size(), stale.cancelled().size());
                 }
                 // 11-09：按每个在线、没暂停的 donor 的实测延迟、速率、在途数，估每个排队任务最早什么时候做完，来不及的现在就丢掉（G5）
-                List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
+                List<Integer> live = new java.util.ArrayList<>();
                 for (Connection c : workers.values()) {
                     if (!c.paused) {
-                        est.add(new TaskQueue.DonorEstimate(throughput.laneLatencyMs(c.workerId), throughput.ratePerMs(c.workerId),
-                                tasks.inFlight(c.workerId), throughput.lanes(c.workerId)));
+                        live.add(c.workerId);
                     }
                 }
-                List<Long> hopeless = tasks.pruneHopeless(est);
+                List<Long> hopeless = pruneAndNote(tasks, throughput, live, now);
                 if (!hopeless.isEmpty()) {
                     LOG.info("排队的 {} 个 tile 按现在的吞吐来不及，丢掉，交给服务器", hopeless.size());
                 }
@@ -307,6 +308,26 @@ final class CoordinatorServer {
         }
     }
 
+    /**
+     * 剪掉来不及的；空着、该探路的 donor 留一个（codex-audit 第二十一节 R3：原来先剪光，canMeet 从来没被问，
+     * "空着全拒 5 秒放一个"永远不触发）。剪掉了东西时，空着的 donor 记一次"空着却拒掉"（开始计时）。
+     */
+    static List<Long> pruneAndNote(TaskQueue tasks, DonorThroughput throughput, List<Integer> workers, long now) {
+        List<TaskQueue.DonorEstimate> est = new java.util.ArrayList<>();
+        for (int w : workers) {
+            est.add(throughput.estimate(w, tasks.inFlight(w), now));
+        }
+        List<Long> hopeless = tasks.pruneHopeless(est);
+        if (!hopeless.isEmpty()) {
+            for (int w : workers) {
+                if (tasks.inFlight(w) == 0) {
+                    throughput.noteIdleReject(w, now);
+                }
+            }
+        }
+        return hopeless;
+    }
+
     /** 这个 worker 同时能领几个：开 throughput 时按实测耗时（租约内能做完的个数，最多 maxConcurrency），关着时 1 个。 */
     private int slots(Connection c) {
         return features.on(Features.THROUGHPUT) ? throughput.concurrency(c.workerId, LEASE_MS) : 1;
@@ -320,7 +341,10 @@ final class CoordinatorServer {
         // 11-09 加速模式：开了加速的按它报的线程数放宽在途上限；11-10：再不超过实测能同时做的个数（lanes），不只用来估
         int boostMax = BoostPolicy.maxInFlight(slots(c), c.boost, c.threads);
         throughput.setCeiling(c.workerId, Math.max(DonorThroughput.MAX_CONCURRENCY, boostMax));
-        int max = BoostPolicy.dispatchCap(throughput.inFlightCap(c.workerId, boostMax), c.boost, boostMax);
+        throughput.expireCalibration(c.workerId, now); // Z1：单独量到期不靠结果到来
+        // 退了以后单独量一次的时候只派 1 个，也不派后台（后台一起跑会把这个单独的拖慢）
+        int max = throughput.calibrating(c.workerId) ? 1
+                : BoostPolicy.dispatchCap(throughput.inFlightCap(c.workerId, boostMax), c.boost, boostMax);
         boolean thr = features.on(Features.THROUGHPUT);
         java.util.function.LongPredicate canMeet = thr || features.on(Features.DEADLINE)
                 ? due -> throughput.canMeet(c.workerId, tasks.inFlight(c.workerId), now, due) : due -> true;
@@ -334,7 +358,8 @@ final class CoordinatorServer {
         boolean boost = c.boost && importQueues.backgroundPending() < BoostPolicy.BACKGROUND_PENDING_CAP;
         while ((a = tasks.assign(c.workerId, max, canMeet, boost)).isPresent()) {
             TaskQueue.Assignment x = a.get();
-            LOG.info("任务 {}（tile {}, {}）派给 worker {}", x.taskId(), x.tx(), x.tz(), c.workerId);
+            boolean explore = throughput.leased(c.workerId, now);
+            LOG.info("任务 {}（tile {}, {}）派给 worker {}{}", x.taskId(), x.tx(), x.tz(), c.workerId, explore ? "（探路）" : "");
             // 派出去就记下，不等 worker 的心跳（一个 tile 只要 2 秒左右，可能两次心跳之间就做完了）
             c.currentTask = x.taskId();
             c.send(new Task(x.taskId(), x.tx(), x.tz(), x.leaseMs()));
@@ -344,6 +369,9 @@ final class CoordinatorServer {
                 List<Long> back = tasks.workerGone(c.workerId);
                 LOG.info("worker {} 派活时断开，任务 {} 回到队首", c.workerId, back);
                 return;
+            }
+            if (explore) {
+                return; // 探路单独做（R4）
             }
         }
     }
@@ -436,7 +464,7 @@ final class CoordinatorServer {
                     // 11-09（A10）：排进导入队列，每个 tick 结束时按预算做（drainImports），不再各自 server.execute
                     // codex-audit 第十七节 B1：后台的单独排队，主线程闲时才导，前方的先导
                     if (tasks.currentlyBackground(r.taskId())) {
-                        importQueues.addBackground(() -> importResult(c, r, epoch));
+                        importQueues.addBackground(r.taskId(), () -> importResult(c, r, epoch));
                     } else {
                         importQueues.addForeground(() -> importResult(c, r, epoch));
                     }
@@ -556,7 +584,8 @@ final class CoordinatorServer {
 
     /** 主线程上，每个 tick 结束时调：按预算做排着的导入。 */
     void drainImports() {
-        importQueues.drain(IMPORT_BUDGET_MS * 1_000_000, System::nanoTime, server.getAverageTickTimeNanos() / 1e6);
+        importQueues.drain(IMPORT_BUDGET_MS * 1_000_000, System::nanoTime, server.getAverageTickTimeNanos() / 1e6,
+                id -> !tasks.currentlyBackground(id));
     }
 
     /** 排队剪枝估一个 tile 要多久：最快那个 donor 的延迟；没有 donor 是 0。纯函数。 */
@@ -627,6 +656,8 @@ final class CoordinatorServer {
                     .append(",\"slots\":").append(slots(c))
                     .append(",\"parallelism\":").append(Math.round(throughput.parallelism(c.workerId) * 100) / 100.0)
                     .append(",\"lanes\":").append(throughput.lanes(c.workerId))
+                    .append(",\"idleRejects\":").append(throughput.idleRejects(c.workerId))
+                    .append(",\"explorations\":").append(throughput.explorations(c.workerId))
                     .append('}');
         }
         return sb.append("],\"features\":").append(features.json()).append(",\"config\":").append(configJson()).append(",\"playerTicketThrottle\":").append(PlayerTicketThrottle.json(server)).append(",\"demand\":").append(demandOn).append(",\"scan\":").append(demand.json()).append(",\"tasks\":").append(tasks.countsJson())

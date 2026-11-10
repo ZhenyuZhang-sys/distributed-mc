@@ -2,6 +2,7 @@ package mcdonate.coordinator;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.LongPredicate;
 import java.util.function.LongSupplier;
 
 /**
@@ -12,7 +13,10 @@ import java.util.function.LongSupplier;
  */
 final class ImportScheduler {
     private final Queue<Runnable> foreground = new ConcurrentLinkedQueue<>();
-    private final Queue<Runnable> background = new ConcurrentLinkedQueue<>();
+    /** 后台的带着任务编号（-1 不知道）：玩家要了这个 tile 时挪到前方（codex-audit 第十八节 X3）。 */
+    private record Bg(long taskId, Runnable job) {}
+
+    private final Queue<Bg> background = new ConcurrentLinkedQueue<>();
     /** 离上一次导后台过了几个 tick（只在主线程上用）。 */
     private int ticksSinceBackground = BoostPolicy.BACKGROUND_IMPORT_EVERY_TICKS;
     private long backgroundImported;
@@ -22,7 +26,17 @@ final class ImportScheduler {
     }
 
     void addBackground(Runnable r) {
-        background.add(r);
+        addBackground(-1, r);
+    }
+
+    void addBackground(long taskId, Runnable r) {
+        background.add(new Bg(taskId, r));
+    }
+
+    /** reset 时清掉（旧一轮的结果导了也会被丢弃，留着还占背压名额）。 */
+    void clear() {
+        foreground.clear();
+        background.clear();
     }
 
     int foregroundPending() {
@@ -39,12 +53,24 @@ final class ImportScheduler {
 
     /** 一个 tick 的导入。avgTickMs：服务器最近的平均 tick 毫秒数。返回导了几个（前方 + 后台）。 */
     int drain(long budgetNanos, LongSupplier nanoClock, double avgTickMs) {
+        return drain(budgetNanos, nanoClock, avgTickMs, id -> false);
+    }
+
+    /** 同上，nowForeground：这个任务现在是不是前方的了（有了截止）；是的话先挪到前方队列。 */
+    int drain(long budgetNanos, LongSupplier nanoClock, double avgTickMs, LongPredicate nowForeground) {
+        for (var it = background.iterator(); it.hasNext(); ) {
+            Bg b = it.next();
+            if (b.taskId() >= 0 && nowForeground.test(b.taskId())) {
+                it.remove();
+                foreground.add(b.job());
+            }
+        }
         ticksSinceBackground++;
         int n = ImportBudget.drain(foreground, budgetNanos, nanoClock);
         if (BoostPolicy.backgroundImportAllowed(n > 0, !foreground.isEmpty(), avgTickMs, ticksSinceBackground)) {
-            Runnable r = background.poll();
-            if (r != null) {
-                r.run();
+            Bg b = background.poll();
+            if (b != null) {
+                b.job().run();
                 ticksSinceBackground = 0;
                 backgroundImported++;
                 n++;

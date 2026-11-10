@@ -68,6 +68,33 @@ final class BoostPolicy {
      * 离哪个中心都不超过 radius 圈的才要；在任何一个中心的起始圈以内的都不要。按"离最近的中心几圈"从小到大，同一圈按中心、坐标排。不重复。
      */
     static List<TilePos> backgroundOrder(int[][] centers, int radius) {
+        return backgroundOrder(centers, null, radius, 0);
+    }
+
+    /** 后台走廊半宽（chunk）：比找需求的前方走廊宽一个 tile（11-10 演示）。 */
+    static final int BACKGROUND_CORRIDOR = Config.getInt("backgroundCorridorChunks", TaskQueue.CORRIDOR_CHUNKS + 4);
+
+    /** tile 中心在不在中心 (cx, cz) 沿方向 (dx, dz) 的前方走廊里（前面、离线不超过 corridor 个 chunk）。没有方向时 false。纯函数。 */
+    static boolean inCorridor(TilePos t, int cx, int cz, double dx, double dz, int corridor) {
+        double len = Math.hypot(dx, dz);
+        if (len == 0) {
+            return false;
+        }
+        double ox = t.minChunkX() + (TilePos.SIZE - 1) / 2.0 - cx, oz = t.minChunkZ() + (TilePos.SIZE - 1) / 2.0 - cz;
+        return (ox * dx + oz * dz) > 0 && Math.abs(ox * dz - oz * dx) / len <= corridor;
+    }
+
+    /** Minecraft 的 yaw（度）换成水平方向 {x, z}：0 朝 +z，90 朝 -x。 */
+    static double[] directionFromYaw(double yawDeg) {
+        double r = Math.toRadians(yawDeg);
+        return new double[] {-Math.sin(r), Math.cos(r)};
+    }
+
+    /**
+     * 同下，dirs：每个中心的方向 {dx, dz}（没有方向是 {0, 0} 或 dirs 为 null）。11-10 演示：前方走廊（corridor 半宽）里的先做，
+     * 按离中心几圈往前铺到 radius；走廊外的（两侧、身后）照旧一圈一圈。玩家站着朝航线看，donor 就先把要飞的那条路算好。
+     */
+    static List<TilePos> backgroundOrder(int[][] centers, double[][] dirs, int radius, int corridor) {
         Set<TilePos> seen = new HashSet<>();
         List<long[]> c = new ArrayList<>();   // {ring, center, tx, tz}
         for (int i = 0; i < centers.length; i++) {
@@ -93,16 +120,20 @@ final class BoostPolicy {
                         }
                     }
                     if (!inside && ring <= radius) {
-                        c.add(new long[] {ring, owner, tx, tz});
+                        boolean ahead = false;
+                        for (int j = 0; dirs != null && j < centers.length && !ahead; j++) {
+                            ahead = inCorridor(t, centers[j][0], centers[j][1], dirs[j][0], dirs[j][1], corridor);
+                        }
+                        c.add(new long[] {ahead ? 0 : 1, ring, owner, tx, tz});
                     }
                 }
             }
         }
         c.sort(Comparator.<long[]>comparingLong(x -> x[0]).thenComparingLong(x -> x[1])
-                .thenComparingLong(x -> x[2]).thenComparingLong(x -> x[3]));
+                .thenComparingLong(x -> x[2]).thenComparingLong(x -> x[3]).thenComparingLong(x -> x[4]));
         List<TilePos> out = new ArrayList<>(c.size());
         for (long[] x : c) {
-            out.add(new TilePos((int) x[2], (int) x[3]));
+            out.add(new TilePos((int) x[3], (int) x[4]));
         }
         return out;
     }

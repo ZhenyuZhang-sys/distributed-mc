@@ -63,58 +63,183 @@ final class DonorThroughput {
     synchronized void record(int worker, long durationMs, long completedAtMs, long busyMs, long loadMs, int inFlightAtLease,
             boolean background) {
         Deque<long[]> d = samples.computeIfAbsent(worker, k -> new ArrayDeque<>());
-        d.addLast(new long[] {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0});
+        // 跨过回退的单独任务（回退之前派出、之后交回）：它的延迟分不清是回退前还是后的，不进基线（codex-audit 第二十一节）
+        Long backoff = lastBackoffAt.get(worker);
+        boolean straddle = inFlightAtLease == 1 && backoff != null && completedAtMs - durationMs < backoff && completedAtMs >= backoff;
+        // 预热（11-10 codex-pipe：新 donor 冷启动第一批 16 秒，延迟估成 16 秒、slots 1，120 秒只交回 1 个）：
+        // 第一个结果回来之前派出的那批。照样算进并行度，但不进任何延迟估计、不拿来往上探或回退。只看带在途表读数的（生产路径都带）
+        boolean warmup = false;
+        if (busyMs >= 0 && completedAtMs != Long.MIN_VALUE) {
+            Long first = firstDoneAt.putIfAbsent(worker, completedAtMs);
+            warmup = completedAtMs - durationMs < (first == null ? completedAtMs : first);
+        }
+        long[] sample = {durationMs, completedAtMs, busyMs, loadMs, inFlightAtLease, background ? 1 : 0, straddle ? 1 : 0, warmup ? 1 : 0};
+        Long ex = exploreAt.get(worker);
+        if (ex != null && inFlightAtLease == 1 && !background && completedAtMs - durationMs >= ex) {
+            // 空着全拒后放的探路回来了（R4）：旧的前方样本是错的估计，作废，按这一个重新开始
+            exploreAt.remove(worker);
+            Deque<long[]> f = frontSamples.get(worker);
+            if (f != null) {
+                f.clear();
+            }
+            soloMs.put(worker, Math.max(1, durationMs));
+        }
+        d.addLast(sample);
         while (d.size() > WINDOW) {
             d.pollFirst();
         }
-        if (inFlightAtLease > 0 && !background) {
-            probe(worker, durationMs, inFlightAtLease);
+        if (!background) {
+            // 前方的另存一个窗口（预热的也存：还没有正常样本时当上界用，见 trusted）（codex-audit 第 162 项：唯一的前方样本被 10 个后台结果挤出窗口，前方延迟退回默认 3 秒）
+            Deque<long[]> f = frontSamples.computeIfAbsent(worker, k -> new ArrayDeque<>());
+            f.addLast(sample);
+            while (f.size() > WINDOW) {
+                f.pollFirst();
+            }
+        }
+        if (inFlightAtLease > 0 && !background && !straddle) {
+            probe(worker, durationMs, inFlightAtLease, completedAtMs, warmup);
         }
     }
 
     /**
      * 往上探（调度 11-09）：实测并行度只是"我们派了多少"，估低了只派 1～2 个，测出来也就 1～2，会自我强化。
      * 每个 worker 记一个探路的 lanes：在 lanes 个都占着时做完的，延迟不超过单独做时的 1.2 倍，连续 3 个就 +1（最多 MAX_CONCURRENCY）；
-     * 超过 1.5 倍就退到"派出时手上的个数 − 1"（不比现在高），之后 30 个结果里不再往上探（一个一个做的 donor 不来回试）。
+     * 超过 1.5 倍就退到"派出时手上的个数 − 1"（不比现在高），之后 PROBE_HOLD_MS（20 秒）不再往上探（一个一个做的 donor 不来回试）。
+     * "明显慢"要最近 6 个一起做的里有 2 个才算（一个贵的 tile 不算，codex-audit 第十八节 X2：也不能被中间一个快的清零）。
      */
     static final double PROBE_OK = 1.2, PROBE_BAD = 1.5;
-    static final int PROBE_GOOD = 3, PROBE_HOLD = 30, PROBE_SLOW = 2;
+    static final int PROBE_GOOD = 3, PROBE_SLOW = 2, PROBE_WINDOW = 6;
+    /**
+     * 回退以后多久不再往上探（毫秒，按时间不按结果数：codex-audit 第十八节，延迟翻倍时 30 个结果要等几十秒）。
+     * 一个一个做的 donor 不来回试。
+     */
+    static final long PROBE_HOLD_MS = Config.getLong("probeHoldMs", 20_000);
 
     /** worker → {lanes, 连续好的个数, 还要等几个结果才能再往上探}。 */
     private final Map<Integer, int[]> probes = new HashMap<>();
 
-    private void probe(int worker, long durationMs, int k) {
-        if (k == 1) {
-            // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
-            long[] solo = samples.get(worker).stream().filter(s -> s[4] == 1 && s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
-            soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
+    private void probe(int worker, long durationMs, int k, long completedAtMs, boolean warmup) {
+        Long cal = calibrateUntil.get(worker);
+        if (cal != null && completedAtMs > cal) {
+            calibrateUntil.remove(worker); // 量了太久没有单独做的前方任务（只有后台、没人飞）：不量了
+            calibrateFrom.remove(worker);
+            calibrateStart.remove(worker);
+            cal = null;
         }
-        // {lanes, 连续好的个数, 冷却还剩几个结果, 连续慢的个数}
-        int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0, 0, 0});
-        if (st[2] > 0) {
-            st[2]--;
-        }
-        long base = soloLatencyMs(worker);
-        if (k >= 2 && durationMs > PROBE_BAD * base) {
-            // 和别的一起做、明显慢了：不管当时占没占满 lanes 都算（codex-audit 第十六节：冷启动一次派 4 个、一个一个做的 donor，
-            // 原来只看占满的那一个，退到 3 就停了）。连着两个才退（11-10：一个贵的 tile 不等于并行多了变慢）。
-            // 只往下退，退到派出时手上的个数 − 1
-            st[1] = 0;
-            if (++st[3] >= PROBE_SLOW) {
-                st[0] = Math.max(1, Math.min(st[0], k - 1));
-                st[2] = PROBE_HOLD;
-                st[3] = 0;
+        if (cal != null && k == 1 && completedAtMs - durationMs >= calibrateStart.getOrDefault(worker, Long.MAX_VALUE)) {
+            // 退了以后新派出、单独做的这一个（codex-audit 第二十节 Z2：回退之前就派出去的不算）：和原来单独做的基线比
+            long old = soloLatencyMs(worker);
+            calibrateFrom.remove(worker);
+            calibrateUntil.remove(worker);
+            calibrateStart.remove(worker);
+            if (durationMs > PROBE_BAD * old) {
+                // 单独做也慢了：是整台机器变慢（用户开了游戏），不是并行多了。基线换成新的，旧的前方样本作废，lanes 恢复
+                soloMs.put(worker, Math.max(1, durationMs));
+                Deque<long[]> f = frontSamples.get(worker);
+                if (f != null) {
+                    long[] last = f.peekLast();
+                    f.clear();
+                    if (last != null) {
+                        f.addLast(last);
+                    }
+                }
+                // Z3：lanes 不直接恢复到退之前的（真的少了并行、同时也变慢时会误恢复），按新的基线从现在的 lanes 往上探
+                int[] st = probes.get(worker);
+                if (st != null) {
+                    st[1] = 0;
+                }
+                Deque<Boolean> win = slowWindows.get(worker);
+                if (win != null) {
+                    win.clear();
+                }
+                holdUntil.remove(worker);
+                levelLatencies.remove(worker);
+            recentLevels.remove(worker); // 各档的旧延迟也作废
+                return;
             }
+            // 单独做照样快：慢是并行多了造成的，退得对；照常往下更新基线
+        }
+        if (k == 1 && !warmup) {
+            // 单独做的：更新"单独做一个要多久"（窗口里单独做的那些的中位数，留着给后面没有单独样本的时候用）
+            long[] solo = front(worker).stream().filter(s -> s[4] == 1 && s[6] == 0 && s[7] == 0).mapToLong(s -> s[0]).sorted().toArray();
+            if (solo.length > 0) {
+                soloMs.put(worker, Math.max(1, solo[solo.length / 2]));
+            }
+        }
+        // {lanes, 连续好的个数}
+        int[] st = probes.computeIfAbsent(worker, w -> new int[] {(int) Math.max(1, Math.round(parallelism(w))), 0});
+        // 预热那批（冷启动第一批，绝对延迟不可信）：只在这一批里互相比（同一批的 k=1 当基线、同一批的各档），
+        // 一批都一样慢（JIT 没热）不会退，越多越慢（真一个一个做）照样退；不进正常的基线和各档延迟
+        double[] warm = warmup ? warmLevels.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]) : null;
+        long base = !warmup ? soloLatencyMs(worker) : warm[1] > 0 ? (long) warm[1] : k == 1 ? durationMs : soloLatencyMs(worker);
+        // 11-10：按"多这一条速率涨不涨"判断（调度：用户的 M5 一起做时每个约 0.8 秒、单独约 0.7 秒，速率在涨，不能退）。
+        // 手上 k 个时速率约 k ÷ 延迟；和手上 k − 1 个时比：k 个的延迟超过 k/(k−1) × (k − 1 个时的延迟) 就是多这一条不多出活。
+        // 不知道 k − 1 个时的延迟（还没在那个档做过）时照旧比单独做的
+        double prev = !warmup ? levelLatency(worker, k - 1) : k >= 2 ? warm[Math.min(k - 1, MAX_LEVEL)] : 0;
+        if (warmup && k >= 2 && prev == 0) {
+            // codex-audit 4610642 R6：批内的低一档还没回来（乱序交回）：不知道，不判慢也不判好，不拿默认 3 秒补
+            warm[Math.min(k, MAX_LEVEL)] = durationMs;
             return;
         }
-        if (k >= Math.max(2, st[0]) && durationMs <= PROBE_OK * base) {
-            st[3] = 0; // 占满 lanes 时也不慢：前面那个慢的是 tile 贵（没占满时的快样本不算，2 个并行的 donor 探到 3 时第 2 个总是快的）
+        boolean measuredSolo = soloMs.containsKey(worker);
+        if (!warmup && prev == 0 && k >= 2 && !measuredSolo) {
+            // 11-10 kexu k3 A/B：没量过 k − 1 档（冷启动 4 个一起开始，之后补派的都是 k 4），原来拿"单独做的基线"比，
+            // 而没有单独样本时基线是窗口里最短的那个（便宜的 tile 0.47 秒），几乎每个都"慢"，一个 k 2 的样本把 lanes 4 直接退到 1。
+            // 改：有量过的单独基线照旧和它比；没有就拿预热那批同一档的比（偏慢，只会少退）；也没有就不知道，不判慢
+            double[] w0 = warmLevels.get(worker);
+            prev = w0 == null ? 0 : w0[Math.min(k - 1, MAX_LEVEL)];
+        }
+        // 每档记最近几个（上一档按它们的中位数比，见 levelLatency）
+        int lv = Math.min(k, MAX_LEVEL);
+        long cur = durationMs;
+        if (!warmup) {
+            Deque<Long>[] rw = recentLevels.computeIfAbsent(worker, w -> newLevelWindows());
+            rw[lv].addLast(durationMs);
+            while (rw[lv].size() > LEVEL_RECENT) {
+                rw[lv].pollFirst();
+            }
+        }
+        double ratio = k / (double) Math.max(1, k - 1);
+        boolean slow = prev > 0 ? cur > ratio * prev * PROBE_MARGINAL_SLOW : (k >= 2 && !measuredSolo) ? false : cur > PROBE_BAD * base;
+        boolean good = cur <= PROBE_OK * base || (prev > 0 && cur <= ratio * prev / PROBE_MARGINAL_GAIN);
+        double[] lat = warmup ? warm : levelLatencies.computeIfAbsent(worker, w -> new double[MAX_LEVEL + 1]);
+        lat[lv] = lat[lv] == 0 ? durationMs : lat[lv] + LEVEL_ALPHA * (durationMs - lat[lv]);
+        if (k >= 2) {
+            // 和别的一起做的：最近 PROBE_WINDOW 个里有 PROBE_SLOW 个"多这一条不多出活"就退，退到派出时手上的个数 − 1（只往下退）。
+            // codex-audit 第十六节：不管当时占没占满 lanes 都算（冷启动一次派 4 个、一个一个做的 donor）。
+            // 11-10：一个贵的 tile 不算（要 2 个）。codex-audit 第十八节 X2：原来"连着两个"、中间夹一个快的就清零，
+            // 真 2 并行的 donor 在 lanes 3 时慢快交替，永远退不下来、一半迟到；改成窗口里数
+            // 预热的单独一个窗口：晚到的预热尾巴不和正常的拼出两次慢（R6）
+            Deque<Boolean> win = (warmup ? warmSlowWindows : slowWindows).computeIfAbsent(worker, w -> new ArrayDeque<>());
+            win.addLast(slow);
+            while (win.size() > PROBE_WINDOW) {
+                win.pollFirst();
+            }
+            if (slow && win.stream().filter(x -> x).count() >= PROBE_SLOW) {
+                int from = st[0];
+                st[0] = Math.max(1, Math.min(st[0], k - 1));
+                lastBackoffAt.put(worker, completedAtMs);
+                if (st[0] < from && !calibrateFrom.containsKey(worker)) {
+                    // 11-10：退了先单独做一个量一下：整台机器变慢（并行没变）时基线是旧的，会被误当成并行多了变慢
+                    calibrateFrom.put(worker, from);
+                    calibrateUntil.put(worker, completedAtMs + CALIBRATE_MS);
+                    calibrateStart.put(worker, completedAtMs);
+                }
+                st[1] = 0;
+                win.clear();
+                holdUntil.put(worker, completedAtMs + PROBE_HOLD_MS);
+                return;
+            }
+            if (slow) {
+                st[1] = 0;
+                return;
+            }
         }
         if (k < st[0]) {
             return; // 没占满 lanes：看不出多一个行不行
         }
-        if (durationMs <= PROBE_OK * base) {
-            if (++st[1] >= PROBE_GOOD && st[2] == 0) {
+        if (good) {
+            if (++st[1] >= PROBE_GOOD && completedAtMs >= holdUntil.getOrDefault(worker, Long.MIN_VALUE)) {
                 st[0] = Math.min(ceilings.getOrDefault(worker, MAX_CONCURRENCY), st[0] + 1);
                 st[1] = 0;
             }
@@ -122,6 +247,77 @@ final class DonorThroughput {
             st[1] = 0;
         }
     }
+
+    /** 退了以后单独量一次最多等多久（毫秒）。 */
+    static final long CALIBRATE_MS = Config.getLong("probeCalibrateMs", 10_000);
+    /** worker → 退之前的 lanes（在单独量的时候）。 */
+    private final Map<Integer, Integer> calibrateFrom = new HashMap<>();
+    /** worker → 单独量到什么时候为止。 */
+    private final Map<Integer, Long> calibrateUntil = new HashMap<>();
+
+    /** worker → 从什么时候开始单独量（这之后派出的单独任务才算测量，Z2）。 */
+    private final Map<Integer, Long> calibrateStart = new HashMap<>();
+
+    /** 单独量到期了就结束（codex-audit 第二十节 Z1：原来只在有前方结果回来时检查，没有结果时一直只派 1 个）。派活时调。 */
+    synchronized void expireCalibration(int worker, long nowMs) {
+        Long until = calibrateUntil.get(worker);
+        if (until != null && nowMs > until) {
+            calibrateUntil.remove(worker);
+            calibrateFrom.remove(worker);
+            calibrateStart.remove(worker);
+        }
+    }
+
+    /** 这个 worker 是不是在退了以后单独量一次（这时只派 1 个，也不派后台）。 */
+    synchronized boolean calibrating(int worker) {
+        return calibrateFrom.containsKey(worker);
+    }
+
+    /** 判断"多这一条不多出活"时留的余量：超过 k/(k−1) 倍的 0.95 就算（测量有噪声，宁可退）。 */
+    static final double PROBE_MARGINAL_SLOW = 0.95;
+    /** 往上探：多这一条速率至少涨一成才算还在涨。 */
+    static final double PROBE_MARGINAL_GAIN = 1.1;
+    static final int MAX_LEVEL = 16;
+    static final double LEVEL_ALPHA = 0.3;
+    /** 上一档的延迟按最近几个的中位数。 */
+    static final int LEVEL_RECENT = 5;
+    /** worker → 每档最近 LEVEL_RECENT 个正常前方样本的延迟。 */
+    private final Map<Integer, Deque<Long>[]> recentLevels = new HashMap<>();
+
+    @SuppressWarnings("unchecked")
+    private static Deque<Long>[] newLevelWindows() {
+        Deque<Long>[] w = new Deque[MAX_LEVEL + 1];
+        for (int i = 0; i <= MAX_LEVEL; i++) {
+            w[i] = new ArrayDeque<>();
+        }
+        return w;
+    }
+
+    /** worker → 派出时手上 k 个的前方任务的平均延迟（指数平均；下标 k，0 是没有）。 */
+    private final Map<Integer, double[]> levelLatencies = new HashMap<>();
+
+    /** 手上 k 个时的延迟：k = 1 优先用单独做的基线；没做过这一档是 0。 */
+    private double levelLatency(int worker, int k) {
+        if (k < 1) {
+            return 0;
+        }
+        if (k == 1 && soloMs.containsKey(worker)) {
+            return soloMs.get(worker);
+        }
+        // 有最近几个就用它们的中位数（偏高的那个）：上一档被便宜的 tile 拉低，这一档就都像慢了（kexu k3：k 2 只有收尾时的两三个）
+        Deque<Long>[] rw = recentLevels.get(worker);
+        if (rw != null && !rw[Math.min(k, MAX_LEVEL)].isEmpty()) {
+            long[] v = rw[Math.min(k, MAX_LEVEL)].stream().mapToLong(Long::longValue).sorted().toArray();
+            return v[v.length / 2];
+        }
+        double[] lat = levelLatencies.get(worker);
+        return lat == null ? 0 : lat[Math.min(k, MAX_LEVEL)];
+    }
+
+    /** worker → 最近几个"和别的一起做"的前方样本慢不慢。 */
+    private final Map<Integer, Deque<Boolean>> slowWindows = new HashMap<>();
+    /** worker → 回退以后到什么时候（毫秒时间戳）之前不再往上探。 */
+    private final Map<Integer, Long> holdUntil = new HashMap<>();
 
     /** worker → lanes 往上探的上限（默认 MAX_CONCURRENCY；开了加速的按它的在途上限，11-09）。 */
     private final Map<Integer, Integer> ceilings = new HashMap<>();
@@ -135,6 +331,31 @@ final class DonorThroughput {
         }
     }
 
+    /** worker → 最近 WINDOW 个前方结果（后台的不占位置）：估前方延迟、单独做的基线、冷启动判断用。 */
+    private final Map<Integer, Deque<long[]>> frontSamples = new HashMap<>();
+
+    private Deque<long[]> front(int worker) {
+        return frontSamples.getOrDefault(worker, new ArrayDeque<>());
+    }
+
+    /**
+     * 拿来估延迟的样本：有正常的（不是预热的）就只用正常的；只有预热的时用预热的，当上界（codex-audit 4610642 R5：
+     * 首批 16 秒分不清是 JIT 没热还是真慢，按乐观默认 3 秒会把紧任务整批派给真慢的 donor）。
+     */
+    private static java.util.stream.Stream<long[]> trusted(Deque<long[]> d) {
+        boolean normal = d.stream().anyMatch(s -> s[7] == 0);
+        return d.stream().filter(s -> !normal || s[7] == 0);
+    }
+
+    /** 只有预热样本（前方的）：还不知道真正多快。这时空着就放一个测量。 */
+    private boolean uncertain(int worker) {
+        Deque<long[]> f = front(worker);
+        return !f.isEmpty() && f.stream().allMatch(s -> s[7] == 1);
+    }
+
+    /** worker → 预热那批"和别的一起做"的慢不慢（和正常的分开）。 */
+    private final Map<Integer, Deque<Boolean>> warmSlowWindows = new HashMap<>();
+
     /** worker → 单独做一个要多久（最近一次有单独做的样本时的中位数）。 */
     private final Map<Integer, Long> soloMs = new HashMap<>();
 
@@ -147,13 +368,20 @@ final class DonorThroughput {
         if (d == null || d.isEmpty()) {
             return DEFAULT_MS;
         }
+        Deque<long[]> fd = front(worker);
         if (!probes.containsKey(worker)) {
-            return latencyMs(worker); // 没记派出时手上几个：按全部的中位数
+            // 没记派出时手上几个：按前方样本的中位数；只有后台的样本时按默认（X1 补充：不拿后台的补）
+            long[] fg = trusted(fd).filter(s -> s[6] == 0).mapToLong(s -> s[0]).sorted().toArray();
+            return fg.length == 0 ? DEFAULT_MS : uncertain(worker) ? fg[fg.length - 1] : fg[fg.length / 2];
         }
         // 派出时手上不超过 lanes 个、也不比单独做慢一半以上的（慢一半以上的是在 worker 上排了队，codex-audit 第十六节）
         int lanes = lanes(worker);
+        if (uncertain(worker)) {
+            // 只有预热样本：按最慢的（上界），拿到正常样本再放开
+            return Math.max(1, fd.stream().mapToLong(s -> s[0]).max().orElse(DEFAULT_MS));
+        }
         long cap = (long) (PROBE_BAD * soloLatencyMs(worker));
-        long[] v = d.stream().filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap && s[5] == 0).mapToLong(s -> s[0]).sorted().toArray();
+        long[] v = trusted(fd).filter(s -> s[4] > 0 && s[4] <= lanes && s[0] <= cap && s[6] == 0).mapToLong(s -> s[0]).sorted().toArray();
         return v.length == 0 ? soloLatencyMs(worker) : v[v.length / 2];
     }
 
@@ -163,8 +391,8 @@ final class DonorThroughput {
         if (solo != null) {
             return solo;
         }
-        Deque<long[]> d = samples.get(worker);
-        return d == null ? DEFAULT_MS : Math.max(1, d.stream().mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
+        // 从来没有单独做的前方样本：取前方样本里最短的，没有前方样本按默认（X1 补充：不拿后台的补，100 ms 的缓存命中会让正常的都像慢了）
+        return Math.max(1, trusted(front(worker)).filter(s -> s[6] == 0).mapToLong(s -> s[0]).min().orElse(DEFAULT_MS));
     }
 
     /** worker 断开：忘掉它的记录（重连后是新的编号）。 */
@@ -173,6 +401,23 @@ final class DonorThroughput {
         probes.remove(worker);
         ceilings.remove(worker);
         soloMs.remove(worker);
+        slowWindows.remove(worker);
+        frontSamples.remove(worker);
+        calibrateFrom.remove(worker);
+        calibrateUntil.remove(worker);
+        calibrateStart.remove(worker);
+        holdUntil.remove(worker);
+        levelLatencies.remove(worker);
+        recentLevels.remove(worker);
+        idleRejectSince.remove(worker);
+        idleRejects.remove(worker);
+        explorations.remove(worker);
+        lastBackoffAt.remove(worker);
+        firstDoneAt.remove(worker);
+        warmLevels.remove(worker);
+        warmSlowWindows.remove(worker);
+        exploreOffered.remove(worker);
+        exploreAt.remove(worker);
     }
 
     /** 延迟的中位数（毫秒）。 */
@@ -181,8 +426,9 @@ final class DonorThroughput {
         if (d == null || d.isEmpty()) {
             return DEFAULT_MS;
         }
-        long[] v = d.stream().mapToLong(s -> s[0]).sorted().toArray();
-        return v[v.length / 2];
+        long[] v = trusted(d).mapToLong(s -> s[0]).sorted().toArray();
+        // 只有预热那批时按最慢的（上界，R5）
+        return v.length == 0 ? DEFAULT_MS : d.stream().allMatch(s -> s[7] == 1) ? v[v.length - 1] : v[v.length / 2];
     }
 
     /** 平均延迟（毫秒）；对冲、等 donor 用。 */
@@ -191,7 +437,7 @@ final class DonorThroughput {
         if (d == null || d.isEmpty()) {
             return DEFAULT_MS;
         }
-        return (long) d.stream().mapToLong(s -> s[0]).average().orElse(DEFAULT_MS);
+        return (long) trusted(d).mapToLong(s -> s[0]).average().orElse(DEFAULT_MS);
     }
 
     /**
@@ -236,6 +482,10 @@ final class DonorThroughput {
         if (st != null) {
             return st[0];
         }
+        if (front(worker).isEmpty()) {
+            // codex-audit 第十八节 X1：只做过后台（没有前方的样本）：照冷启动。按后台的低在途算会把 lanes 算成 1、后台半额变 0、再也不派
+            return MAX_CONCURRENCY;
+        }
         return (int) Math.max(1, Math.round(parallelism(worker)));
     }
 
@@ -252,6 +502,9 @@ final class DonorThroughput {
      * 一个一个做的 donor 延迟涨到 6.8 秒，后来的紧任务都排在它们后面）。往上探照样能探：占满 lanes 时延迟没变长 lanes 就 +1。
      */
     synchronized int inFlightCap(int worker, int slots) {
+        if (calibrating(worker)) {
+            return 1;
+        }
         return Math.max(1, Math.min(slots, lanes(worker)));
     }
 
@@ -283,7 +536,97 @@ final class DonorThroughput {
             // 冷启动：还没有样本，按默认延迟估一个、不乘在途数（codex-audit F5：原来 3/6/9/12 秒，少派就测不出并行）
             return nowMs + DEFAULT_MS <= deadlineMs;
         }
-        return predictFinish(nowMs, laneLatencyMs(worker), ratePerMs(worker), inFlight, lanes(worker)) <= deadlineMs;
+        boolean ok = predictFinish(nowMs, laneLatencyMs(worker), ratePerMs(worker), inFlight, lanes(worker)) <= deadlineMs;
+        if (ok || inFlight > 0) {
+            idleRejectSince.remove(worker);
+            return ok;
+        }
+        // 空着却拒掉（codex-audit 第二十一节：CPU 平分冷启动学到的延迟太长，收紧截止以后空着也全拒、学不到新的）：记数；
+        // 一直拒了 EXPLORE_MS 就放一个探路（单独做，刷新样本），可能迟到一个。只有预热样本时马上放（R5：测一下真正多快）。
+        // 真派出去了（leased）才算一次探路、才清计时：assign 会对几个候选都问，派出之前都放
+        if (exploreReady(worker, 0, nowMs)) {
+            exploreOffered.put(worker, !uncertain(worker));
+            return true;
+        }
+        noteIdleReject(worker, nowMs);
+        return false;
+    }
+
+    /** 空着却拒掉了一个（canMeet 或剪枝时）：开始或接着计时。 */
+    synchronized void noteIdleReject(int worker, long nowMs) {
+        idleRejects.merge(worker, 1L, Long::sum);
+        idleRejectSince.putIfAbsent(worker, nowMs);
+    }
+
+    /** 空着、该放一个探路了：只有预热样本，或者空着全拒了 EXPLORE_MS。剪枝时给它留一个（R3），canMeet 时放。 */
+    synchronized boolean exploreReady(int worker, int inFlight, long nowMs) {
+        if (inFlight > 0 || calibrating(worker)) {
+            return false;
+        }
+        Long since = idleRejectSince.get(worker);
+        return uncertain(worker) || (since != null && nowMs - since >= EXPLORE_MS);
+    }
+
+    /**
+     * 派出去了一个（CoordinatorServer 每派一个调）：canMeet 为探路放行过的，现在算一次、清计时。
+     * 返回 true 是探路：这一轮别再派了（探路要单独做；派活循环的上限是循环前算的）。
+     */
+    synchronized boolean leased(int worker, long nowMs) {
+        Boolean idle = exploreOffered.remove(worker);
+        if (idle == null) {
+            return false;
+        }
+        idleRejectSince.remove(worker);
+        explorations.merge(worker, 1L, Long::sum);
+        if (idle) {
+            // 空着全拒了 EXPLORE_MS：估计是错的（codex-audit 第二十一节 R4：CPU 平分冷启动学到 4 个一起的 2 秒，
+            // 探路单独 500 ms 回来后仍按 lanes 4 补满，4 个一起又是 2 秒，40 个里 36 个迟到）。
+            // 从 1 重新往上探，旧的各档延迟作废；探路那个回来时当新的单独基线（不和旧的单独样本混）
+            // codex-audit 8f0cf99 R7：只做过后台的没有 probes 记录，原来只改已有的，lanes 照旧 4
+            int[] st = probes.computeIfAbsent(worker, w -> new int[2]);
+            st[0] = 1;
+            st[1] = 0;
+            levelLatencies.remove(worker);
+            recentLevels.remove(worker);
+            slowWindows.remove(worker);
+            holdUntil.remove(worker);
+            exploreAt.put(worker, nowMs);
+        }
+        return true;
+    }
+
+    /** worker → 是不是为探路放行过（true：空着全拒了一阵；false：只有预热样本时的测量）。 */
+    private final Map<Integer, Boolean> exploreOffered = new HashMap<>();
+    /** worker → 空着全拒后放的那个探路什么时候派出（它回来时当新的单独基线）。 */
+    private final Map<Integer, Long> exploreAt = new HashMap<>();
+
+    /** 剪枝用的估计；空着该探路的标出来，剪枝给它留一个（codex-audit 第二十一节 R3）。 */
+    synchronized TaskQueue.DonorEstimate estimate(int worker, int inFlight, long nowMs) {
+        return new TaskQueue.DonorEstimate(laneLatencyMs(worker), ratePerMs(worker), inFlight, lanes(worker),
+                exploreReady(worker, inFlight, nowMs));
+    }
+
+    /** worker → 预热那批里各档的延迟（只在这一批里比较用）。 */
+    private final Map<Integer, double[]> warmLevels = new HashMap<>();
+
+    /** worker → 第一个结果回来的时刻（在这之前派出的算预热）。 */
+    private final Map<Integer, Long> firstDoneAt = new HashMap<>();
+
+    /** 空着却全拒了这么久就放一个探路（毫秒）。 */
+    static final long EXPLORE_MS = Config.getLong("probeExploreMs", 5_000);
+    private final Map<Integer, Long> idleRejectSince = new HashMap<>();
+    private final Map<Integer, Long> idleRejects = new HashMap<>();
+    private final Map<Integer, Long> explorations = new HashMap<>();
+    /** worker → 最近一次回退的时刻。 */
+    private final Map<Integer, Long> lastBackoffAt = new HashMap<>();
+
+    /** 空着却拒掉的次数（/donor status；"已派的不迟到"不等于需求都满足了）。 */
+    synchronized long idleRejects(int worker) {
+        return idleRejects.getOrDefault(worker, 0L);
+    }
+
+    synchronized long explorations(int worker) {
+        return explorations.getOrDefault(worker, 0L);
     }
 
     /**

@@ -279,6 +279,31 @@ class DonorThroughputTest {
     /** 同上，slots：租约名额（coordinator 按租约长度给的上限，maxConcurrency 8 时是 8）；返回值第 5 个是最长的延迟。 */
     static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
             int slots) {
+        return simulate(real, serviceMs, deadlineMs, seconds, history, looseMs, looseDeadlineMs, slots, real, Long.MAX_VALUE, null);
+    }
+
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
+            int slots, int realAfter, long changeAfterMs, int[] lateAfter) {
+        return simulate(real, serviceMs, deadlineMs, seconds, history, looseMs, looseDeadlineMs, slots, realAfter, changeAfterMs,
+                lateAfter, serviceMs);
+    }
+
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
+            int slots, int realAfter, long changeAfterMs, int[] lateAfter, long serviceAfter) {
+        return simulate(real, serviceMs, deadlineMs, seconds, history, looseMs, looseDeadlineMs, slots, realAfter, changeAfterMs,
+                lateAfter, serviceAfter, null);
+    }
+
+    /**
+     * 同上，跑到 changeAfterMs 以后 donor 真能同时做的个数变成 realAfter（用户开了游戏抢 CPU）。
+     * lateAfter 不为 null 时，lateAfter[0] 记变化之后的迟到个数，lateAfter[1] 记变化之后的总个数。
+     */
+    /** 同上，变化之后每个 tile 要 serviceAfter 毫秒（整台机器变慢，并行没变）。 */
+    /**
+     * 同上，shared 不为 null 时：一个 tile 开始做时一共有几个在做（含它） → 这个 tile 要多久（几个一起做时每个变慢，比如 CPU 被分走）。
+     */
+    static int[] simulate(int real, long serviceMs, long deadlineMs, long seconds, boolean history, long looseMs, long looseDeadlineMs,
+            int slots, int realAfter, long changeAfterMs, int[] lateAfter, long serviceAfter, java.util.function.IntToLongFunction shared) {
         DonorThroughput t = new DonorThroughput();
         LoadMeter meter = new LoadMeter();
         long now = 0;
@@ -298,7 +323,7 @@ class DonorThroughputTest {
             long dl = now - start < looseMs ? looseDeadlineMs : deadlineMs;
             while (work.size() < t.inFlightCap(1, slots) && t.canMeet(1, work.size(), now, now + dl)) {
                 meter.start(now);
-                work.add(new long[] {now, -1, now + dl, work.size() + 1});
+                work.add(new long[] {now, -1, now + dl, work.size() + 1, 0});
             }
             int running = 0;
             for (long[] w : work) {
@@ -307,15 +332,17 @@ class DonorThroughputTest {
                 }
             }
             for (long[] w : work) {
-                if (w[1] < 0 && running < real) {
+                if (w[1] < 0 && running < (now - start >= changeAfterMs ? realAfter : real)) {
                     w[1] = now;
+                    w[4] = shared != null ? shared.applyAsLong(running + 1)
+                            : now - start >= changeAfterMs ? serviceAfter : serviceMs;
                     running++;
                 }
             }
             long next = Long.MAX_VALUE;
             for (long[] w : work) {
                 if (w[1] >= 0) {
-                    next = Math.min(next, w[1] + serviceMs);
+                    next = Math.min(next, w[1] + w[4]);
                 }
             }
             if (next == Long.MAX_VALUE) {
@@ -325,7 +352,7 @@ class DonorThroughputTest {
             now = next;
             for (var it = work.iterator(); it.hasNext(); ) {
                 long[] w = it.next();
-                if (w[1] >= 0 && w[1] + serviceMs == now) {
+                if (w[1] >= 0 && w[1] + w[4] == now) {
                     long[] r = meter.read(now);
                     t.record(1, now - w[0], now, r[0], r[1], (int) w[3]);
                     meter.end(now);
@@ -333,6 +360,12 @@ class DonorThroughputTest {
                     maxLatency = Math.max(maxLatency, now - w[0]);
                     if (now > w[2] && w[0] - start >= looseMs) {
                         late++;
+                    }
+                    if (lateAfter != null && w[0] - start >= changeAfterMs) {
+                        lateAfter[1]++;
+                        if (now > w[2]) {
+                            lateAfter[0]++;
+                        }
                     }
                     it.remove();
                 }
@@ -526,5 +559,175 @@ class DonorThroughputTest {
         t.record(1, 1_500, now, r[0], r[1], 3);
         m.end(now);
         assertEquals(2, t.lanes(1), "连着两次慢：退到派出时手上的个数 − 1");
+    }
+
+    // ---- codex-audit 第十八节（审 0163fc8）----
+
+    @Test
+    void donorThatLosesTwoLanesBacksOff() {
+        // X2：已经学到 4 个并行，20 秒时真能并行的变成 2（用户开游戏抢 CPU），全是 1 秒紧任务。
+        // 0163fc8：两次慢之间夹一个占满时的快的就清零，lanes 停在 3，变化后一半迟到
+        int[] after = new int[2];
+        int[] r = simulate(4, 700, 1_000, 80, true, 0, 1_000, 4, 2, 20_000, after);
+        System.out.println("4→2：lanes=" + r[0] + " 变化后迟到 " + after[0] + "/" + after[1]);
+        assertEquals(2, r[0], "退到 2");
+        assertTrue(after[0] * 6 <= after[1], "变化后迟到不超过约一成半：" + after[0] + "/" + after[1]);
+    }
+
+    @Test
+    void backgroundOnlyColdStartKeepsGoing() {
+        // X1：新 worker 只做后台（没有前方的样本）：lanes 不能被后台的低在途算成 1（半额变 0 就再也不派）
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int round = 0; round < 12; round++) {
+            int cap = t.inFlightCap(1, 8);
+            int bg = BoostPolicy.backgroundSlots(BoostPolicy.dispatchCap(cap, true, 8));
+            assertTrue(bg >= 1, "第 " + round + " 轮还能派后台：cap " + cap);
+            for (int i = 0; i < bg; i++) {
+                m.start(now);
+            }
+            now += 1_500;
+            for (int i = 0; i < bg; i++) {
+                long[] r = m.read(now);
+                t.record(1, 1_500, now, r[0], r[1], i + 1, true);
+                m.end(now);
+            }
+        }
+        assertEquals(DonorThroughput.MAX_CONCURRENCY, t.lanes(1), "没有前方的样本：照冷启动");
+        assertEquals(DonorThroughput.DEFAULT_MS, t.laneLatencyMs(1), "前方的延迟不拿后台的补：" + t.laneLatencyMs(1));
+    }
+
+    @Test
+    void fastBackgroundDoesNotSupplyMissingSoloBaseline() {
+        // X1 补充：前方只有 k4 的样本（没有单独做的），中间混进 100 ms 的后台（缓存命中）：
+        // 单独做的基线不能拿后台的 100 ms 补，否则后面正常 700 ms 的前方都被当成慢了
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int round = 0; round < 8; round++) {
+            for (int i = 0; i < 4; i++) {
+                m.start(now);
+            }
+            now += 700;
+            for (int i = 0; i < 4; i++) {
+                long[] r = m.read(now);
+                t.record(1, 700, now, r[0], r[1], 4, false);
+                m.end(now);
+            }
+            m.start(now);
+            now += 100;
+            long[] r = m.read(now);
+            t.record(1, 100, now, r[0], r[1], 2, true);
+            m.end(now);
+        }
+        assertEquals(4, t.lanes(1));
+        assertTrue(t.laneLatencyMs(1) >= 600, "马上开始的延迟按前方的：" + t.laneLatencyMs(1));
+    }
+
+    @Test
+    void backgroundResultsDoNotPushOutForegroundSamples() {
+        // codex-audit 第十八节复核（第 162 项）：唯一一个前方样本（k3、700 ms）被 10 个后台结果挤出样本窗口，
+        // 前方延迟退回默认 3 秒，2 秒截止的就被拒了。演示正好是"站着大量后台 + 起飞少量前方"
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int i = 0; i < 3; i++) {
+            m.start(now);
+        }
+        now += 700;
+        long[] r = m.read(now);
+        t.record(1, 700, now, r[0], r[1], 3, false);
+        for (int i = 0; i < 3; i++) {
+            m.end(now);
+        }
+        for (int i = 0; i < 12; i++) {
+            m.start(now);
+            now += 1_500;
+            r = m.read(now);
+            t.record(1, 1_500, now, r[0], r[1], 1, true);
+            m.end(now);
+        }
+        assertEquals(700, t.laneLatencyMs(1), "前方延迟还是那个前方样本的");
+        assertTrue(t.canMeet(1, 0, now, now + 2_000), "空着的 donor 能接 2 秒截止的前方任务");
+    }
+
+    // ---- 11-10 待办：整台机器变慢（用户开游戏），并行没变：单独做的基线要跟着更新，不能当成并行多了变慢一直退 ----
+
+    @Test
+    void wholeMachineSlowdownRecalibratesInsteadOfDroppingLanes() {
+        // 已学到 4 个并行，20 秒时每个 tile 从 0.7 秒变成 1.4 秒（并行还是 4），截止 5 秒
+        int[] after = new int[2];
+        int[] r = simulate(4, 700, 5_000, 90, true, 0, 5_000, 4, 4, 20_000, after, 1_400);
+        System.out.println("整体变慢 4 并行：lanes=" + r[0] + " laneLatency=" + r[3] + " 变化后 " + after[0] + "/" + after[1] + " 迟到");
+        assertEquals(4, r[0], "并行没变：lanes 回到 4");
+        assertTrue(r[3] >= 1_200, "马上开始的延迟按新的（约 1.4 秒）：" + r[3]);
+        assertTrue(after[1] >= 180, "照样做满（70 秒、4 个并行、1.4 秒一个最多 200）：变化后 " + after[1] + " 个");
+    }
+
+    @Test
+    void realLossOfParallelismStillBacksOff() {
+        // 对照：真的从 4 个并行变成 2 个（每个还是 0.7 秒）：单独做一个照样快，不能当成整体变慢恢复到 4
+        int[] after = new int[2];
+        int[] r = simulate(4, 700, 1_000, 80, true, 0, 1_000, 4, 2, 20_000, after, 700);
+        assertEquals(2, r[0]);
+    }
+
+    @Test
+    void calibrationRunsOneAloneAfterBackoff() {
+        // 退了以后先单独做一个（在途上限 1）量一下单独做要多久，量完恢复
+        DonorThroughput t = new DonorThroughput();
+        LoadMeter m = new LoadMeter();
+        long now = 10_000;
+        for (int k = 0; k < 6; k++) {
+            for (int i = 0; i < 4; i++) {
+                m.start(now);
+            }
+            now += 700;
+            for (int i = 0; i < 4; i++) {
+                long[] r = m.read(now);
+                t.record(1, 700, now, r[0], r[1], i + 1);
+                m.end(now);
+            }
+        }
+        for (int i = 0; i < 2; i++) {   // 两个一起做的慢了：退
+            m.start(now);
+            now += 1_400;
+            long[] r = m.read(now);
+            t.record(1, 1_400, now, r[0], r[1], 4);
+            m.end(now);
+        }
+        assertTrue(t.lanes(1) < 4);
+        assertTrue(t.calibrating(1));
+        assertEquals(1, t.inFlightCap(1, 8), "量的时候只派 1 个");
+        m.start(now);
+        now += 1_400;
+        long[] r = m.read(now);
+        t.record(1, 1_400, now, r[0], r[1], 1);   // 单独做也是 1.4 秒：整台机器变慢了
+        m.end(now);
+        assertTrue(!t.calibrating(1));
+        // codex-audit 第二十节 Z3：不直接恢复到退之前的（真的少了并行、同时也变慢时会误恢复），基线换新、从现在的 lanes 重新往上探
+        assertTrue(t.lanes(1) < 4, "不直接跳回 4");
+        assertEquals(1_400, t.laneLatencyMs(1));
+    }
+
+    // ---- 11-10：lanes 按"多一条速率涨不涨"定（调度：用户的 M5 在途 3～4 时每个约 0.8 秒、单独约 0.7 秒，不能被误退） ----
+
+    @Test
+    void parallelismThatStillPaysIsKeptEvenIfEachTileIsSlower() {
+        // 几个一起做时每个慢 15%（4 个一起每个约 1 秒，单独 0.7 秒），但速率还在涨（4 个 3.9/s，1 个 1.4/s）：lanes 要到 4。
+        // 截止 5 秒（1 秒的话 4 个一起本来就赶不上）
+        int[] r = simulate(4, 700, 5_000, 60, true, 0, 5_000, 4, 4, Long.MAX_VALUE, null, 700,
+                running -> Math.round(700 * (1 + 0.15 * (running - 1))));
+        System.out.println("一起做每个慢 15%：lanes=" + r[0] + " 总 " + r[2]);
+        assertEquals(4, r[0], "多并行还能多出活：留着");
+    }
+
+    @Test
+    void parallelismThatAddsNothingIsDropped() {
+        // CPU 被平分（几个一起做每个就慢几倍）：速率不涨，lanes 退到 1（kexu k3 那个 donor 的情形）
+        int[] r = simulate(4, 500, 5_000, 60, true, 0, 5_000, 4, 4, Long.MAX_VALUE, null, 500, running -> 500L * running);
+        System.out.println("CPU 平分：lanes=" + r[0] + " 总 " + r[2]);
+        assertEquals(1, r[0], "多并行不多出活、只是更慢：退到 1");
     }
 }

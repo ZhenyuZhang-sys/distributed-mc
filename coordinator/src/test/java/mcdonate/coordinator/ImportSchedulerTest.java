@@ -71,4 +71,26 @@ class ImportSchedulerTest {
         s.drain(10_000_000, nanos::get, 20);
         assertEquals(List.of("a", "b", "c"), done);
     }
+
+    @Test
+    void pendingBackgroundPromotedWhenItBecomesForeground() {
+        // X3：排着导入的后台结果，玩家要了这个 tile（有了截止）：挪到前方队列，服务器忙也照样导
+        ImportScheduler s = new ImportScheduler();
+        boolean[] fg = {false};
+        s.addBackground(7, job("bg7", 60));
+        s.drain(10_000_000, nanos::get, 45, id -> fg[0]);
+        assertEquals(List.of(), done, "服务器忙：后台不导");
+        fg[0] = true;
+        s.drain(10_000_000, nanos::get, 45, id -> fg[0]);
+        assertEquals(List.of("bg7"), done, "变成前方的：照前方导");
+    }
+
+    @Test
+    void clearDropsEverything() {
+        ImportScheduler s = new ImportScheduler();
+        s.addForeground(job("a", 1));
+        s.addBackground(3, job("b", 1));
+        s.clear();
+        assertEquals(0, s.foregroundPending() + s.backgroundPending(), "reset 时清掉，旧的结果不占背压名额");
+    }
 }
