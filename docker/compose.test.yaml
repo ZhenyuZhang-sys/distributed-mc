@@ -36,7 +36,10 @@ services:
     environment:
       MOTD: "mc-donate worker"
       # 第 5 步：建世界前向 coordinator 要 seed，起来后连上去领任务
-      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580 ${MCD_JVM_EXTRA:-}"
+      # 11-10：生成线程池和真客户端一样 = 设的线程数（ActiveProcessorCount = 线程数 + 1，原版的池是可见核数 − 1）。
+      # 线程数默认 = WORKER_CPUS（取整），WORKER_GEN_THREADS 单独设；scripts/lib.sh 的 tc 算好 MCD_WORKER_APC。
+      # 之前（2736827 及以前）的测量是池 = 核数 − 1，两段不混比
+      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580 -XX:ActiveProcessorCount=${MCD_WORKER_APC:-5} ${MCD_JVM_EXTRA:-}"
       # 故意和 MC_SEED 不一样：证明 worker 用的是 coordinator 给的 seed
       SEED: "1"
       # worker 关掉看门狗：上面没有玩家，一个 tile 在一个 tick 里生成是设计如此，慢的时候（并行跑抢磁盘）看门狗会误杀它（11-09）。
@@ -68,6 +71,9 @@ services:
       service: worker
     cpuset: ${WORKER3_CPUSET:-3}
     cpus: ${WORKER3_CPUS:-0.5}
+    environment:
+      # 生成线程按 worker3 自己的核数（WORKER3_CPUS 取整、至少 1，WORKER3_GEN_THREADS 单独设）
+      JVM_OPTS: "-Dmcdonate.coordinator=minecraft:25580 -XX:ActiveProcessorCount=${MCD_WORKER3_APC:-2} ${MCD_JVM_EXTRA:-}"
     volumes: !override
       - ./test-data-worker3:/data
       - ../build/mods-worker:/mods:ro
