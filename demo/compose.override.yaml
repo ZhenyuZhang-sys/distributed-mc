@@ -1,0 +1,12 @@
+# 演示用：限 CPU 和内存（cgroup），端口只绑 Tailscale 地址
+services:
+  minecraft:
+    restart: "no"
+    environment:
+      OPS: ababfish
+    cpuset: "${DEMO_CPUSET:-104-105}"
+    cpus: ${DEMO_CPUS:-1.0}
+    mem_limit: ${DEMO_MEM:-3g}
+    ports: !override
+      - "${BIND_IP}:${MC_PORT}:25565/tcp"
+      - "${BIND_IP}:${COORD_PORT}:25580/tcp"

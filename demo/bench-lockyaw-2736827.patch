@@ -1,0 +1,17 @@
+diff --git a/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java b/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java
+index 4727a78..6bdd0e6 100644
+--- a/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java
++++ b/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java
+@@ -414,7 +414,11 @@ public final class FlightRecorder {
+     }
+ 
+     private void place(ServerPlayer p, double x, double z) {
+-        p.teleportTo(level, x, startY, z, p.getYRot(), p.getXRot());
++        // 演示用：-Dmcdonate.benchLockYaw=-90 时把视角锁成朝 +x（飞行方向），俯仰按 benchLockPitch（默认 10）
++        String lock = System.getProperty("mcdonate.benchLockYaw");
++        float yaw = lock != null ? Float.parseFloat(lock) : p.getYRot();
++        float pitch = lock != null ? Float.parseFloat(System.getProperty("mcdonate.benchLockPitch", "10")) : p.getXRot();
++        p.teleportTo(level, x, startY, z, yaw, pitch);
+         p.setDeltaMovement(Vec3.ZERO);
+         p.fallDistance = 0;
+         level.getChunkSource().move(p);

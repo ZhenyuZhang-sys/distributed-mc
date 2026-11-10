@@ -1,0 +1,319 @@
+diff --git a/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java b/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java
+index b2b1662..eeb3ce0 100644
+--- a/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java
++++ b/bench/src/main/java/mcdonate/bench/flight/FlightRecorder.java
+@@ -399,7 +399,11 @@ public final class FlightRecorder {
+     }
+ 
+     private void place(ServerPlayer p, double x, double z) {
+-        p.teleportTo(level, x, startY, z, p.getYRot(), p.getXRot());
++        // 演示用：-Dmcdonate.benchLockYaw=-90 时把视角锁成朝 +x（飞行方向），俯仰按 benchLockPitch（默认 10）
++        String lock = System.getProperty("mcdonate.benchLockYaw");
++        float yaw = lock != null ? Float.parseFloat(lock) : p.getYRot();
++        float pitch = lock != null ? Float.parseFloat(System.getProperty("mcdonate.benchLockPitch", "10")) : p.getXRot();
++        p.teleportTo(level, x, startY, z, yaw, pitch);
+         p.setDeltaMovement(Vec3.ZERO);
+         p.fallDistance = 0;
+         level.getChunkSource().move(p);
+diff --git a/client/src/main/java/mcdonate/client/SettingsScreen.java b/client/src/main/java/mcdonate/client/SettingsScreen.java
+index c94a204..77096b6 100644
+--- a/client/src/main/java/mcdonate/client/SettingsScreen.java
++++ b/client/src/main/java/mcdonate/client/SettingsScreen.java
+@@ -13,7 +13,7 @@ public final class SettingsScreen extends Screen {
+     private Button toggle;
+ 
+     public SettingsScreen(Screen parent) {
+-        super(Component.literal("mc-donate 设置"));
++        super(Component.literal("mc-donate settings"));
+         this.parent = parent;
+     }
+ 
+@@ -34,20 +34,20 @@ public final class SettingsScreen extends Screen {
+     protected void init() {
+         int x = width / 2 - 100, y = height / 4 + 10;
+         toggle = addRenderableWidget(Button.builder(label(), b -> toggle()).bounds(x, y, 200, 20).build());
+-        addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " 个线程"))
++        addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " threads"))
+                 .withValues(List.of(1, 2, 3, 4, 6, 8)).withInitialValue(settings().threads())
+-                .create(x, y + 26, 200, 20, Component.literal("生成线程"), (b, v) -> save(settings().withThreads(v))));
++                .create(x, y + 26, 200, 20, Component.literal("Worker threads"), (b, v) -> save(settings().withThreads(v))));
+         addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " MB"))
+                 .withValues(List.of(1024, 2048, 3072, 4096, 6144, 8192)).withInitialValue(settings().memoryMb())
+-                .create(x, y + 52, 200, 20, Component.literal("内存上限"), (b, v) -> save(settings().withMemoryMb(v))));
++                .create(x, y + 52, 200, 20, Component.literal("Memory limit"), (b, v) -> save(settings().withMemoryMb(v))));
+         // 帧时间目标：最近 10 秒帧时间的中位数超过它 5 秒就暂停 worker，低于它的 0.8 持续 5 秒恢复。改了马上生效
+-        addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " ms（恢复线 " + Math.round(v * 0.8) + " ms）"))
++        addRenderableWidget(CycleButton.<Integer>builder(v -> Component.literal(v + " ms (resume at " + Math.round(v * 0.8) + " ms)"))
+                 .withValues(ClientSettings.FRAME_TARGETS).withInitialValue(nearest(settings().frameTargetMs()))
+-                .create(x, y + 78, 200, 20, Component.literal("帧时间目标"), (b, v) -> save(settings().withFrameTargetMs(v))));
++                .create(x, y + 78, 200, 20, Component.literal("Frame-time target"), (b, v) -> save(settings().withFrameTargetMs(v))));
+         // 11-09 加速模式：空闲时也一直算（coordinator 派后台 tile，优先级最低）。改了马上告诉 worker
+         addRenderableWidget(CycleButton.onOffBuilder(settings().boost())
+-                .create(x, y + 104, 200, 20, Component.literal("加速：空闲时一直算"), (b, v) -> save(settings().withBoost(v))));
+-        addRenderableWidget(Button.builder(Component.literal("完成"), b -> onClose()).bounds(x, y + 156, 200, 20).build());
++                .create(x, y + 104, 200, 20, Component.literal("Boost: compute while idle"), (b, v) -> save(settings().withBoost(v))));
++        addRenderableWidget(Button.builder(Component.literal("Done"), b -> onClose()).bounds(x, y + 156, 200, 20).build());
+     }
+ 
+     /** 手改过设置文件、不在选项里的值：显示最近的选项。 */
+@@ -62,7 +62,7 @@ public final class SettingsScreen extends Screen {
+     }
+ 
+     private static Component label() {
+-        return Component.literal("帮服务器生成地形：" + (settings().enabled() && Consent.load(ClientMod.consentFile()).given() ? "开" : "关"));
++        return Component.literal("Help generate terrain: " + (settings().enabled() && Consent.load(ClientMod.consentFile()).given() ? "ON" : "OFF"));
+     }
+ 
+     /** 按开关：打开且还没同意过，先弹同意界面；同意过就直接开。关就直接关。 */
+diff --git a/client/src/main/java/mcdonate/client/overlay/ChunkSources.java b/client/src/main/java/mcdonate/client/overlay/ChunkSources.java
+index d32715c..1e788f4 100644
+--- a/client/src/main/java/mcdonate/client/overlay/ChunkSources.java
++++ b/client/src/main/java/mcdonate/client/overlay/ChunkSources.java
+@@ -45,6 +45,8 @@ public final class ChunkSources {
+         for (Entry e : u.chunks()) {
+             int c = e.source() == Source.DONOR
+                     ? (donors.containsKey(e.donor()) ? DonorColors.donor(donors.get(e.donor()).key()) : DonorColors.donor("#" + e.donor()))
++                    // 演示：服务器不知道是哪个 donor 做的（RESUMED 没带 donor），只有一个 donor 时就算它的，画它的颜色
++                    : e.source() == Source.RESUMED && donors.size() == 1 ? DonorColors.donor(donors.values().iterator().next().key())
+                     : DonorColors.of(e.source());
+             if (c == -1) {
+                 colors.remove(key(e.cx(), e.cz()));
+diff --git a/client/src/main/java/mcdonate/client/overlay/HudLines.java b/client/src/main/java/mcdonate/client/overlay/HudLines.java
+index d1eb7a4..5d26854 100644
+--- a/client/src/main/java/mcdonate/client/overlay/HudLines.java
++++ b/client/src/main/java/mcdonate/client/overlay/HudLines.java
+@@ -20,29 +20,29 @@ public final class HudLines {
+         List<String> out = new ArrayList<>();
+         JsonObject s = parse(statusJson);
+         if (s == null) {
+-            out.add("worker 没在跑");
++            out.add("worker: not running");
+         } else {
+             String state = str(s, "state");
+-            out.add("worker：" + switch (state == null ? "" : state) {
+-                case "running" -> "在跑";
+-                case "paused" -> "暂停（帧率限速）";
+-                case "stopping" -> "正在关";
++            out.add("worker: " + switch (state == null ? "" : state) {
++                case "running" -> "running";
++                case "paused" -> "paused (low FPS)";
++                case "stopping" -> "stopping";
+                 default -> state == null ? "—" : state;
+-            } + "，" + num(s, "threads", "%.0f 线程"));
++            } +  ", " + num(s, "threads", "%.0f threads"));
+             double load = dbl(s, "cpuLoad"), cpus = dbl(s, "cpus");
+             String cpu = load < 0 || Double.isNaN(load) ? "CPU —"
+                     : Double.isNaN(cpus) ? String.format(Locale.ROOT, "CPU %.0f%%", load * 100)
+-                    : String.format(Locale.ROOT, "CPU %.1f 核", load * cpus);
+-            out.add(cpu + "，内存 " + num(s, "heapUsedMb", "%.0f") + " / " + num(s, "heapMaxMb", "%.0f") + " MB");
+-            out.add("交回 " + num(s, "tiles", "%.0f tile") + "，" + num(s, "chunks", "%.0f chunk") + "，" + bytes(dbl(s, "bytes")));
++                    : String.format(Locale.ROOT, "CPU %.1f cores", load * cpus);
++            out.add(cpu + ", memory " + num(s, "heapUsedMb", "%.0f") + " / " + num(s, "heapMaxMb", "%.0f") + " MB");
++            out.add("returned " + num(s, "tiles", "%.0f tiles") + ", " + num(s, "chunks", "%.0f chunks") + ", " + bytes(dbl(s, "bytes")));
+         }
+         if (summary == null) {
+-            out.add("在线 donor —，你的贡献 —");
++            out.add("donors online —, your share —");
+         } else {
+             String share = summary.importedTotal() > 0
+                     ? String.format(Locale.ROOT, "%.0f%%", 100.0 * summary.importedByYou() / summary.importedTotal()) : "—";
+-            out.add("在线 donor " + summary.donorsOnline() + "，你的贡献 " + share + "（" + summary.importedByYou() + " / "
+-                    + summary.importedTotal() + " chunk）");
++            out.add("donors online " + summary.donorsOnline() + ", your share " + share + " (" + summary.importedByYou() + " / "
++                    + summary.importedTotal() + " chunks)");
+         }
+         return out;
+     }
+@@ -77,9 +77,9 @@ public final class HudLines {
+     }
+ 
+     private static String bytes(double b) {
+-        if (Double.isNaN(b)) return "— 字节";
++        if (Double.isNaN(b)) return "— bytes";
+         if (b >= 1 << 20) return String.format(Locale.ROOT, "%.1f MB", b / (1 << 20));
+         if (b >= 1 << 10) return String.format(Locale.ROOT, "%.1f KB", b / (1 << 10));
+-        return String.format(Locale.ROOT, "%.0f 字节", b);
++        return String.format(Locale.ROOT, "%.0f bytes", b);
+     }
+ }
+diff --git a/client/src/main/java/mcdonate/client/overlay/OverlayClient.java b/client/src/main/java/mcdonate/client/overlay/OverlayClient.java
+index 2281261..4453686 100644
+--- a/client/src/main/java/mcdonate/client/overlay/OverlayClient.java
++++ b/client/src/main/java/mcdonate/client/overlay/OverlayClient.java
+@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
+  */
+ public final class OverlayClient {
+     private static final Logger LOG = LoggerFactory.getLogger("mcdonate-overlay");
+-    private static final int MAP_PX = 128;
++    private static final int MAP_PX = 84;
+     private static final int MAP_RADIUS = 10;
+ 
+     /** 和第 9 步的 worker 子进程打交道（ClientMod 实现）：在不在跑、写一行到它的标准输入。 */
+@@ -51,6 +51,12 @@ public final class OverlayClient {
+     private static WorkerLink link;
+     private static volatile String latestStatus;
+     private static boolean subscribedThisConnection;
++    // 演示（用户 11-10）："探索"模式：只给客户端真正收到过的 chunk 上色，没飞到的地不显示（提前算好的路线不剧透）
++    private static boolean explore = !"false".equalsIgnoreCase(System.getProperty("mcdonate.mapExplore", "true"));
++    private static final it.unimi.dsi.fastutil.longs.LongOpenHashSet EXPLORED = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
++    // 演示（用户 11-10）：服务器用一条隐藏的聊天消息 "[demo-prep] x0 z0 x1 z1"（chunk 坐标，含两端）告诉客户端
++    // 哪一片是提前算好的，小地图上画黄框；框外是飞的时候实时算的
++    private static volatile int[] prepRect;
+     private static long receivedWhileOff;   // 两样都关着时还收到的包（端到端测试看服务器有没有停）
+     private static boolean incrementLogged;
+     private static int ticks;
+@@ -70,21 +76,46 @@ public final class OverlayClient {
+         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+             subscribedThisConnection = false;
+             SOURCES.clear();
++            client.execute(EXPLORED::clear);
++            prepRect = null;
+         });
+         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(SOURCES::clear));
+         ClientTickEvents.END_CLIENT_TICK.register(OverlayClient::onTick);
++        net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
++            String t = message.getString();
++            if (!t.startsWith("[demo-prep]")) return true;
++            String[] p = t.substring("[demo-prep]".length()).trim().split("\\s+");
++            try {
++                prepRect = p.length == 4 ? new int[] {Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3])} : null;
++            } catch (NumberFormatException e) {
++                prepRect = null;
++            }
++            return false;   // 不显示在聊天栏
++        });
+         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(
+                 ClientCommandManager.literal("mcdonate")
+                         .then(ClientCommandManager.literal("show").executes(ctx -> set(OverlayToggles.show(settings))))
+                         .then(ClientCommandManager.literal("overlay")
+                                 .then(ClientCommandManager.literal("on").executes(ctx -> set(OverlayToggles.overlay(settings, true))))
+                                 .then(ClientCommandManager.literal("off").executes(ctx -> set(OverlayToggles.overlay(settings, false)))))
++                        .then(ClientCommandManager.literal("map")
++                                .then(ClientCommandManager.literal("explore").executes(ctx -> setExplore(true)))
++                                .then(ClientCommandManager.literal("all").executes(ctx -> setExplore(false))))
+                         .then(ClientCommandManager.literal("hud")
+                                 .then(ClientCommandManager.literal("on").executes(ctx -> set(OverlayToggles.hud(settings, true))))
+                                 .then(ClientCommandManager.literal("off").executes(ctx -> set(OverlayToggles.hud(settings, false)))))));
+         HudRenderCallback.EVENT.register((graphics, tick) -> render(graphics));
+     }
+ 
++    private static int setExplore(boolean on) {
++        explore = on;
++        Minecraft mc = Minecraft.getInstance();
++        if (mc.player != null) {
++            mc.player.displayClientMessage(Component.literal("mc-donate: minimap " + (on ? "shows only chunks you have loaded (explore)" : "shows all chunks with a known source")), false);
++        }
++        return 1;
++    }
++
+     /** 测试钩子和命令都走这里：改开关、存盘、通知服务器。返回 1（brigadier 的成功）。 */
+     public static int set(OverlaySettings s) {
+         boolean overlayWasOn = settings.overlay();
+@@ -197,7 +228,7 @@ public final class OverlayClient {
+             if (SOURCES.size() > 0) {
+                 SOURCES.clear();
+             }
+-            g.drawString(mc.font, "mc-donate：这个维度不显示来源", g.guiWidth() - 170, 6, 0xFFCCCCCC, true);
++            g.drawString(mc.font, "mc-donate: no sources in this dimension", g.guiWidth() - 170, 6, 0xFFCCCCCC, true);
+             return;
+         }
+         int cells = 2 * MAP_RADIUS + 1, cell = Math.max(1, MAP_PX / cells), size = cell * cells;
+@@ -207,34 +238,67 @@ public final class OverlayClient {
+         for (int dx = -MAP_RADIUS; dx <= MAP_RADIUS; dx++) {
+             for (int dz = -MAP_RADIUS; dz <= MAP_RADIUS; dz++) {
+                 int c = SOURCES.color(pcx + dx, pcz + dz);
++                if (c != -1 && explore) {
++                    long k = net.minecraft.world.level.ChunkPos.asLong(pcx + dx, pcz + dz);
++                    if (!EXPLORED.contains(k)) {
++                        if (mc.level.getChunkSource().hasChunk(pcx + dx, pcz + dz)) EXPLORED.add(k);
++                        else c = -1;
++                    }
++                }
+                 if (c != -1) {
+                     int x = x0 + (dx + MAP_RADIUS) * cell, y = y0 + (dz + MAP_RADIUS) * cell;
+                     g.fill(x, y, x + cell - (cell > 3 ? 1 : 0), y + cell - (cell > 3 ? 1 : 0), 0xD0000000 | c);
+                 }
+             }
+         }
++        int[] r = prepRect;
++        if (r != null) {
++            // 黄框：提前算好的范围（裁到地图里）
++            int ax = Math.max(r[0] - pcx, -MAP_RADIUS), bx = Math.min(r[2] - pcx, MAP_RADIUS);
++            int az = Math.max(r[1] - pcz, -MAP_RADIUS), bz = Math.min(r[3] - pcz, MAP_RADIUS);
++            if (ax <= bx && az <= bz) {
++                int lx = x0 + (ax + MAP_RADIUS) * cell, rx = x0 + (bx + MAP_RADIUS + 1) * cell;
++                int tz = y0 + (az + MAP_RADIUS) * cell, bzp = y0 + (bz + MAP_RADIUS + 1) * cell;
++                int yc = 0xFFFFD700;
++                if (r[0] - pcx >= -MAP_RADIUS) g.fill(lx, tz, lx + 2, bzp, yc);
++                if (r[2] - pcx <= MAP_RADIUS) g.fill(rx - 2, tz, rx, bzp, yc);
++                if (r[1] - pcz >= -MAP_RADIUS) g.fill(lx, tz, rx, tz + 2, yc);
++                if (r[3] - pcz <= MAP_RADIUS) g.fill(lx, bzp - 2, rx, bzp, yc);
++            }
++        }
+         // 玩家：所在 chunk 里按朝向画一个箭头（用户 11-09：鞘翅飞的时候看出往哪飞），北朝上，地图不转。
+         // 位置按玩家在 chunk 里的实际坐标，深色描边加白色箭头
+         float px = x0 + (MAP_RADIUS + (float) (mc.player.getX() / 16 - pcx)) * cell;
+         float py = y0 + (MAP_RADIUS + (float) (mc.player.getZ() / 16 - pcz)) * cell;
+         float len = PlayerArrow.size(cell);
+         g.flush();   // 先把上面攒着的格子画出去，箭头才压在格子上面
++        // 演示（用户 11-10）：别的玩家也画出来（青色箭头 + 名字），客户端看得到的才画
++        for (net.minecraft.world.entity.player.Player o : mc.level.players()) {
++            if (o == mc.player) continue;
++            float ox = x0 + (MAP_RADIUS + (float) (o.getX() / 16 - pcx)) * cell;
++            float oy = y0 + (MAP_RADIUS + (float) (o.getZ() / 16 - pcz)) * cell;
++            if (ox < x0 || ox > x0 + size || oy < y0 || oy > y0 + size) continue;
++            triangle(g, PlayerArrow.outline(o.getYRot(), ox, oy, len), 0xFF101010);
++            int[] pal = {0xFF33DDFF, 0xFFFF5555, 0xFF55FF55, 0xFFFFAA00, 0xFFFF55FF, 0xFFFFFF55};
++            triangle(g, PlayerArrow.triangle(o.getYRot(), ox, oy, len), pal[Math.floorMod(o.getGameProfile().getName().hashCode(), pal.length)]);
++        }
++        g.flush();
+         triangle(g, PlayerArrow.outline(mc.player.getYRot(), px, py, len), 0xFF101010);
+         triangle(g, PlayerArrow.triangle(mc.player.getYRot(), px, py, len), 0xFFFFFFFF);
+         // 图例：四类 + donor（最多 8 个，多的折成"其他 N 个"）
+         int y = y0 + size + 4;
+-        y = legend(g, mc, x0, y, DonorColors.of(Source.SERVER), "服务器自己生成");
+-        y = legend(g, mc, x0, y, DonorColors.of(Source.RESUMED), "导入后服务器接着做完");
+-        y = legend(g, mc, x0, y, DonorColors.of(Source.REJECTED), "被打回");
++        y = legend(g, mc, x0, y, DonorColors.of(Source.SERVER), "server only");
++        if (SOURCES.donors().size() != 1) y = legend(g, mc, x0, y, DonorColors.of(Source.RESUMED), "donor + server");
++        y = legend(g, mc, x0, y, DonorColors.of(Source.REJECTED), "rejected");
+         List<Donor> donors = SOURCES.donors();
+         for (int i = 0; i < Math.min(8, donors.size()); i++) {
+-            y = legend(g, mc, x0, y, DonorColors.donor(donors.get(i).key()), "donor " + donors.get(i).name());
++            y = legend(g, mc, x0, y, DonorColors.donor(donors.get(i).key()), donors.get(i).name() + " donor + server");
+         }
+         if (donors.size() > 8) {
+-            g.drawString(mc.font, "其他 " + (donors.size() - 8) + " 个 donor", x0, y, 0xFFCCCCCC, true);
++            { String t = "+" + (donors.size() - 8) + " more donors"; g.drawString(mc.font, t, g.guiWidth() - 6 - mc.font.width(t), y, 0xFFCCCCCC, true); }
+             y += 10;
+         }
+-        g.drawString(mc.font, "没颜色 = 来源不明", x0, y, 0xFFAAAAAA, true);
++        { String t = explore ? "no color = not loaded yet" : "no color = unknown source"; g.drawString(mc.font, t, g.guiWidth() - 6 - mc.font.width(t), y, 0xFFAAAAAA, true); }
+     }
+ 
+     private static void triangle(GuiGraphics g, float[] t, int argb) {
+@@ -252,8 +316,10 @@ public final class OverlayClient {
+     }
+ 
+     private static int legend(GuiGraphics g, Minecraft mc, int x, int y, int rgb, String text) {
+-        g.fill(x, y + 1, x + 7, y + 8, 0xFF000000 | rgb);
+-        g.drawString(mc.font, text, x + 10, y, 0xFFFFFFFF, true);
++        // 右对齐到屏幕右边（小地图贴右边，文字往左排，不会出屏幕）
++        int right = g.guiWidth() - 6, tx = right - mc.font.width(text);
++        g.fill(tx - 10, y + 1, tx - 3, y + 8, 0xFF000000 | rgb);
++        g.drawString(mc.font, text, tx, y, 0xFFFFFFFF, true);
+         return y + 10;
+     }
+ 
+diff --git a/client/src/main/java/mcdonate/client/overlay/OverlayToggles.java b/client/src/main/java/mcdonate/client/overlay/OverlayToggles.java
+index 4c3e031..ef310b3 100644
+--- a/client/src/main/java/mcdonate/client/overlay/OverlayToggles.java
++++ b/client/src/main/java/mcdonate/client/overlay/OverlayToggles.java
+@@ -20,6 +20,6 @@ public final class OverlayToggles {
+ 
+     /** 回在聊天栏的一句。 */
+     public static String describe(OverlaySettings s) {
+-        return "mc-donate：来源上色：" + (s.overlay() ? "开" : "关") + "，算力面板：" + (s.hud() ? "开" : "关");
++        return "mc-donate: source colors " + (s.overlay() ? "on" : "off") + ", compute panel " + (s.hud() ? "on" : "off");
+     }
+ }
