@@ -339,13 +339,18 @@ def make_flight_driver(runner, controller, flyer, events=None, start=ab.DEFAULT_
             bs = {w.get('boost') for w in status_after.get('workers', [])}
             result['boost_effective'] = bs.pop() if len(bs) == 1 else None
         if status_after is not None:   # fish-pool：每个 worker 的生成池对不对（老 worker 报 null 不核对）
-            got = [w.get('genPool') for w in status_after.get('workers', [])]
+            ws = status_after.get('workers', [])
+            got = [w.get('genPool') for w in ws]
             result['gen_pool'] = got
-            local = getattr(runner, 'local_env', lambda k: None)
-            want = expected_gen_pools(services, lambda k: (env or {}).get(k) or local(k))
+            # 自洽：ActiveProcessorCount = 线程数 + 1，所以 genPool = cpus − 1（不解析 .env，compose 的引号、空值规则交给 compose）
+            selfbad = [(w.get('genPool'), w.get('cpus')) for w in ws
+                       if isinstance(w.get('genPool'), int) and isinstance(w.get('cpus'), int) and w['genPool'] != w['cpus'] - 1]
+            # 具体数值：只核对 profile 里显式写了的（WORKER_CPUS / WORKER_GEN_THREADS），不读 .env.local
+            want = expected_gen_pools(services, lambda k: (env or {}).get(k))
             bad = [g for g in got if g is not None and None not in want and g not in want]
-            if bad:
-                raise RuntimeError(f'这一轮无效：worker 生成池不对：要 {sorted(want)}，status 里是 {got}')
+            if selfbad or bad:
+                raise RuntimeError(f'这一轮无效：worker 生成池不对：要 {sorted(want)}，status 里 genPool/cpus 是 '
+                                   f'{[(w.get("genPool"), w.get("cpus")) for w in ws]}')
         if status_after is not None:
             result['worker_status'] = [{k: w[k] for k in ('id',) + WORKER_STATUS_KEYS if k in w} for w in status_after.get('workers', [])]
         if len(all_judged) > 1:   # 两个玩家：卡住、距离取两人的均值，另记最差的那个

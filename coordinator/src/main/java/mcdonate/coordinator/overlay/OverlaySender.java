@@ -62,6 +62,8 @@ public final class OverlaySender {
             }
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> server.execute(() -> c.remove(handler.getPlayer().getUUID())));
+        // 玩家进服：他的 donor 之前可能只有账本里的占位名，重新查一遍名字（codex-audit 第二十二节 O1）
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> server.execute(c::refreshNames));
         // 换维度、重生（codex-audit K7）：每 20 tick 才看一次所在维度，1 秒内去别的维度又回来会漏掉重同步；换的那一刻就记下，
         // 下一次从整片快照重来（这两个事件都在主线程上）
         net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register(

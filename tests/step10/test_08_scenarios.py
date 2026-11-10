@@ -448,17 +448,33 @@ def test_driver_sets_boost_on_workers_and_checks_it(tmp_path):
 
 
 def test_driver_checks_worker_gen_pool(tmp_path):
-    # 调度 11-10（fish-pool）：测试 worker 的生成池 = 生成线程数（默认 WORKER_CPUS），/donor status 每个 worker 报 genPool；
-    # 驱动按 profile 的环境变量算该是多少，对不上判无效（哪个槽位漏改一眼看出来）；老 worker 报 null 就不核对
-    runner, ctl, flyer, fly, drive = real_rig(tmp_path)   # 1x8：WORKER_CPUS=8
-    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=8)]
+    # 调度 11-10（fish-pool / envfix）：worker 报 cpus 和 genPool（ActiveProcessorCount = 线程数 + 1，所以 genPool 应 = cpus − 1）。
+    # 驱动先做自洽检查（不解析任何 .env）；profile 里显式写了 WORKER_CPUS / WORKER_GEN_THREADS 时再核对具体数值；
+    # 只有 .env.local 的值不拿来核对（引号、空值等 compose 语法驱动不重新实现）。老 worker 报 null 不核对
+    runner, ctl, flyer, fly, drive = real_rig(tmp_path)   # 1x8：profile 里 WORKER_CPUS=8
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=8, cpus=9)]
     out = drive(rcell('firework'), tmp_path / 'g1')
     assert 8 in out['gen_pool']   # 假 runner 起 donor 时自己也加一个 worker（没有 genPool，不核对）
-    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=7)]
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=7, cpus=9)]          # 不自洽
     with pytest.raises(RuntimeError, match='生成池不对'):
         drive(rcell('firework'), tmp_path / 'g2')
-    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=None)]
-    assert set(drive(rcell('firework'), tmp_path / 'g3')['gen_pool']) == {None}
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=6, cpus=7)]          # 自洽，但 profile 说 8
+    with pytest.raises(RuntimeError, match='生成池不对'):
+        drive(rcell('firework'), tmp_path / 'g3')
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=None, cpus=None)]
+    assert set(drive(rcell('firework'), tmp_path / 'g4')['gen_pool']) == {None}
+
+
+def test_driver_gen_pool_ignores_local_env(tmp_path):
+    runner, ctl, flyer, fly, _ = real_rig(tmp_path)
+    runner.local_env = lambda k: '"3"' if k == 'WORKER_CPUS' else None   # .env.local 里带引号：驱动不拿它核对
+    drive = make_flight_driver(runner, ctl, flyer, events=lambda a, b: [], donor_profiles={'plain': {'donors': 1, 'env': {}}})
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=4, cpus=5)]
+    out = drive(rcell('firework', profile='plain'), tmp_path / 'g5')
+    assert 4 in out['gen_pool']
+    runner.status['workers'] = [dict(id=7, name='w', done=0, genPool=4, cpus=9)]   # profile 没写核数，但自己不自洽
+    with pytest.raises(RuntimeError, match='生成池不对'):
+        drive(rcell('firework', profile='plain'), tmp_path / 'g6')
 
 
 def test_expected_gen_pool_rules():

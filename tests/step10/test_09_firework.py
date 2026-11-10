@@ -428,3 +428,104 @@ def test_blank_breakdown_uses_stages_when_present():
     assert pre['enter_to_ticket_full_s'] == 2.5 and pre['ticket_full_to_light_s'] == 0.5 and pre['ticket_full_to_full_s'] == pytest.approx(0.9)
     assert pre['light_before_ticket_full_share'] == 0
     assert 'enter_to_ticket_s' not in blank_breakdown(ev, prov, rows, run=run, view=2, cache_radius_blocks=24)['pre']   # 没有 stages 就不报
+
+
+def test_territory_metrics_fragments_and_seams():
+    # 调度 11-10：两个 donor 时预生成区领地被交错切开，接缝 tile 全落给服务器。从 provenance 的 donor 事件（每个 chunk 第一个）还原领地：
+    # 碎片数 = 各 donor 领地的 4 邻接连通块数之和；接缝边 = 相邻两个 chunk 属于不同 donor 的对数；接缝 chunk = 挨着别的 donor 的 donor chunk；
+    # 服务器补的接缝 = 不是 donor 做的（vanilla / rejected）、却挨着 2 个以上不同 donor 的 chunk
+    from analysis.firework import territory_metrics
+    def d(x, z, w):
+        return dict(t_ms=0, cx=x, cz=z, kind='donor', donor=w)
+    # A 占 x=0..1，B 占 x=3..4，中间 x=2 是服务器做的；A 另有一块飞地 (10, 0)
+    prov = [d(0, 0, 1), d(1, 0, 1), d(3, 0, 2), d(4, 0, 2), d(10, 0, 1), d(1, 0, 2),   # (1,0) 第二个事件不算
+            dict(t_ms=0, cx=2, cz=0, kind='vanilla', donor=-1), dict(t_ms=0, cx=5, cz=5, kind='rejected', donor=-1)]
+    m = territory_metrics(prov, tile=1)
+    assert m['donors'] == 2 and m['donor_chunks'] == 5
+    assert m['fragments'] == 3                      # A：x0-1 和 x10 两块；B：一块
+    assert m['seam_edges'] == 0 and m['seam_chunks'] == 0
+    assert m['server_between'] == 1                 # (2,0) 夹在 A、B 中间
+    assert m['rejected'] == 1
+    # 直接相邻：B 的 (2,1) 挨着 A 的 (1,1)
+    m2 = territory_metrics([d(1, 1, 1), d(2, 1, 2), d(2, 2, 2)], tile=1)
+    assert m2['seam_edges'] == 1 and m2['seam_chunks'] == 2 and m2['fragments'] == 2
+    assert (1, 1) in m2['seam_keys'] and (2, 1) in m2['seam_keys'] and (2, 2) not in m2['seam_keys']
+
+
+def test_blank_split_near_seams():
+    from analysis.firework import blank_times, split_blank
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0) for t in range(0, 11)]
+    run = dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))
+    ev = [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=3000, cx=4, cz=0, ev='ready'),
+          dict(t_ms=3000, cx=6, cz=1, ev='enter'), dict(t_ms=7000, cx=6, cz=1, ev='ready')]
+    times = blank_times(ev, rows, run=run, view=2, cache_radius_blocks=24, with_keys=True)
+    s = split_blank(times, near={(6, 3)}, radius=2)   # (6,1) 离 (6,3) 2 格以内，(4,0) 不在
+    assert s['near']['blank_median_s'] == 4.0 and s['near']['blank_n'] == 1
+    assert s['rest']['blank_median_s'] == 2.0 and s['rest']['blank_n'] == 1
+
+
+def test_recompute_reports_territory_and_seam_split(tmp_path):
+    # recompute 从归档算：领地（整段 / 只算站着时导入的）、接缝附近和其余的前方空白、整 tile 没被接受的个数
+    import json
+    from analysis.firework import recompute
+    raw = tmp_path / 'flight' / 'raw'
+    raw.mkdir(parents=True)
+    rows = [dict(t_s=t, x=16.0 * t + 8, z=8.0, ticks=20, stalled_ticks=0, void_rate=0) for t in range(0, 11)]
+    (raw / 'seconds.jsonl').write_text('\n'.join(json.dumps(r) for r in rows))
+    (raw / 'run.json').write_text(json.dumps(dict(start_x=8.0, start_z=8.0, view_distance=2, initial=dict(not_ready=0))))
+    (raw / 'chunks.jsonl').write_text('\n'.join(json.dumps(e) for e in [dict(t_ms=1000, cx=4, cz=0, ev='enter'), dict(t_ms=3000, cx=4, cz=0, ev='ready')]))
+    prov = [dict(t_ms=500, cx=1, cz=1, kind='donor', donor=1), dict(t_ms=500, cx=5, cz=1, kind='donor', donor=2),   # 相邻两个 tile
+            dict(t_ms=5000, cx=40, cz=40, kind='donor', donor=1)]
+    (raw / 'provenance.jsonl').write_text('\n'.join(json.dumps(e) for e in prov))
+    imports = [dict(accepted=True, tile=[0, 0], world='a'), dict(accepted=True, tile=[1, 0], world='b'), dict(accepted=True, tile=[10, 10], world='a'),
+               dict(accepted=False, tile=[2, 0], world='a'), dict(accepted=False, tile=[3, 0], world='b')]
+    (tmp_path / 'imports.jsonl').write_text('\n'.join(json.dumps(x) for x in imports))
+    out = recompute(tmp_path, dict(cache_radius=0, view_distance=2, stand_s=1, speed='elytra', scenario='firework'))
+    assert out['territory_fragments'] == 3 and out['seam_edges'] == 1
+    assert out['stand_territory_fragments'] == 2          # 站着那 1 秒里只导入了前两个
+    assert out['imports_rejected'] == 2
+    assert 'blank_seam_median_s' in out and 'blank_rest_median_s' in out
+
+
+def test_territory_metrics_at_tile_level():
+    # 派活按 tile（默认 4×4 chunk）：领地和接缝按 tile 算。tile 的主人 = 它里面 donor chunk 最多的那个；只有服务器 / 打回的 chunk、
+    # 4 邻里有 2 个以上不同 donor 的 tile 是"夹在中间给服务器"的接缝 tile
+    from analysis.firework import territory_metrics
+    prov = []
+    def tile(tx, tz, kind, w=-1):
+        for x in range(4):
+            for z in range(4):
+                prov.append(dict(t_ms=0, cx=tx * 4 + x, cz=tz * 4 + z, kind=kind, donor=w))
+    tile(0, 0, 'donor', 1)
+    tile(1, 0, 'vanilla')
+    tile(2, 0, 'donor', 2)
+    tile(0, 1, 'donor', 2)
+    prov.append(dict(t_ms=0, cx=8, cz=0, kind='donor', donor=1))   # tile (2,0) 里混了 1 个 A 的：主人还是 B
+    m = territory_metrics(prov)
+    assert m['donor_tiles'] == 3 and m['fragments'] == 3          # A 一块；B 两块（(2,0) 和 (0,1) 不相邻）
+    assert m['seam_edges'] == 1                                   # (0,0)A 和 (0,1)B
+    assert m['server_between'] == 1                               # (1,0) 夹在 A、B 中间
+    assert (0, 0) in m['seam_keys'] and (0, 4) in m['seam_keys']   # 接缝 tile 里的 chunk
+    assert (4, 0) in m['server_between_keys']
+
+
+def test_territory_owner_from_imports_not_ring_chunks():
+    # 导入一个 tile 会连外圈一起写（written 36 = 6×6），外圈 chunk 也有 donor 事件、落在邻居 tile 里：领地不能按 chunk 事件投票，
+    # 按 imports.jsonl（每个接受的 tile 是哪个 donor 世界送来的）认主；没被接受的导入（冲突等）另计
+    from analysis.firework import territory_metrics
+    prov = []
+    def write(tx, tz, w):   # 一个 tile 连外圈
+        for x in range(tx * 4 - 1, tx * 4 + 5):
+            for z in range(tz * 4 - 1, tz * 4 + 5):
+                prov.append(dict(t_ms=0, cx=x, cz=z, kind='donor', donor=w))
+    write(0, 0, 1)
+    write(2, 0, 2)
+    for x in range(4, 8):
+        for z in range(4):
+            prov.append(dict(t_ms=1, cx=x, cz=z, kind='vanilla', donor=-1))   # tile (1,0) 服务器做的
+    imports = [dict(tile=[0, 0], world='a', accepted=True), dict(tile=[2, 0], world='b', accepted=True),
+               dict(tile=[1, 0], world='a', accepted=False)]
+    m = territory_metrics(prov, imports=imports)
+    assert m['donor_tiles'] == 2 and m['donors'] == 2 and m['fragments'] == 2
+    assert m['server_between'] == 1 and m['seam_edges'] == 0
+    assert m['imports_rejected'] == 1

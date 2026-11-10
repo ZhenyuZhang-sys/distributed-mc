@@ -169,7 +169,7 @@ public final class Coordinator implements ModInitializer {
         mcdonate.coordinator.overlay.OverlaySender.install(
                 id -> workerName(id).map(n -> new mcdonate.coordinator.overlay.OverlayCore.Name(n.stable(), n.display())),
                 Coordinator::donorsOnline,
-                (cx, cz) -> ledgerName(cx, cz).map(n -> new mcdonate.coordinator.overlay.OverlayCore.Name(n.stable(), n.display())));
+                Coordinator::ledgerOverlayName);
         // 第 9 步：玩家进服时，装了客户端 mod 的（注册了 mcdonate:invite 频道）收到 coordinator 地址、一次性 token、seed；
         // 原版客户端不注册这个频道，canSend 为假，不发。没配公开地址（mcdonate.publicHost）就不发。玩家退出：作废没用过的 token，断开他的 worker。
         // 客户端可以再要一次（mcdonate:invite_request）：token 60 秒过期、邀请只在进服时发一次，玩家晚同意或 coordinator 重启后
@@ -235,19 +235,23 @@ public final class Coordinator implements ModInitializer {
         return n == null ? 0 : n.workerCount();
     }
 
-    /** worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；coordinator 没开或 worker 不在线返回空。在主线程上调。 */
     /**
      * 导入账本里这个 chunk 是谁导入的（主线程上调，overlay 给续完的 chunk 上色，用户 11-10）。这个 worker 还连着、donor 世界也一样时
      * 用在线的名字；否则按账本里的玩家 UUID（在线玩家的名字、没有就用服务器的玩家缓存），稳定名字和在线时一样。
      */
     static java.util.Optional<WorkerName> ledgerName(int cx, int cz) {
+        return ledgerOverlayName(cx, cz).map(n -> new WorkerName(n.stable(), n.display()));
+    }
+
+    /** 同 ledgerName，给 overlay 用：查不到玩家名时显示名是占位的（provisional），以后有真名会换掉（codex-audit 第二十二节 O1）。 */
+    static java.util.Optional<mcdonate.coordinator.overlay.OverlayCore.Name> ledgerOverlayName(int cx, int cz) {
         ImportLedger.Entry e = Ownership.LEDGER.get(net.minecraft.world.level.ChunkPos.asLong(cx, cz));
         if (e == null) {
             return java.util.Optional.empty();
         }
         java.util.Optional<WorkerName> live = e.workerId >= 0 ? workerName(e.workerId) : java.util.Optional.empty();
         if (live.isPresent() && live.get().stable().equals(WorkerName.ofLedger(e.player, null, e.world).stable())) {
-            return live;
+            return live.map(n -> new mcdonate.coordinator.overlay.OverlayCore.Name(n.stable(), n.display()));
         }
         String name = null;
         net.minecraft.server.MinecraftServer s = serverRef;
@@ -261,9 +265,11 @@ public final class Coordinator implements ModInitializer {
                 // 账本里不是 UUID：按 donor 世界编号
             }
         }
-        return java.util.Optional.of(WorkerName.ofLedger(e.player, name, e.world));
+        WorkerName n = WorkerName.ofLedger(e.player, name, e.world);
+        return java.util.Optional.of(new mcdonate.coordinator.overlay.OverlayCore.Name(n.stable(), n.display(), name == null));
     }
 
+    /** worker 编号 → 稳定名字和显示名（11-09 kexu overlay 用）；coordinator 没开或 worker 不在线返回空。在主线程上调。 */
     public static java.util.Optional<WorkerName> workerName(int workerId) {
         CoordinatorServer n = network;
         return n == null ? java.util.Optional.empty() : n.workerName(workerId);
