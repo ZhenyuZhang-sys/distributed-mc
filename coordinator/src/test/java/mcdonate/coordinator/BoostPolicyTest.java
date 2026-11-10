@@ -109,8 +109,9 @@ class BoostPolicyTest {
             lastAhead = d;
         }
         assertTrue(sides, "走廊铺完以后两侧照样做");
-        TilePos first = c.get(0);
-        assertTrue(first.minChunkX() > 0, "第一个在前方：" + first);
+        for (TilePos t : c.subList(0, 10)) {
+            assertTrue(BoostPolicy.inCorridor(t, 0, 0, 1, 0, 10), "最先做的都在前方走廊里：" + t);
+        }
         assertTrue(lastAhead >= 28, "走廊一直铺到半径附近：" + lastAhead);
     }
 

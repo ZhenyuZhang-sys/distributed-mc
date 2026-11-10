@@ -301,7 +301,15 @@ public final class DemandScanner {
         lastFwdVisited = fwdVisited;
         totalFwdCandidates += fwdCandidates;
         totalFwdVisited += fwdVisited;
-        background(at0, outer, chunkMap, access);
+        // 11-10 演示：后台先沿玩家朝向往前铺。走着用移动方向，站着（< 0.5 格/秒）用视线方向
+        double[][] dirs = new double[at0.length][];
+        for (int i = 0; i < at0.length; i++) {
+            ServerPlayer p = level.players().get(i);
+            Motion mo = motions.get(p.getUUID());
+            double[] v = mo == null ? new double[] {0, 0} : mo.velocity(Motion.SHORT_WINDOW_MS);
+            dirs[i] = Math.hypot(v[0], v[1]) >= 0.5 ? v : BoostPolicy.directionFromYaw(p.getYRot());
+        }
+        background(at0, dirs, outer, chunkMap, access);
         if (!toRead.isEmpty()) {
             long[] keys = toRead.toLongArray();
             toRead.clear();
@@ -379,14 +387,19 @@ public final class DemandScanner {
      * 后台扫描：找需求之后，有开了加速的 donor 时，从每个玩家的 outer 圈外（和预设中心）一圈一圈往外，
      * 按找需求同样的规则（接缝规则、存档状态）把 tile 当后台任务排上，排着的最多 BACKGROUND_QUEUE_CAP 个。单独的时间和读盘额度。
      */
-    private void background(long[] players, int outer, ChunkMap chunkMap, ChunkMapAccessor access) {
+    private void background(long[] players, double[][] playerDirs, int outer, ChunkMap chunkMap, ChunkMapAccessor access) {
         int n = players.length + (BACKGROUND_CENTER == null ? 0 : 1);
         int[][] centers = new int[n][];
         for (int i = 0; i < players.length; i++) {
             centers[i] = new int[] {(int) players[i], (int) (players[i] >>> 32), outer};
         }
+        double[][] dirs = new double[n][];
+        for (int i = 0; i < players.length; i++) {
+            dirs[i] = playerDirs[i];
+        }
         if (BACKGROUND_CENTER != null) {
             centers[n - 1] = new int[] {BACKGROUND_CENTER[0], BACKGROUND_CENTER[1], -1};
+            dirs[n - 1] = new double[] {0, 0}; // 预设中心没有方向：一圈一圈
         }
         lastBackgroundCenters = centers;
         if (!boostActive || BACKGROUND_RADIUS <= 0 || n == 0) {
@@ -401,7 +414,7 @@ public final class DemandScanner {
         int saved = readsLeft;
         readsLeft = BACKGROUND_READS;
         try {
-            for (TilePos t : BoostPolicy.backgroundOrder(centers, BACKGROUND_RADIUS)) {
+            for (TilePos t : BoostPolicy.backgroundOrder(centers, dirs, BACKGROUND_RADIUS, BoostPolicy.BACKGROUND_CORRIDOR)) {
                 if (room <= 0 || System.nanoTime() - b0 > BACKGROUND_BUDGET_NANOS) {
                     break;
                 }
