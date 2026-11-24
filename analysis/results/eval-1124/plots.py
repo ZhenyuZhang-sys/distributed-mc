@@ -1,5 +1,6 @@
 """course project 评测（11-24）出图：E1 主结果、E1 逐秒、E2 速度、E3 加核。
-用法：python plots.py <e1 目录> <e23 目录> <e3 目录> <输出目录>（E3 驱动只支持 1/2/4 核，改成 4 核）"""
+用法：python plots.py（默认读同目录 raw/e1 raw/e23 raw/e3，输出到 figures/）
+      或 python plots.py <e1 目录> <e23 目录> <e3 目录> <输出目录>（E3 驱动只支持 1/2/4 核，改成 4 核）"""
 import csv, json, sys, statistics as st
 from pathlib import Path
 import matplotlib
@@ -13,7 +14,9 @@ plt.rcParams['axes.unicode_minus'] = False
 GREY, BLUE, INK, MUTED = '#9a9a96', '#2a6fdb', '#222222', '#6b6b6b'
 WORKER_MD5 = 'c50dcbf9'   # worker jar md5 前 8 位（flight_driver 记的是 md5）
 
-e1, e23, e3, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4])
+HERE = Path(__file__).resolve().parent
+args = sys.argv[1:5] or [HERE / 'raw/e1', HERE / 'raw/e23', HERE / 'raw/e3', HERE / 'figures']
+e1, e23, e3, out = map(Path, args)
 out.mkdir(parents=True, exist_ok=True)
 
 

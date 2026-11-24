@@ -1,0 +1,1 @@
+{"error":"BadRequest: 服务器核数只能是 [1, 2, 4]，而且不能多于这个槽位的 4 个核","experiment":"flight","params":{"bots":1,"cache_radius":16,"donors":0,"duration_s":120,"features":"v0","group":"e3","latency_ms":0,"scenario":"firework","server_cpus":3,"speed":"elytra","speed_bps":33.5},"protocol_id":"0706d3df273d1106","repeat":1,"started_utc":"2026-11-24T05:09:47.911535+00:00","status":"failed"}

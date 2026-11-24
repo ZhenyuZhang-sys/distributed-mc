@@ -1,0 +1,34 @@
+2026-11-24T05:13:00.166218366Z [00:13:00] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:00.170555514Z [00:13:00] [RCON Client /0:0:0:0:0:0:0:1 #14/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:00.403594119Z [00:13:00] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:00.419546704Z [00:13:00] [RCON Client /0:0:0:0:0:0:0:1 #15/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:00.650054094Z [00:13:00] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:00.707811655Z [00:13:00] [Server thread/INFO]: Demobot[local] logged in with entity id 311 at (-32000.5, 200.0, 32008.5)
+2026-11-24T05:13:00.849672273Z [00:13:00] [Server thread/INFO]: Demobot joined the game
+2026-11-24T05:13:00.894944999Z [00:13:00] [RCON Client /0:0:0:0:0:0:0:1 #16/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:01.646096741Z [00:13:01] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:01.666483500Z [00:13:01] [RCON Client /0:0:0:0:0:0:0:1 #17/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:02.422192753Z [00:13:02] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:02.458882278Z [00:13:02] [RCON Client /0:0:0:0:0:0:0:1 #18/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:03.216821217Z [00:13:03] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:03.221897793Z [00:13:03] [RCON Client /0:0:0:0:0:0:0:1 #19/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:03.968005982Z [00:13:03] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:04.003129905Z [00:13:04] [RCON Client /0:0:0:0:0:0:0:1 #20/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:04.745293409Z [00:13:04] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:04.754266337Z [00:13:04] [RCON Client /0:0:0:0:0:0:0:1 #21/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:05.503487187Z [00:13:05] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:05.506674319Z [00:13:05] [RCON Client /0:0:0:0:0:0:0:1 #22/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:06.251051679Z [00:13:06] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:06.257073178Z [00:13:06] [RCON Client /0:0:0:0:0:0:0:1 #23/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:06.999814931Z [00:13:06] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:07.007273385Z [00:13:07] [RCON Client /0:0:0:0:0:0:0:1 #24/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:07.747464166Z [00:13:07] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:07.750185045Z [00:13:07] [RCON Client /0:0:0:0:0:0:0:1 #25/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:08.465519044Z [00:13:08] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:08.476781404Z [00:13:08] [RCON Client /0:0:0:0:0:0:0:1 #26/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:13:08.913442849Z [00:13:08] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:13:08.932430444Z [00:13:08] [RCON Client /0:0:0:0:0:0:0:1 #27/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:09.309389261Z [00:15:09] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:09.310697140Z [00:15:09] [Server thread/INFO]: Demobot lost connection: Killed
+2026-11-24T05:15:09.310946528Z [00:15:09] [Server thread/INFO]: Demobot left the game
+2026-11-24T05:15:09.310992456Z [00:15:09] [RCON Client /0:0:0:0:0:0:0:1 #28/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down

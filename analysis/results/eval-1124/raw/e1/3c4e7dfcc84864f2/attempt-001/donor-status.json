@@ -1,0 +1,472 @@
+{
+ "workers": [
+  {
+   "id": 2,
+   "name": "74b3469e346c",
+   "world": "bb21508d-21ca-44ce-8bbb-05e9de4eda67",
+   "task": 1341,
+   "done": 202,
+   "idleMs": 93,
+   "inFlight": 2,
+   "paused": false,
+   "boost": false,
+   "threads": 4,
+   "cpus": 5,
+   "genPool": 4,
+   "backgroundLeased": 0,
+   "backgroundAccepted": 0,
+   "avgMs": 1066,
+   "latencyMs": 1091,
+   "laneLatencyMs": 1091,
+   "ratePerSec": 1.87,
+   "busyMs": 121403,
+   "slots": 4,
+   "parallelism": 2.0,
+   "lanes": 2,
+   "idleRejects": 0,
+   "explorations": 0
+  }
+ ],
+ "features": [
+  "deadline",
+  "throughput"
+ ],
+ "config": {
+  "tileSize": 4,
+  "demandLookahead": 16,
+  "demandInnerMargin": 1,
+  "demandQueueCap": 256,
+  "scanTicks": 20,
+  "demandReadsPerScan": 256,
+  "demandScanBudgetMicros": 2000,
+  "leaseMs": 30000,
+  "heartbeatMs": 5000,
+  "deadMs": 15000,
+  "maxAttempts": 3,
+  "orphanMs": 60000,
+  "maxConcurrency": 4,
+  "tileDefaultMs": 3000,
+  "throughputWindow": 10,
+  "motionWindowMs": 1500,
+  "motionHorizonS": 120.0,
+  "tokenTtlMs": 60000,
+  "allowTokenless": true,
+  "publicHost": "minecraft",
+  "publicPort": 25580,
+  "maxLeaseTotalMs": 120000,
+  "importBudgetMs": 10,
+  "corridorChunks": 6,
+  "demandForwardFirst": true,
+  "skipNoDeadline": true,
+  "importFrontier": true,
+  "importMarginMs": 1000,
+  "waitDonorMaxMs": 2000,
+  "backgroundRadius": 48,
+  "backgroundQueueCap": 64,
+  "backgroundCenter": "",
+  "boostMaxInFlight": 8,
+  "importTrustDisk": false,
+  "features": "",
+  "genThreads": 1
+ },
+ "playerTicketThrottle": {
+  "configured": 4,
+  "actual": {
+   "minecraft:overworld": 4,
+   "minecraft:the_nether": 4,
+   "minecraft:the_end": 4
+  }
+ },
+ "demand": true,
+ "scan": {
+  "count": 133,
+  "avgMicros": 2178,
+  "maxMicros": 9837,
+  "avgCpuMicros": 711,
+  "recent": [
+   [
+    6347,
+    954,
+    256
+   ],
+   [
+    953,
+    953,
+    256
+   ],
+   [
+    845,
+    840,
+    256
+   ],
+   [
+    5096,
+    1096,
+    256
+   ],
+   [
+    3461,
+    489,
+    0
+   ],
+   [
+    539,
+    471,
+    256
+   ],
+   [
+    4228,
+    464,
+    256
+   ],
+   [
+    9837,
+    460,
+    256
+   ],
+   [
+    432,
+    426,
+    256
+   ],
+   [
+    3946,
+    455,
+    256
+   ],
+   [
+    442,
+    437,
+    256
+   ],
+   [
+    2341,
+    555,
+    256
+   ],
+   [
+    4291,
+    508,
+    0
+   ],
+   [
+    542,
+    476,
+    256
+   ],
+   [
+    488,
+    483,
+    256
+   ],
+   [
+    447,
+    442,
+    256
+   ],
+   [
+    5477,
+    495,
+    256
+   ],
+   [
+    7532,
+    448,
+    256
+   ],
+   [
+    428,
+    423,
+    256
+   ],
+   [
+    492,
+    422,
+    256
+   ],
+   [
+    452,
+    447,
+    256
+   ],
+   [
+    441,
+    437,
+    256
+   ],
+   [
+    475,
+    468,
+    256
+   ],
+   [
+    516,
+    513,
+    256
+   ],
+   [
+    475,
+    472,
+    256
+   ],
+   [
+    489,
+    484,
+    236
+   ],
+   [
+    2521,
+    480,
+    256
+   ],
+   [
+    3095,
+    452,
+    184
+   ],
+   [
+    6062,
+    406,
+    256
+   ],
+   [
+    471,
+    427,
+    198
+   ],
+   [
+    2518,
+    436,
+    256
+   ],
+   [
+    1031,
+    474,
+    150
+   ],
+   [
+    407,
+    403,
+    256
+   ],
+   [
+    449,
+    444,
+    218
+   ],
+   [
+    3948,
+    418,
+    256
+   ],
+   [
+    397,
+    391,
+    72
+   ],
+   [
+    467,
+    463,
+    256
+   ],
+   [
+    481,
+    477,
+    218
+   ],
+   [
+    453,
+    446,
+    256
+   ],
+   [
+    460,
+    426,
+    72
+   ],
+   [
+    394,
+    402,
+    256
+   ],
+   [
+    462,
+    456,
+    256
+   ],
+   [
+    3962,
+    440,
+    256
+   ],
+   [
+    569,
+    487,
+    256
+   ],
+   [
+    445,
+    439,
+    182
+   ],
+   [
+    4196,
+    490,
+    256
+   ],
+   [
+    2727,
+    445,
+    160
+   ],
+   [
+    5017,
+    441,
+    256
+   ],
+   [
+    1963,
+    466,
+    190
+   ],
+   [
+    435,
+    429,
+    256
+   ],
+   [
+    3524,
+    522,
+    147
+   ],
+   [
+    6817,
+    507,
+    256
+   ],
+   [
+    481,
+    474,
+    159
+   ],
+   [
+    440,
+    435,
+    256
+   ],
+   [
+    476,
+    471,
+    181
+   ],
+   [
+    4571,
+    441,
+    256
+   ],
+   [
+    467,
+    462,
+    202
+   ],
+   [
+    769,
+    509,
+    256
+   ],
+   [
+    1506,
+    457,
+    73
+   ],
+   [
+    413,
+    407,
+    256
+   ],
+   [
+    484,
+    482,
+    208
+   ],
+   [
+    4134,
+    482,
+    256
+   ],
+   [
+    553,
+    549,
+    72
+   ],
+   [
+    74,
+    69,
+    0
+   ]
+  ],
+  "inner": 22,
+  "outer": 38,
+  "lookahead": 16,
+  "frontier": -1,
+  "background": {
+   "active": false,
+   "scans": 0,
+   "enqueued": 0,
+   "queued": 0,
+   "avgMicros": 0
+  },
+  "forward": {
+   "on": true,
+   "candidates": 0,
+   "visited": 0,
+   "avgCandidates": 10,
+   "visitedRatio": 0.992
+  }
+ },
+ "tasks": {
+  "queued": 5,
+  "leased": 2,
+  "done": 202,
+  "failed": 0,
+  "dropped": 1149
+ },
+ "discarded_conflict": 0,
+ "discard_ratio": 0.0,
+ "discarded": {
+  "late": 0,
+  "other_world": 0,
+  "server": 0
+ },
+ "accepted": 202,
+ "importQueue": {
+  "foreground": 0,
+  "background": 0,
+  "backgroundImported": 0
+ },
+ "stale": {
+  "dropped": 697,
+  "cancelled": 0,
+  "import_late": 0,
+  "hopeless": 452
+ },
+ "hedge": {
+  "cancelled": 0,
+  "wasted": 0
+ },
+ "ledger": 3932,
+ "waitdonor": {
+  "waits": 0,
+  "hits": 0,
+  "timeouts": 0,
+  "abandoned": 0,
+  "waiting": 0,
+  "maxWaitMs": 2000,
+  "importVia": "chunkcache"
+ },
+ "import": {
+  "count": 202,
+  "totalMs": 2430.111175,
+  "maxMs": 64.086973
+ }
+}

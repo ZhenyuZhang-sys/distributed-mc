@@ -1,0 +1,40 @@
+2026-11-24T05:02:01.033209931Z [00:02:01] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:01.033800263Z [00:02:01] [RCON Client /0:0:0:0:0:0:0:1 #11/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:01.248096014Z [00:02:01] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:01.248709090Z [00:02:01] [RCON Client /0:0:0:0:0:0:0:1 #12/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:01.466627347Z [00:02:01] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:01.467232357Z [00:02:01] [RCON Client /0:0:0:0:0:0:0:1 #13/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:01.683391943Z [00:02:01] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:01.687228540Z [00:02:01] [RCON Client /0:0:0:0:0:0:0:1 #14/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:01.912536397Z [00:02:01] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:01.929308810Z [00:02:01] [RCON Client /0:0:0:0:0:0:0:1 #15/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:02.171221138Z [00:02:02] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:02.184844583Z [00:02:02] [Server thread/INFO]: Demobot[local] logged in with entity id 315 at (-32000.5, 200.0, 32008.5)
+2026-11-24T05:02:02.319223075Z [00:02:02] [Server thread/INFO]: Demobot joined the game
+2026-11-24T05:02:02.370543677Z [00:02:02] [RCON Client /0:0:0:0:0:0:0:1 #16/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:03.110702347Z [00:02:03] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:03.112932224Z [00:02:03] [RCON Client /0:0:0:0:0:0:0:1 #17/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:03.857515389Z [00:02:03] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:03.862371862Z [00:02:03] [RCON Client /0:0:0:0:0:0:0:1 #18/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:04.620731585Z [00:02:04] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:04.640846297Z [00:02:04] [RCON Client /0:0:0:0:0:0:0:1 #19/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:05.376681847Z [00:02:05] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:05.382047306Z [00:02:05] [RCON Client /0:0:0:0:0:0:0:1 #20/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:06.111487526Z [00:02:06] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:06.159978592Z [00:02:06] [RCON Client /0:0:0:0:0:0:0:1 #21/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:06.891483159Z [00:02:06] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:06.895245784Z [00:02:06] [RCON Client /0:0:0:0:0:0:0:1 #22/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:07.635187792Z [00:02:07] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:07.641532078Z [00:02:07] [RCON Client /0:0:0:0:0:0:0:1 #23/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:08.354542392Z [00:02:08] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:08.371729560Z [00:02:08] [RCON Client /0:0:0:0:0:0:0:1 #24/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:09.123221205Z [00:02:09] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:09.142516726Z [00:02:09] [RCON Client /0:0:0:0:0:0:0:1 #25/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:09.854537343Z [00:02:09] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:09.855780537Z [00:02:09] [RCON Client /0:0:0:0:0:0:0:1 #26/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:02:10.283200565Z [00:02:10] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:02:10.305577205Z [00:02:10] [RCON Client /0:0:0:0:0:0:0:1 #27/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:04:10.634269093Z [00:04:10] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:04:10.637478408Z [00:04:10] [RCON Client /0:0:0:0:0:0:0:1 #28/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:04:10.641434955Z [00:04:10] [Server thread/INFO]: Demobot lost connection: Killed
+2026-11-24T05:04:10.641755400Z [00:04:10] [Server thread/INFO]: Demobot left the game

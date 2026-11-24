@@ -1,0 +1,181 @@
+{
+ "note": "演示，粗测：这台机器上限核，每种配置 2 次，可能有别的测试并行",
+ "configs": [
+  "firework · 4 核 原版",
+  "firework · 4 核 1 donor deadline+throughput 提前量 16 扫描预算 2000"
+ ],
+ "status": {
+  "demo1_stall": "ok",
+  "demo2_ahead": "ok",
+  "demo3_sources": "ok",
+  "demo4_network": "无数据",
+  "demo5_discards": "ok"
+ },
+ "runs": {
+  "firework · 4 核 原版": 1,
+  "firework · 4 核 1 donor deadline+throughput 提前量 16 扫描预算 2000": 1
+ },
+ "mean": {
+  "firework · 4 核 原版": {
+   "stall_fraction": 0.007451383356146173,
+   "stall_s": 0.8943597387048006,
+   "distance_ratio": 0.9925470021774587,
+   "ahead_total": null,
+   "void_mean": 0.6132952022255788,
+   "latency_p95_ms": null,
+   "mspt_p95": 8.125523099999999,
+   "mspt_max": 50.934745,
+   "cpu_cores_mean": 2.451768678030399,
+   "full_generated": 2852.0,
+   "full_resumed": 211.0,
+   "full_loaded": 125.0,
+   "resumed_share": 0.06618569636135509,
+   "donor_events": 0.0,
+   "imports_accepted": null,
+   "discard_late": null,
+   "discard_server": null,
+   "discard_other_world": null,
+   "stale_dropped": null,
+   "stale_cancelled": null,
+   "stall_fraction_max": null,
+   "cant_keep_up": 0.0,
+   "moved_too_quickly": 0.0,
+   "import_ms": null,
+   "worker_cores": null,
+   "tile_s": null,
+   "players": 1.0
+  },
+  "firework · 4 核 1 donor deadline+throughput 提前量 16 扫描预算 2000": {
+   "stall_fraction": 0.0,
+   "stall_s": 0.0,
+   "distance_ratio": 1.0,
+   "ahead_total": 1.0,
+   "void_mean": 0.24145247685069923,
+   "latency_p95_ms": null,
+   "mspt_p95": 13.12562395,
+   "mspt_max": 78.603976,
+   "cpu_cores_mean": 2.8074220648072066,
+   "full_generated": 1875.0,
+   "full_resumed": 3441.0,
+   "full_loaded": 125.0,
+   "resumed_share": 0.6324205109354898,
+   "donor_events": 6660.0,
+   "imports_accepted": 187.0,
+   "discard_late": 5.0,
+   "discard_server": 0.0,
+   "discard_other_world": 0.0,
+   "stale_dropped": 571.0,
+   "stale_cancelled": 0.0,
+   "stall_fraction_max": null,
+   "cant_keep_up": 0.0,
+   "moved_too_quickly": 0.0,
+   "import_ms": 2578.298968,
+   "worker_cores": 2.2988607534202155,
+   "tile_s": 1.5583333333333333,
+   "players": 1.0
+  }
+ },
+ "per_run": {
+  "firework · 4 核 原版": [
+   {
+    "repeat": 1,
+    "stall_fraction": 0.007451383356146173,
+    "stall_s": 0.8943597387048006,
+    "distance_ratio": 0.9925470021774587,
+    "ahead_total": null,
+    "void_mean": 0.6132952022255788,
+    "latency_p95_ms": Infinity,
+    "mspt_p95": 8.125523099999999,
+    "mspt_max": 50.934745,
+    "cpu_cores_mean": 2.451768678030399,
+    "full_generated": 2852,
+    "full_resumed": 211,
+    "full_loaded": 125,
+    "resumed_share": 0.06618569636135509,
+    "donor_events": 0,
+    "imports_accepted": null,
+    "discard_late": null,
+    "discard_server": null,
+    "discard_other_world": null,
+    "stale_dropped": null,
+    "stale_cancelled": null,
+    "stall_fraction_max": null,
+    "cant_keep_up": 0,
+    "moved_too_quickly": 0,
+    "import_ms": null,
+    "worker_cores": null,
+    "tile_s": null,
+    "players": 1
+   }
+  ],
+  "firework · 4 核 1 donor deadline+throughput 提前量 16 扫描预算 2000": [
+   {
+    "repeat": 1,
+    "stall_fraction": 0.0,
+    "stall_s": 0.0,
+    "distance_ratio": 1.0,
+    "ahead_total": 1.0,
+    "void_mean": 0.24145247685069923,
+    "latency_p95_ms": Infinity,
+    "mspt_p95": 13.12562395,
+    "mspt_max": 78.603976,
+    "cpu_cores_mean": 2.8074220648072066,
+    "full_generated": 1875,
+    "full_resumed": 3441,
+    "full_loaded": 125,
+    "resumed_share": 0.6324205109354898,
+    "donor_events": 6660,
+    "imports_accepted": 187,
+    "discard_late": 5,
+    "discard_server": 0,
+    "discard_other_world": 0,
+    "stale_dropped": 571,
+    "stale_cancelled": 0,
+    "stall_fraction_max": null,
+    "cant_keep_up": 0,
+    "moved_too_quickly": 0,
+    "import_ms": 2578.298968,
+    "worker_cores": 2.2988607534202155,
+    "tile_s": 1.5583333333333333,
+    "players": 1
+   }
+  ]
+ },
+ "settings": [
+  {
+   "setting": "firework · 4 核 1 donor deadline+throughput 提前量 16 扫描预算 2000",
+   "group": "e3",
+   "pairs": 1,
+   "vanilla_stall": [
+    0.007451383356146173
+   ],
+   "donor_stall": [
+    0.0
+   ],
+   "paired_reduction": [
+    0.007451383356146173
+   ],
+   "min_reduction": 0.007451383356146173,
+   "mean_reduction": 0.007451383356146173,
+   "relative_reduction": 1.0
+  }
+ ],
+ "best": {
+  "setting": "firework · 4 核 1 donor deadline+throughput 提前量 16 扫描预算 2000",
+  "group": "e3",
+  "pairs": 1,
+  "vanilla_stall": [
+   0.007451383356146173
+  ],
+  "donor_stall": [
+   0.0
+  ],
+  "paired_reduction": [
+   0.007451383356146173
+  ],
+  "min_reduction": 0.007451383356146173,
+  "mean_reduction": 0.007451383356146173,
+  "relative_reduction": 1.0
+ },
+ "rule": "同一组同一次的原版卡住占比减有 donor 的（成对降幅），取几次里最小的，最大的胜出；有网络的不参加"
+}

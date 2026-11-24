@@ -11,13 +11,14 @@
 | `data/e3-runs.csv` | E3 每轮一行（2 轮） |
 | `figures/fig1-stall.png` … `fig4-cores.png` | 4 张图，下面逐张说明 |
 | `figures/summary.json` | 画图用到的每轮数值 |
-| `plots.py` | 出图脚本：`python plots.py <e1目录> <e23目录> <e3目录> figures`（读的是各目录下的 `matrix-runs.csv` 和逐秒数据，所以要在原始数据目录上跑） |
+| `plots.py` | 出图脚本，直接 `python plots.py` |
 | `e1.json` `e23.json` `e3.json` | 实验矩阵配置（`analysis/run_matrix.py --config`） |
 | `run-e*.log` | 运行日志 |
+| `raw/e1` `raw/e23` `raw/e3` | 每轮的全部原始数据（`run_matrix.py` 的输出目录原样拷贝） |
 
-原始逐轮数据（每秒 `seconds.jsonl`、服务器日志等）太大没进仓库，在实验机的 `/home/zhenyu/` 下：
-- E1：`mc-slots/k2/analysis/results/runs-eval1124/matrix-eval1124-e1/<cell_id>/`
-- E2、E3：`mc-slots/k3/analysis/results/runs-eval1124/matrix-eval1124-{e23,e3}/<cell_id>/`
+`raw/<实验>/<cell_id>/attempt-001/` 下是一轮的所有输出：`flight/seconds.jsonl` 是逐秒数据（图 2 用的），`flight/raw/` 下是服务器侧的逐事件日志，还有服务器日志和 `run_matrix.py` 自动出的 demo 图。超过 1 MB 的文件（主要是 `stages.jsonl`）压成了 `.gz`，用 `zcat` 读。`raw/<实验>/matrix-runs.csv` 和 `data/` 下的 CSV 是同一份。
+
+重新出图：`python plots.py`（默认读 `raw/`，输出到 `figures/`）。
 
 ## 系统简介
 

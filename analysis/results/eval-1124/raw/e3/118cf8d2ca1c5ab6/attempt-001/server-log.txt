@@ -1,0 +1,606 @@
+2026-11-24T05:15:44.184152989Z [00:15:44] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:44.185035061Z [00:15:44] [RCON Client /0:0:0:0:0:0:0:1 #16/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:44.417314686Z [00:15:44] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:44.417849342Z [00:15:44] [RCON Client /0:0:0:0:0:0:0:1 #17/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:44.861436801Z [00:15:44] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:44.864784843Z [00:15:44] [RCON Client /0:0:0:0:0:0:0:1 #18/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:45.108100234Z [00:15:45] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:45.120343635Z [00:15:45] [RCON Client /0:0:0:0:0:0:0:1 #19/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:45.212461827Z [00:15:45] [mcdonate-coordinator-read/INFO]: worker 2 看到 5 个核，生成池 4 个线程
+2026-11-24T05:15:45.337035415Z [00:15:45] [Server thread/INFO]: Demobot[local] logged in with entity id 295 at (-32000.5, 200.0, 32008.5)
+2026-11-24T05:15:45.347307305Z [00:15:45] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:45.463734940Z [00:15:45] [Server thread/INFO]: Demobot joined the game
+2026-11-24T05:15:45.507385006Z [00:15:45] [RCON Client /0:0:0:0:0:0:0:1 #20/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:46.210845472Z [00:15:46] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:46.236381718Z [00:15:46] [RCON Client /0:0:0:0:0:0:0:1 #21/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:46.985451729Z [00:15:46] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:46.986885298Z [00:15:46] [RCON Client /0:0:0:0:0:0:0:1 #22/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:47.719148164Z [00:15:47] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:47.722901503Z [00:15:47] [RCON Client /0:0:0:0:0:0:0:1 #23/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:48.468255747Z [00:15:48] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:48.484484231Z [00:15:48] [RCON Client /0:0:0:0:0:0:0:1 #24/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:49.224363575Z [00:15:49] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:49.246140311Z [00:15:49] [RCON Client /0:0:0:0:0:0:0:1 #25/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:49.977359936Z [00:15:49] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:49.983735404Z [00:15:49] [RCON Client /0:0:0:0:0:0:0:1 #26/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:50.697993509Z [00:15:50] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:50.698899617Z [00:15:50] [RCON Client /0:0:0:0:0:0:0:1 #27/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:51.149345851Z [00:15:51] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:15:51.161812291Z [00:15:51] [RCON Client /0:0:0:0:0:0:0:1 #28/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:15:52.459069512Z [00:15:52] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:15:52.460192666Z [00:15:52] [mcdonate-coordinator-timer/INFO]: 任务 27（tile -491, 500）派给 worker 2
+2026-11-24T05:15:52.460771557Z [00:15:52] [mcdonate-coordinator-timer/INFO]: 任务 28（tile -491, 499）派给 worker 2
+2026-11-24T05:15:53.459298458Z [00:15:53] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:15:53.459846649Z [00:15:53] [mcdonate-coordinator-timer/INFO]: 任务 34（tile -490, 500）派给 worker 2
+2026-11-24T05:15:53.460021184Z [00:15:53] [mcdonate-coordinator-timer/INFO]: 任务 35（tile -490, 499）派给 worker 2
+2026-11-24T05:15:54.461493334Z [00:15:54] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 4 个，撤回派出的 0 个
+2026-11-24T05:15:54.461734667Z [00:15:54] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:15:54.596323112Z [00:15:54] [Server thread/INFO]: 导入任务 27（worker 2，tile [-491,500]）：written=36 overwritten=0 skipped=0
+2026-11-24T05:15:55.460306805Z [00:15:55] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:15:55.547464804Z [00:15:55] [mcdonate-coordinator-timer/INFO]: 任务 36（tile -490, 501）派给 worker 2
+2026-11-24T05:15:55.582139316Z [00:15:55] [Server thread/INFO]: 导入任务 28（worker 2，tile [-491,499]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:15:55.592954388Z [00:15:55] [mcdonate-coordinator-timer/INFO]: 任务 54（tile -489, 500）派给 worker 2
+2026-11-24T05:15:55.648228938Z [00:15:55] [Server thread/INFO]: 导入任务 34（worker 2，tile [-490,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:15:55.661587208Z [00:15:55] [mcdonate-coordinator-timer/INFO]: 任务 55（tile -489, 499）派给 worker 2
+2026-11-24T05:15:55.722667102Z [00:15:55] [Server thread/INFO]: 导入任务 35（worker 2，tile [-490,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:15:56.429988364Z [00:15:56] [mcdonate-coordinator-timer/INFO]: 任务 58（tile -491, 496）派给 worker 2
+2026-11-24T05:15:56.430335600Z [00:15:56] [mcdonate-coordinator-timer/INFO]: 任务 60（tile -491, 504）派给 worker 2
+2026-11-24T05:15:56.458511478Z [00:15:56] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:15:56.458695912Z [00:15:56] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:15:56.501149192Z [00:15:56] [Server thread/INFO]: 导入任务 36（worker 2，tile [-490,501]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:15:57.458767075Z [00:15:57] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:15:57.597583590Z [00:15:57] [mcdonate-coordinator-timer/INFO]: 任务 56（tile -489, 501）派给 worker 2
+2026-11-24T05:15:57.643115244Z [00:15:57] [Server thread/INFO]: 导入任务 54（worker 2，tile [-489,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:15:58.458933231Z [00:15:58] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:15:59.458762291Z [00:15:59] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:00.458778619Z [00:16:00] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:00.706172793Z [00:16:00] [mcdonate-coordinator-timer/INFO]: 任务 63（tile -488, 500）派给 worker 2
+2026-11-24T05:16:00.736302037Z [00:16:00] [Server thread/INFO]: 导入任务 55（worker 2，tile [-489,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:00.777064375Z [00:16:00] [mcdonate-coordinator-timer/INFO]: 任务 64（tile -488, 499）派给 worker 2
+2026-11-24T05:16:00.786231907Z [00:16:00] [Server thread/INFO]: 导入任务 58（worker 2，tile [-491,496]）整个丢弃：碰到内存里的 chunk
+2026-11-24T05:16:01.260365542Z [00:16:01] [mcdonate-coordinator-timer/INFO]: 任务 65（tile -488, 501）派给 worker 2
+2026-11-24T05:16:01.276962022Z [00:16:01] [Server thread/INFO]: 导入任务 60（worker 2，tile [-491,504]）整个丢弃：碰到内存里的 chunk
+2026-11-24T05:16:01.458975393Z [00:16:01] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:02.459068891Z [00:16:02] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:02.565724694Z [00:16:02] [mcdonate-coordinator-timer/INFO]: 任务 80（tile -487, 500）派给 worker 2
+2026-11-24T05:16:02.583336963Z [00:16:02] [Server thread/INFO]: 导入任务 56（worker 2，tile [-489,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:02.995151226Z [00:16:02] [mcdonate-coordinator-timer/INFO]: 任务 81（tile -487, 499）派给 worker 2
+2026-11-24T05:16:03.031151942Z [00:16:03] [Server thread/INFO]: 导入任务 63（worker 2，tile [-488,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:03.779862975Z [00:16:03] [mcdonate-coordinator-timer/INFO]: 任务 82（tile -487, 501）派给 worker 2
+2026-11-24T05:16:03.839079546Z [00:16:03] [Server thread/INFO]: 导入任务 64（worker 2，tile [-488,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:04.322045811Z [00:16:04] [mcdonate-coordinator-timer/INFO]: 任务 98（tile -486, 500）派给 worker 2
+2026-11-24T05:16:04.339645906Z [00:16:04] [Server thread/INFO]: 导入任务 65（worker 2，tile [-488,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:04.458571171Z [00:16:04] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 1 个，撤回派出的 0 个
+2026-11-24T05:16:04.458858623Z [00:16:04] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:04.816053182Z [00:16:04] [mcdonate-coordinator-timer/INFO]: 任务 99（tile -486, 499）派给 worker 2
+2026-11-24T05:16:04.836914531Z [00:16:04] [Server thread/INFO]: 导入任务 80（worker 2，tile [-487,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:05.512179534Z [00:16:05] [mcdonate-coordinator-timer/INFO]: 任务 114（tile -485, 500）派给 worker 2
+2026-11-24T05:16:05.539341267Z [00:16:05] [Server thread/INFO]: 导入任务 81（worker 2，tile [-487,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:05.974863650Z [00:16:05] [mcdonate-coordinator-timer/INFO]: 任务 115（tile -485, 499）派给 worker 2
+2026-11-24T05:16:05.983672945Z [00:16:05] [Server thread/INFO]: 导入任务 82（worker 2，tile [-487,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:06.458577058Z [00:16:06] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 1 个，撤回派出的 0 个
+2026-11-24T05:16:06.458820545Z [00:16:06] [mcdonate-coordinator-timer/INFO]: 排队的 9 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:06.621346342Z [00:16:06] [mcdonate-coordinator-timer/INFO]: 任务 116（tile -485, 501）派给 worker 2
+2026-11-24T05:16:06.642797122Z [00:16:06] [Server thread/INFO]: 导入任务 98（worker 2，tile [-486,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:07.024951020Z [00:16:07] [mcdonate-coordinator-timer/INFO]: 任务 128（tile -484, 500）派给 worker 2
+2026-11-24T05:16:07.034883019Z [00:16:07] [Server thread/INFO]: 导入任务 99（worker 2，tile [-486,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:07.458719510Z [00:16:07] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:07.807144280Z [00:16:07] [mcdonate-coordinator-timer/INFO]: 任务 129（tile -484, 499）派给 worker 2
+2026-11-24T05:16:07.830231959Z [00:16:07] [Server thread/INFO]: 导入任务 114（worker 2，tile [-485,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:08.458887290Z [00:16:08] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:08.459157949Z [00:16:08] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:08.550420561Z [00:16:08] [mcdonate-coordinator-timer/INFO]: 任务 145（tile -483, 500）派给 worker 2
+2026-11-24T05:16:08.584735764Z [00:16:08] [Server thread/INFO]: 导入任务 115（worker 2，tile [-485,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:08.948181803Z [00:16:08] [mcdonate-coordinator-timer/INFO]: 任务 146（tile -483, 499）派给 worker 2
+2026-11-24T05:16:08.997364179Z [00:16:08] [Server thread/INFO]: 导入任务 116（worker 2，tile [-485,501]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:09.458619575Z [00:16:09] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:09.458819188Z [00:16:09] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:09.585237564Z [00:16:09] [mcdonate-coordinator-timer/INFO]: 任务 147（tile -483, 501）派给 worker 2
+2026-11-24T05:16:09.634268480Z [00:16:09] [Server thread/INFO]: 导入任务 128（worker 2，tile [-484,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:10.061472460Z [00:16:10] [mcdonate-coordinator-timer/INFO]: 任务 176（tile -482, 500）派给 worker 2
+2026-11-24T05:16:10.087644645Z [00:16:10] [Server thread/INFO]: 导入任务 129（worker 2，tile [-484,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:10.458891375Z [00:16:10] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:10.748174388Z [00:16:10] [mcdonate-coordinator-timer/INFO]: 任务 177（tile -482, 499）派给 worker 2
+2026-11-24T05:16:10.787906079Z [00:16:10] [Server thread/INFO]: 导入任务 145（worker 2，tile [-483,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:11.458872418Z [00:16:11] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:11.495321022Z [00:16:11] [mcdonate-coordinator-timer/INFO]: 任务 178（tile -482, 501）派给 worker 2
+2026-11-24T05:16:11.551692707Z [00:16:11] [Server thread/INFO]: 导入任务 146（worker 2，tile [-483,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:12.015053812Z [00:16:12] [mcdonate-coordinator-timer/INFO]: 任务 179（tile -481, 500）派给 worker 2
+2026-11-24T05:16:12.068471030Z [00:16:12] [Server thread/INFO]: 导入任务 147（worker 2，tile [-483,501]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:12.444931289Z [00:16:12] [mcdonate-coordinator-timer/INFO]: 任务 180（tile -481, 499）派给 worker 2
+2026-11-24T05:16:12.459355904Z [00:16:12] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:12.485838304Z [00:16:12] [Server thread/INFO]: 导入任务 176（worker 2，tile [-482,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:13.189323521Z [00:16:13] [mcdonate-coordinator-timer/INFO]: 任务 181（tile -481, 501）派给 worker 2
+2026-11-24T05:16:13.255767052Z [00:16:13] [Server thread/INFO]: 导入任务 177（worker 2，tile [-482,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:13.458556089Z [00:16:13] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:13.677224310Z [00:16:13] [mcdonate-coordinator-timer/INFO]: 任务 210（tile -480, 500）派给 worker 2
+2026-11-24T05:16:13.720832636Z [00:16:13] [Server thread/INFO]: 导入任务 178（worker 2，tile [-482,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:14.156093939Z [00:16:14] [mcdonate-coordinator-timer/INFO]: 任务 211（tile -480, 499）派给 worker 2
+2026-11-24T05:16:14.204876940Z [00:16:14] [Server thread/INFO]: 导入任务 179（worker 2，tile [-481,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:14.466592611Z [00:16:14] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:14.830569949Z [00:16:14] [mcdonate-coordinator-timer/INFO]: 任务 212（tile -480, 501）派给 worker 2
+2026-11-24T05:16:14.883952010Z [00:16:14] [Server thread/INFO]: 导入任务 180（worker 2，tile [-481,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:15.304104516Z [00:16:15] [mcdonate-coordinator-timer/INFO]: 任务 213（tile -479, 500）派给 worker 2
+2026-11-24T05:16:15.352926381Z [00:16:15] [Server thread/INFO]: 导入任务 181（worker 2，tile [-481,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:15.459331785Z [00:16:15] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:15.459551276Z [00:16:15] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:15.848599738Z [00:16:15] [mcdonate-coordinator-timer/INFO]: 任务 214（tile -479, 499）派给 worker 2
+2026-11-24T05:16:15.880465172Z [00:16:15] [Server thread/INFO]: 导入任务 210（worker 2，tile [-480,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:16.460352833Z [00:16:16] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:16.470083736Z [00:16:16] [mcdonate-coordinator-timer/INFO]: 任务 215（tile -479, 501）派给 worker 2
+2026-11-24T05:16:16.483372702Z [00:16:16] [Server thread/INFO]: 导入任务 211（worker 2，tile [-480,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:17.049180209Z [00:16:17] [mcdonate-coordinator-timer/INFO]: 任务 242（tile -478, 500）派给 worker 2
+2026-11-24T05:16:17.092993087Z [00:16:17] [Server thread/INFO]: 导入任务 212（worker 2，tile [-480,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:17.458571987Z [00:16:17] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:17.458740049Z [00:16:17] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:17.563467074Z [00:16:17] [mcdonate-coordinator-timer/INFO]: 任务 243（tile -478, 499）派给 worker 2
+2026-11-24T05:16:17.588694548Z [00:16:17] [Server thread/INFO]: 导入任务 213（worker 2，tile [-479,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:18.155264787Z [00:16:18] [mcdonate-coordinator-timer/INFO]: 任务 244（tile -478, 501）派给 worker 2
+2026-11-24T05:16:18.183729820Z [00:16:18] [Server thread/INFO]: 导入任务 214（worker 2，tile [-479,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:18.458743395Z [00:16:18] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:18.566420929Z [00:16:18] [mcdonate-coordinator-timer/INFO]: 任务 273（tile -477, 500）派给 worker 2
+2026-11-24T05:16:18.617650862Z [00:16:18] [Server thread/INFO]: 导入任务 215（worker 2，tile [-479,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:19.041367394Z [00:16:19] [mcdonate-coordinator-timer/INFO]: 任务 274（tile -477, 499）派给 worker 2
+2026-11-24T05:16:19.102809363Z [00:16:19] [Server thread/INFO]: 导入任务 242（worker 2，tile [-478,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:19.459238475Z [00:16:19] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:19.459410625Z [00:16:19] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:19.709185616Z [00:16:19] [mcdonate-coordinator-timer/INFO]: 任务 275（tile -477, 501）派给 worker 2
+2026-11-24T05:16:19.753041036Z [00:16:19] [Server thread/INFO]: 导入任务 243（worker 2，tile [-478,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:20.104504955Z [00:16:20] [mcdonate-coordinator-timer/INFO]: 任务 290（tile -478, 504）派给 worker 2
+2026-11-24T05:16:20.154741994Z [00:16:20] [Server thread/INFO]: 导入任务 244（worker 2，tile [-478,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:20.458742884Z [00:16:20] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:20.572657179Z [00:16:20] [mcdonate-coordinator-timer/INFO]: 任务 304（tile -476, 500）派给 worker 2
+2026-11-24T05:16:20.603769309Z [00:16:20] [Server thread/INFO]: 导入任务 273（worker 2，tile [-477,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:20.629245540Z [00:16:20] [mcdonate-coordinator-timer/INFO]: 任务 305（tile -476, 499）派给 worker 2
+2026-11-24T05:16:20.716910331Z [00:16:20] [Server thread/INFO]: 导入任务 274（worker 2，tile [-477,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:21.460392188Z [00:16:21] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:21.460664300Z [00:16:21] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:22.354969929Z [00:16:22] [mcdonate-coordinator-timer/INFO]: 任务 289（tile -477, 498）派给 worker 2
+2026-11-24T05:16:22.398200671Z [00:16:22] [mcdonate-coordinator-timer/INFO]: 任务 306（tile -476, 501）派给 worker 2
+2026-11-24T05:16:22.402160325Z [00:16:22] [Server thread/INFO]: 导入任务 275（worker 2，tile [-477,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:22.437913676Z [00:16:22] [Server thread/INFO]: 导入任务 290（worker 2，tile [-478,504]）：written=36 overwritten=0 skipped=0
+2026-11-24T05:16:22.458687488Z [00:16:22] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:23.458577588Z [00:16:23] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:23.458788943Z [00:16:23] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:24.178266493Z [00:16:24] [mcdonate-coordinator-timer/INFO]: 任务 326（tile -475, 500）派给 worker 2
+2026-11-24T05:16:24.192242567Z [00:16:24] [Server thread/INFO]: 导入任务 304（worker 2，tile [-476,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:24.458838760Z [00:16:24] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:25.458631132Z [00:16:25] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 3 个，撤回派出的 0 个
+2026-11-24T05:16:25.458848319Z [00:16:25] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:26.460405226Z [00:16:26] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:27.194954200Z [00:16:27] [mcdonate-coordinator-timer/INFO]: 任务 347（tile -474, 500）派给 worker 2
+2026-11-24T05:16:27.228912368Z [00:16:27] [Server thread/INFO]: 导入任务 305（worker 2，tile [-476,499]）整个丢弃：碰到内存里的 chunk
+2026-11-24T05:16:27.458809827Z [00:16:27] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 6 个，撤回派出的 0 个
+2026-11-24T05:16:27.459140130Z [00:16:27] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:27.977292290Z [00:16:27] [Server thread/INFO]: 导入任务 289（worker 2，tile [-477,498]）整个丢弃：碰到内存里的 chunk
+2026-11-24T05:16:28.458870564Z [00:16:28] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:28.737532708Z [00:16:28] [Server thread/INFO]: 导入任务 306（worker 2，tile [-476,501]）整个丢弃：碰到内存里的 chunk
+2026-11-24T05:16:28.783331695Z [00:16:28] [Server thread/INFO]: 导入任务 326（worker 2，tile [-475,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:28.825610992Z [00:16:28] [mcdonate-coordinator-timer/INFO]: 任务 379（tile -473, 500）派给 worker 2
+2026-11-24T05:16:28.841191224Z [00:16:28] [Server thread/INFO]: 导入任务 347（worker 2，tile [-474,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:29.461289164Z [00:16:29] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 6 个，撤回派出的 0 个
+2026-11-24T05:16:29.461446676Z [00:16:29] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:29.619664781Z [00:16:29] [mcdonate-coordinator-timer/INFO]: 任务 380（tile -473, 499）派给 worker 2
+2026-11-24T05:16:29.619801494Z [00:16:29] [mcdonate-coordinator-timer/INFO]: 任务 384（tile -472, 500）派给 worker 2
+2026-11-24T05:16:29.619958515Z [00:16:29] [mcdonate-coordinator-timer/INFO]: 任务 385（tile -472, 499）派给 worker 2
+2026-11-24T05:16:29.632456735Z [00:16:29] [Server thread/INFO]: 导入任务 379（worker 2，tile [-473,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:30.460857878Z [00:16:30] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 6 个，撤回派出的 0 个
+2026-11-24T05:16:30.460994230Z [00:16:30] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:31.467410747Z [00:16:31] [mcdonate-coordinator-timer/INFO]: 排队的 11 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:31.489194737Z [00:16:31] [mcdonate-coordinator-timer/INFO]: 任务 404（tile -471, 500）派给 worker 2
+2026-11-24T05:16:31.519188692Z [00:16:31] [mcdonate-coordinator-timer/INFO]: 任务 405（tile -471, 499）派给 worker 2
+2026-11-24T05:16:31.532272405Z [00:16:31] [Server thread/INFO]: 导入任务 380（worker 2，tile [-473,499]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:31.558254887Z [00:16:31] [Server thread/INFO]: 导入任务 384（worker 2，tile [-472,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:31.576113287Z [00:16:31] [mcdonate-coordinator-timer/INFO]: 任务 406（tile -471, 501）派给 worker 2
+2026-11-24T05:16:31.650422775Z [00:16:31] [Server thread/INFO]: 导入任务 385（worker 2，tile [-472,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:32.458642713Z [00:16:32] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 7 个，撤回派出的 0 个
+2026-11-24T05:16:32.458849590Z [00:16:32] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:32.685843149Z [00:16:32] [mcdonate-coordinator-timer/INFO]: 任务 409（tile -470, 500）派给 worker 2
+2026-11-24T05:16:32.727458773Z [00:16:32] [Server thread/INFO]: 导入任务 404（worker 2，tile [-471,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:33.459112402Z [00:16:33] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:33.472653362Z [00:16:33] [mcdonate-coordinator-timer/INFO]: 任务 410（tile -470, 499）派给 worker 2
+2026-11-24T05:16:33.531451804Z [00:16:33] [Server thread/INFO]: 导入任务 405（worker 2，tile [-471,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:34.231540118Z [00:16:34] [mcdonate-coordinator-timer/INFO]: 任务 441（tile -469, 500）派给 worker 2
+2026-11-24T05:16:34.238130378Z [00:16:34] [Server thread/INFO]: 导入任务 406（worker 2，tile [-471,501]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:34.458687783Z [00:16:34] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:16:34.458953623Z [00:16:34] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:34.725988707Z [00:16:34] [mcdonate-coordinator-timer/INFO]: 任务 442（tile -469, 499）派给 worker 2
+2026-11-24T05:16:34.748184977Z [00:16:34] [Server thread/INFO]: 导入任务 409（worker 2，tile [-470,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:35.402224354Z [00:16:35] [mcdonate-coordinator-timer/INFO]: 任务 464（tile -468, 500）派给 worker 2
+2026-11-24T05:16:35.432147954Z [00:16:35] [Server thread/INFO]: 导入任务 410（worker 2，tile [-470,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:35.459396775Z [00:16:35] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:35.836586304Z [00:16:35] [mcdonate-coordinator-timer/INFO]: 任务 465（tile -468, 499）派给 worker 2
+2026-11-24T05:16:35.883329532Z [00:16:35] [Server thread/INFO]: 导入任务 441（worker 2，tile [-469,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:36.375192432Z [00:16:36] [mcdonate-coordinator-timer/INFO]: 任务 449（tile -470, 504）派给 worker 2
+2026-11-24T05:16:36.429050787Z [00:16:36] [Server thread/INFO]: 导入任务 442（worker 2，tile [-469,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:36.459924148Z [00:16:36] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:16:36.460038588Z [00:16:36] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:36.730087072Z [00:16:36] [mcdonate-coordinator-timer/INFO]: 任务 466（tile -468, 501）派给 worker 2
+2026-11-24T05:16:36.769462108Z [00:16:36] [mcdonate-coordinator-timer/INFO]: 任务 450（tile -469, 498）派给 worker 2
+2026-11-24T05:16:36.776144996Z [00:16:36] [Server thread/INFO]: 导入任务 464（worker 2，tile [-468,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:36.790593386Z [00:16:36] [Server thread/INFO]: 导入任务 465（worker 2，tile [-468,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:37.459182278Z [00:16:37] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:37.734369788Z [00:16:37] [mcdonate-coordinator-timer/INFO]: 任务 488（tile -467, 500）派给 worker 2
+2026-11-24T05:16:37.781932909Z [00:16:37] [Server thread/INFO]: 导入任务 449（worker 2，tile [-470,504]）：written=36 overwritten=0 skipped=0
+2026-11-24T05:16:38.458807522Z [00:16:38] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 10 个，撤回派出的 0 个
+2026-11-24T05:16:38.459076528Z [00:16:38] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:39.191505998Z [00:16:39] [mcdonate-coordinator-timer/INFO]: 任务 489（tile -467, 499）派给 worker 2
+2026-11-24T05:16:39.231148699Z [00:16:39] [Server thread/INFO]: 导入任务 466（worker 2，tile [-468,501]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:39.458845407Z [00:16:39] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:39.764874398Z [00:16:39] [mcdonate-coordinator-timer/INFO]: 任务 490（tile -467, 501）派给 worker 2
+2026-11-24T05:16:39.779336995Z [00:16:39] [Server thread/INFO]: 导入任务 450（worker 2，tile [-469,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:40.146696541Z [00:16:40] [mcdonate-coordinator-timer/INFO]: 任务 512（tile -466, 500）派给 worker 2
+2026-11-24T05:16:40.204404269Z [00:16:40] [Server thread/INFO]: 导入任务 488（worker 2，tile [-467,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:40.458572035Z [00:16:40] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 10 个，撤回派出的 0 个
+2026-11-24T05:16:40.458775636Z [00:16:40] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:40.573025906Z [00:16:40] [mcdonate-coordinator-timer/INFO]: 任务 513（tile -466, 499）派给 worker 2
+2026-11-24T05:16:40.579210427Z [00:16:40] [Server thread/INFO]: 导入任务 489（worker 2，tile [-467,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:41.132037129Z [00:16:41] [mcdonate-coordinator-timer/INFO]: 任务 514（tile -466, 501）派给 worker 2
+2026-11-24T05:16:41.158959033Z [00:16:41] [Server thread/INFO]: 导入任务 490（worker 2，tile [-467,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:41.458776641Z [00:16:41] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:41.570964405Z [00:16:41] [mcdonate-coordinator-timer/INFO]: 任务 535（tile -465, 500）派给 worker 2
+2026-11-24T05:16:41.576992817Z [00:16:41] [Server thread/INFO]: 导入任务 512（worker 2，tile [-466,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:41.954538649Z [00:16:41] [mcdonate-coordinator-timer/INFO]: 任务 536（tile -465, 499）派给 worker 2
+2026-11-24T05:16:41.994928092Z [00:16:41] [Server thread/INFO]: 导入任务 513（worker 2，tile [-466,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:42.459065959Z [00:16:42] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 10 个，撤回派出的 0 个
+2026-11-24T05:16:42.459234963Z [00:16:42] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:42.580954969Z [00:16:42] [mcdonate-coordinator-timer/INFO]: 任务 537（tile -465, 501）派给 worker 2
+2026-11-24T05:16:42.628930721Z [00:16:42] [Server thread/INFO]: 导入任务 514（worker 2，tile [-466,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:43.113657205Z [00:16:43] [mcdonate-coordinator-timer/INFO]: 任务 516（tile -466, 498）派给 worker 2
+2026-11-24T05:16:43.129519126Z [00:16:43] [Server thread/INFO]: 导入任务 535（worker 2，tile [-465,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:43.458792668Z [00:16:43] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:43.480036331Z [00:16:43] [mcdonate-coordinator-timer/INFO]: 任务 559（tile -464, 500）派给 worker 2
+2026-11-24T05:16:43.525155655Z [00:16:43] [Server thread/INFO]: 导入任务 536（worker 2，tile [-465,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:44.101491756Z [00:16:44] [mcdonate-coordinator-timer/INFO]: 任务 560（tile -464, 499）派给 worker 2
+2026-11-24T05:16:44.138370455Z [00:16:44] [Server thread/INFO]: 导入任务 537（worker 2，tile [-465,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:44.462540699Z [00:16:44] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 10 个，撤回派出的 0 个
+2026-11-24T05:16:44.462863999Z [00:16:44] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:44.839182558Z [00:16:44] [mcdonate-coordinator-timer/INFO]: 任务 538（tile -465, 498）派给 worker 2
+2026-11-24T05:16:44.876906228Z [00:16:44] [Server thread/INFO]: 导入任务 516（worker 2，tile [-466,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:45.284551809Z [00:16:45] [mcdonate-coordinator-timer/INFO]: 任务 561（tile -464, 501）派给 worker 2
+2026-11-24T05:16:45.328225390Z [00:16:45] [Server thread/INFO]: 导入任务 559（worker 2，tile [-464,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:45.458876786Z [00:16:45] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:45.778450714Z [00:16:45] [mcdonate-coordinator-timer/INFO]: 任务 583（tile -463, 500）派给 worker 2
+2026-11-24T05:16:45.836619215Z [00:16:45] [Server thread/INFO]: 导入任务 560（worker 2，tile [-464,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:46.221919089Z [00:16:46] [mcdonate-coordinator-timer/INFO]: 任务 584（tile -463, 499）派给 worker 2
+2026-11-24T05:16:46.239446535Z [00:16:46] [Server thread/INFO]: 导入任务 538（worker 2，tile [-465,498]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:46.458651487Z [00:16:46] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:16:46.458809530Z [00:16:46] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:46.712486295Z [00:16:46] [mcdonate-coordinator-timer/INFO]: 任务 562（tile -464, 498）派给 worker 2
+2026-11-24T05:16:46.738151158Z [00:16:46] [Server thread/INFO]: 导入任务 561（worker 2，tile [-464,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:47.113243986Z [00:16:47] [mcdonate-coordinator-timer/INFO]: 任务 585（tile -463, 501）派给 worker 2
+2026-11-24T05:16:47.160810774Z [00:16:47] [Server thread/INFO]: 导入任务 583（worker 2，tile [-463,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:47.461502007Z [00:16:47] [mcdonate-coordinator-timer/INFO]: 排队的 10 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:47.639058752Z [00:16:47] [mcdonate-coordinator-timer/INFO]: 任务 605（tile -462, 500）派给 worker 2
+2026-11-24T05:16:47.663444482Z [00:16:47] [Server thread/INFO]: 导入任务 584（worker 2，tile [-463,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:48.055148929Z [00:16:48] [mcdonate-coordinator-timer/INFO]: 任务 606（tile -462, 499）派给 worker 2
+2026-11-24T05:16:48.055605735Z [00:16:48] [mcdonate-coordinator-timer/INFO]: 任务 607（tile -462, 501）派给 worker 2
+2026-11-24T05:16:48.099686387Z [00:16:48] [Server thread/INFO]: 导入任务 562（worker 2，tile [-464,498]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:48.458935629Z [00:16:48] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:16:48.459237448Z [00:16:48] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:48.722084811Z [00:16:48] [mcdonate-coordinator-timer/INFO]: 任务 608（tile -462, 498）派给 worker 2
+2026-11-24T05:16:48.746785925Z [00:16:48] [Server thread/INFO]: 导入任务 585（worker 2，tile [-463,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:49.458868785Z [00:16:49] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:49.695613757Z [00:16:49] [mcdonate-coordinator-timer/INFO]: 任务 636（tile -461, 500）派给 worker 2
+2026-11-24T05:16:49.744955238Z [00:16:49] [Server thread/INFO]: 导入任务 605（worker 2，tile [-462,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:50.449303894Z [00:16:50] [mcdonate-coordinator-timer/INFO]: 任务 637（tile -461, 499）派给 worker 2
+2026-11-24T05:16:50.458776652Z [00:16:50] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:16:50.458941658Z [00:16:50] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:50.527457484Z [00:16:50] [Server thread/INFO]: 导入任务 606（worker 2，tile [-462,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:51.099883797Z [00:16:51] [mcdonate-coordinator-timer/INFO]: 任务 638（tile -461, 501）派给 worker 2
+2026-11-24T05:16:51.133667521Z [00:16:51] [Server thread/INFO]: 导入任务 607（worker 2，tile [-462,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:51.458935230Z [00:16:51] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:16:51.459120585Z [00:16:51] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:51.578326059Z [00:16:51] [Server thread/INFO]: 导入任务 608（worker 2，tile [-462,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:52.059265340Z [00:16:52] [Server thread/INFO]: 导入任务 636（worker 2，tile [-461,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:52.104880635Z [00:16:52] [mcdonate-coordinator-timer/INFO]: 任务 660（tile -460, 500）派给 worker 2
+2026-11-24T05:16:52.128583755Z [00:16:52] [Server thread/INFO]: 导入任务 637（worker 2，tile [-461,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:52.183023695Z [00:16:52] [Server thread/INFO]: 导入任务 638（worker 2，tile [-461,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:52.458833419Z [00:16:52] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:52.801215702Z [00:16:52] [mcdonate-coordinator-timer/INFO]: 任务 661（tile -460, 499）派给 worker 2
+2026-11-24T05:16:52.801378033Z [00:16:52] [mcdonate-coordinator-timer/INFO]: 任务 662（tile -460, 501）派给 worker 2
+2026-11-24T05:16:52.801593606Z [00:16:52] [mcdonate-coordinator-timer/INFO]: 任务 674（tile -459, 500）派给 worker 2
+2026-11-24T05:16:52.863744826Z [00:16:52] [Server thread/INFO]: 导入任务 660（worker 2，tile [-460,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:53.461335761Z [00:16:53] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:16:53.461471512Z [00:16:53] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:54.362179686Z [00:16:54] [mcdonate-coordinator-timer/INFO]: 任务 663（tile -460, 498）派给 worker 2
+2026-11-24T05:16:54.381972085Z [00:16:54] [Server thread/INFO]: 导入任务 661（worker 2，tile [-460,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:54.409008027Z [00:16:54] [mcdonate-coordinator-timer/INFO]: 任务 675（tile -459, 499）派给 worker 2
+2026-11-24T05:16:54.459500096Z [00:16:54] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:54.476796188Z [00:16:54] [mcdonate-coordinator-timer/INFO]: 任务 676（tile -459, 501）派给 worker 2
+2026-11-24T05:16:54.480315057Z [00:16:54] [Server thread/INFO]: 导入任务 662（worker 2，tile [-460,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:54.504933122Z [00:16:54] [Server thread/INFO]: 导入任务 674（worker 2，tile [-459,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:55.182243311Z [00:16:55] [mcdonate-coordinator-timer/INFO]: 任务 699（tile -458, 500）派给 worker 2
+2026-11-24T05:16:55.280733202Z [00:16:55] [Server thread/INFO]: 导入任务 663（worker 2，tile [-460,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:55.458694485Z [00:16:55] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:16:55.458844754Z [00:16:55] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:56.233672051Z [00:16:56] [mcdonate-coordinator-timer/INFO]: 任务 700（tile -458, 499）派给 worker 2
+2026-11-24T05:16:56.253300586Z [00:16:56] [Server thread/INFO]: 导入任务 675（worker 2，tile [-459,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:56.458900415Z [00:16:56] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:56.988019550Z [00:16:56] [mcdonate-coordinator-timer/INFO]: 任务 701（tile -458, 501）派给 worker 2
+2026-11-24T05:16:57.000789190Z [00:16:57] [Server thread/INFO]: 导入任务 676（worker 2，tile [-459,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:57.458920348Z [00:16:57] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:16:57.459177441Z [00:16:57] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:57.635929543Z [00:16:57] [mcdonate-coordinator-timer/INFO]: 任务 720（tile -457, 500）派给 worker 2
+2026-11-24T05:16:57.644234601Z [00:16:57] [Server thread/INFO]: 导入任务 699（worker 2，tile [-458,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:58.037972409Z [00:16:58] [mcdonate-coordinator-timer/INFO]: 任务 721（tile -457, 499）派给 worker 2
+2026-11-24T05:16:58.114611354Z [00:16:58] [Server thread/INFO]: 导入任务 700（worker 2，tile [-458,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:58.458878683Z [00:16:58] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:58.653929480Z [00:16:58] [mcdonate-coordinator-timer/INFO]: 任务 722（tile -457, 501）派给 worker 2
+2026-11-24T05:16:58.708692960Z [00:16:58] [Server thread/INFO]: 导入任务 701（worker 2，tile [-458,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:16:59.174662722Z [00:16:59] [mcdonate-coordinator-timer/INFO]: 任务 742（tile -456, 500）派给 worker 2
+2026-11-24T05:16:59.184961263Z [00:16:59] [Server thread/INFO]: 导入任务 720（worker 2，tile [-457,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:16:59.458821759Z [00:16:59] [mcdonate-coordinator-timer/INFO]: 任务 [448] 玩家已经看到了还没派出去，丢掉，交给服务器
+2026-11-24T05:16:59.458876524Z [00:16:59] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:16:59.459028806Z [00:16:59] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:16:59.604460459Z [00:16:59] [mcdonate-coordinator-timer/INFO]: 任务 743（tile -456, 499）派给 worker 2
+2026-11-24T05:16:59.637127260Z [00:16:59] [Server thread/INFO]: 导入任务 721（worker 2，tile [-457,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:00.357559003Z [00:17:00] [mcdonate-coordinator-timer/INFO]: 任务 744（tile -456, 501）派给 worker 2
+2026-11-24T05:17:00.391092356Z [00:17:00] [Server thread/INFO]: 导入任务 722（worker 2，tile [-457,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:00.458819039Z [00:17:00] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:00.820901465Z [00:17:00] [mcdonate-coordinator-timer/INFO]: 任务 765（tile -455, 500）派给 worker 2
+2026-11-24T05:17:00.828403794Z [00:17:00] [Server thread/INFO]: 导入任务 742（worker 2，tile [-456,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:01.347452064Z [00:17:01] [mcdonate-coordinator-timer/INFO]: 任务 766（tile -455, 499）派给 worker 2
+2026-11-24T05:17:01.418179512Z [00:17:01] [Server thread/INFO]: 导入任务 743（worker 2，tile [-456,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:01.458704515Z [00:17:01] [mcdonate-coordinator-timer/INFO]: 任务 [468, 470] 玩家已经看到了还没派出去，丢掉，交给服务器
+2026-11-24T05:17:01.458844794Z [00:17:01] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:01.459065838Z [00:17:01] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:02.071961498Z [00:17:02] [mcdonate-coordinator-timer/INFO]: 任务 767（tile -455, 501）派给 worker 2
+2026-11-24T05:17:02.086048495Z [00:17:02] [Server thread/INFO]: 导入任务 744（worker 2，tile [-456,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:02.459033501Z [00:17:02] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:02.628604551Z [00:17:02] [mcdonate-coordinator-timer/INFO]: 任务 788（tile -454, 500）派给 worker 2
+2026-11-24T05:17:02.707726318Z [00:17:02] [Server thread/INFO]: 导入任务 765（worker 2，tile [-455,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:03.080899395Z [00:17:03] [mcdonate-coordinator-timer/INFO]: 任务 789（tile -454, 499）派给 worker 2
+2026-11-24T05:17:03.135050191Z [00:17:03] [Server thread/INFO]: 导入任务 766（worker 2，tile [-455,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:03.463014803Z [00:17:03] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:17:03.463240085Z [00:17:03] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:03.793856072Z [00:17:03] [mcdonate-coordinator-timer/INFO]: 任务 790（tile -454, 501）派给 worker 2
+2026-11-24T05:17:03.861279413Z [00:17:03] [Server thread/INFO]: 导入任务 767（worker 2，tile [-455,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:04.453200946Z [00:17:04] [mcdonate-coordinator-timer/INFO]: 任务 809（tile -453, 500）派给 worker 2
+2026-11-24T05:17:04.458560816Z [00:17:04] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:04.482737885Z [00:17:04] [Server thread/INFO]: 导入任务 788（worker 2，tile [-454,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:04.856500042Z [00:17:04] [mcdonate-coordinator-timer/INFO]: 任务 810（tile -453, 499）派给 worker 2
+2026-11-24T05:17:04.892421937Z [00:17:04] [Server thread/INFO]: 导入任务 789（worker 2，tile [-454,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:05.458711451Z [00:17:05] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:05.458905213Z [00:17:05] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:05.546325145Z [00:17:05] [mcdonate-coordinator-timer/INFO]: 任务 811（tile -453, 501）派给 worker 2
+2026-11-24T05:17:05.611842661Z [00:17:05] [Server thread/INFO]: 导入任务 790（worker 2，tile [-454,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:06.134660130Z [00:17:06] [mcdonate-coordinator-timer/INFO]: 任务 813（tile -453, 498）派给 worker 2
+2026-11-24T05:17:06.231436854Z [00:17:06] [Server thread/INFO]: 导入任务 809（worker 2，tile [-453,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:06.459290317Z [00:17:06] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:06.602564091Z [00:17:06] [mcdonate-coordinator-timer/INFO]: 任务 830（tile -452, 500）派给 worker 2
+2026-11-24T05:17:06.648272325Z [00:17:06] [Server thread/INFO]: 导入任务 810（worker 2，tile [-453,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:07.307461080Z [00:17:07] [mcdonate-coordinator-timer/INFO]: 任务 831（tile -452, 499）派给 worker 2
+2026-11-24T05:17:07.337214795Z [00:17:07] [Server thread/INFO]: 导入任务 811（worker 2，tile [-453,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:07.458733144Z [00:17:07] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:07.458927337Z [00:17:07] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:07.883720316Z [00:17:07] [mcdonate-coordinator-timer/INFO]: 任务 832（tile -452, 501）派给 worker 2
+2026-11-24T05:17:07.935348583Z [00:17:07] [Server thread/INFO]: 导入任务 813（worker 2，tile [-453,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:08.408224120Z [00:17:08] [mcdonate-coordinator-timer/INFO]: 任务 833（tile -452, 498）派给 worker 2
+2026-11-24T05:17:08.429185622Z [00:17:08] [Server thread/INFO]: 导入任务 830（worker 2，tile [-452,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:08.458887256Z [00:17:08] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:08.992861073Z [00:17:08] [mcdonate-coordinator-timer/INFO]: 任务 845（tile -451, 500）派给 worker 2
+2026-11-24T05:17:09.034069496Z [00:17:09] [Server thread/INFO]: 导入任务 831（worker 2，tile [-452,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:09.458663544Z [00:17:09] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:09.458938471Z [00:17:09] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:09.478940443Z [00:17:09] [mcdonate-coordinator-timer/INFO]: 任务 846（tile -451, 499）派给 worker 2
+2026-11-24T05:17:09.560403030Z [00:17:09] [Server thread/INFO]: 导入任务 832（worker 2，tile [-452,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:10.151390412Z [00:17:10] [mcdonate-coordinator-timer/INFO]: 任务 847（tile -451, 501）派给 worker 2
+2026-11-24T05:17:10.189482208Z [00:17:10] [Server thread/INFO]: 导入任务 833（worker 2，tile [-452,498]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:10.458807567Z [00:17:10] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:10.633197057Z [00:17:10] [mcdonate-coordinator-timer/INFO]: 任务 865（tile -450, 500）派给 worker 2
+2026-11-24T05:17:10.679959814Z [00:17:10] [Server thread/INFO]: 导入任务 845（worker 2，tile [-451,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:11.120647226Z [00:17:11] [mcdonate-coordinator-timer/INFO]: 任务 866（tile -450, 499）派给 worker 2
+2026-11-24T05:17:11.141537562Z [00:17:11] [Server thread/INFO]: 导入任务 846（worker 2，tile [-451,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:11.458696640Z [00:17:11] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 10 个，撤回派出的 0 个
+2026-11-24T05:17:12.412405686Z [00:17:12] [mcdonate-coordinator-timer/INFO]: 任务 867（tile -450, 501）派给 worker 2
+2026-11-24T05:17:12.412569700Z [00:17:12] [mcdonate-coordinator-timer/INFO]: 任务 868（tile -450, 498）派给 worker 2
+2026-11-24T05:17:12.458672641Z [00:17:12] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 10 个，撤回派出的 0 个
+2026-11-24T05:17:12.458798242Z [00:17:12] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:12.461858892Z [00:17:12] [Server thread/INFO]: 导入任务 847（worker 2，tile [-451,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:12.860646556Z [00:17:12] [mcdonate-coordinator-timer/INFO]: 任务 890（tile -449, 500）派给 worker 2
+2026-11-24T05:17:12.901643925Z [00:17:12] [Server thread/INFO]: 导入任务 865（worker 2，tile [-450,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:13.459159983Z [00:17:13] [mcdonate-coordinator-timer/INFO]: 排队的 12 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:13.952509937Z [00:17:13] [mcdonate-coordinator-timer/INFO]: 任务 891（tile -449, 499）派给 worker 2
+2026-11-24T05:17:13.986942786Z [00:17:13] [Server thread/INFO]: 导入任务 866（worker 2，tile [-450,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:14.458835046Z [00:17:14] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 10 个，撤回派出的 0 个
+2026-11-24T05:17:14.458968983Z [00:17:14] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:14.525920850Z [00:17:14] [mcdonate-coordinator-timer/INFO]: 任务 892（tile -449, 501）派给 worker 2
+2026-11-24T05:17:14.559975313Z [00:17:14] [Server thread/INFO]: 导入任务 867（worker 2，tile [-450,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:14.958357269Z [00:17:14] [mcdonate-coordinator-timer/INFO]: 任务 895（tile -448, 500）派给 worker 2
+2026-11-24T05:17:14.982458623Z [00:17:14] [Server thread/INFO]: 导入任务 868（worker 2，tile [-450,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:15.432965829Z [00:17:15] [mcdonate-coordinator-timer/INFO]: 任务 896（tile -448, 499）派给 worker 2
+2026-11-24T05:17:15.458658816Z [00:17:15] [mcdonate-coordinator-timer/INFO]: 排队的 4 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:15.480509313Z [00:17:15] [Server thread/INFO]: 导入任务 890（worker 2，tile [-449,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:16.017884182Z [00:17:16] [mcdonate-coordinator-timer/INFO]: 任务 897（tile -448, 501）派给 worker 2
+2026-11-24T05:17:16.034801648Z [00:17:16] [Server thread/INFO]: 导入任务 891（worker 2，tile [-449,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:16.458684803Z [00:17:16] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 9 个，撤回派出的 0 个
+2026-11-24T05:17:16.458862574Z [00:17:16] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:16.562423833Z [00:17:16] [mcdonate-coordinator-timer/INFO]: 任务 926（tile -447, 500）派给 worker 2
+2026-11-24T05:17:16.580910830Z [00:17:16] [Server thread/INFO]: 导入任务 892（worker 2，tile [-449,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:17.397209556Z [00:17:17] [mcdonate-coordinator-timer/INFO]: 任务 927（tile -447, 499）派给 worker 2
+2026-11-24T05:17:17.437302571Z [00:17:17] [Server thread/INFO]: 导入任务 895（worker 2，tile [-448,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:17.459106408Z [00:17:17] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:18.159678333Z [00:17:18] [mcdonate-coordinator-timer/INFO]: 任务 928（tile -447, 501）派给 worker 2
+2026-11-24T05:17:18.216004611Z [00:17:18] [Server thread/INFO]: 导入任务 896（worker 2，tile [-448,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:18.458697331Z [00:17:18] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:18.458866956Z [00:17:18] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:18.680033130Z [00:17:18] [mcdonate-coordinator-timer/INFO]: 任务 948（tile -446, 500）派给 worker 2
+2026-11-24T05:17:18.718187887Z [00:17:18] [Server thread/INFO]: 导入任务 897（worker 2，tile [-448,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:19.215441569Z [00:17:19] [mcdonate-coordinator-timer/INFO]: 任务 949（tile -446, 499）派给 worker 2
+2026-11-24T05:17:19.227439019Z [00:17:19] [Server thread/INFO]: 导入任务 926（worker 2，tile [-447,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:19.458791739Z [00:17:19] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:19.855278400Z [00:17:19] [mcdonate-coordinator-timer/INFO]: 任务 970（tile -445, 500）派给 worker 2
+2026-11-24T05:17:19.886991232Z [00:17:19] [Server thread/INFO]: 导入任务 927（worker 2，tile [-447,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:20.414789185Z [00:17:20] [mcdonate-coordinator-timer/INFO]: 任务 971（tile -445, 499）派给 worker 2
+2026-11-24T05:17:20.441447072Z [00:17:20] [Server thread/INFO]: 导入任务 928（worker 2，tile [-447,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:20.460435870Z [00:17:20] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:20.460594284Z [00:17:20] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:20.955848521Z [00:17:20] [mcdonate-coordinator-timer/INFO]: 任务 972（tile -445, 501）派给 worker 2
+2026-11-24T05:17:20.987847502Z [00:17:20] [Server thread/INFO]: 导入任务 948（worker 2，tile [-446,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:21.458845057Z [00:17:21] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:21.485770157Z [00:17:21] [mcdonate-coordinator-timer/INFO]: 任务 994（tile -444, 500）派给 worker 2
+2026-11-24T05:17:21.522599882Z [00:17:21] [Server thread/INFO]: 导入任务 949（worker 2，tile [-446,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:22.140091238Z [00:17:22] [mcdonate-coordinator-timer/INFO]: 任务 995（tile -444, 499）派给 worker 2
+2026-11-24T05:17:22.180774584Z [00:17:22] [Server thread/INFO]: 导入任务 970（worker 2，tile [-445,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:22.458701670Z [00:17:22] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:22.458834154Z [00:17:22] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:22.739543135Z [00:17:22] [mcdonate-coordinator-timer/INFO]: 任务 996（tile -444, 501）派给 worker 2
+2026-11-24T05:17:22.782338813Z [00:17:22] [Server thread/INFO]: 导入任务 971（worker 2，tile [-445,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:23.184553590Z [00:17:23] [mcdonate-coordinator-timer/INFO]: 任务 998（tile -444, 498）派给 worker 2
+2026-11-24T05:17:23.229069767Z [00:17:23] [Server thread/INFO]: 导入任务 972（worker 2，tile [-445,501]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:23.459594791Z [00:17:23] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:23.608277489Z [00:17:23] [mcdonate-coordinator-timer/INFO]: 任务 1015（tile -443, 500）派给 worker 2
+2026-11-24T05:17:23.629158427Z [00:17:23] [Server thread/INFO]: 导入任务 994（worker 2，tile [-444,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:24.358336175Z [00:17:24] [mcdonate-coordinator-timer/INFO]: 任务 1016（tile -443, 499）派给 worker 2
+2026-11-24T05:17:24.423814947Z [00:17:24] [Server thread/INFO]: 导入任务 995（worker 2，tile [-444,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:24.462619330Z [00:17:24] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:24.462814945Z [00:17:24] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:25.018370795Z [00:17:25] [mcdonate-coordinator-timer/INFO]: 任务 1017（tile -443, 501）派给 worker 2
+2026-11-24T05:17:25.034681136Z [00:17:25] [Server thread/INFO]: 导入任务 996（worker 2，tile [-444,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:25.458681326Z [00:17:25] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:25.541874742Z [00:17:25] [mcdonate-coordinator-timer/INFO]: 任务 1038（tile -442, 500）派给 worker 2
+2026-11-24T05:17:25.578669371Z [00:17:25] [Server thread/INFO]: 导入任务 998（worker 2，tile [-444,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:26.006105209Z [00:17:26] [mcdonate-coordinator-timer/INFO]: 任务 1039（tile -442, 499）派给 worker 2
+2026-11-24T05:17:26.035456582Z [00:17:26] [Server thread/INFO]: 导入任务 1015（worker 2，tile [-443,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:26.459098134Z [00:17:26] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:26.459221851Z [00:17:26] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:26.739744314Z [00:17:26] [mcdonate-coordinator-timer/INFO]: 任务 1040（tile -442, 501）派给 worker 2
+2026-11-24T05:17:26.791428329Z [00:17:26] [Server thread/INFO]: 导入任务 1016（worker 2，tile [-443,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:27.459151475Z [00:17:27] [mcdonate-coordinator-timer/INFO]: 排队的 12 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:27.638345331Z [00:17:27] [mcdonate-coordinator-timer/INFO]: 任务 1057（tile -441, 500）派给 worker 2
+2026-11-24T05:17:27.712522364Z [00:17:27] [Server thread/INFO]: 导入任务 1017（worker 2，tile [-443,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:28.059560558Z [00:17:28] [mcdonate-coordinator-timer/INFO]: 任务 1058（tile -441, 499）派给 worker 2
+2026-11-24T05:17:28.077503671Z [00:17:28] [Server thread/INFO]: 导入任务 1038（worker 2，tile [-442,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:28.458603422Z [00:17:28] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:28.849133279Z [00:17:28] [mcdonate-coordinator-timer/INFO]: 任务 1059（tile -441, 501）派给 worker 2
+2026-11-24T05:17:28.910575950Z [00:17:28] [Server thread/INFO]: 导入任务 1039（worker 2，tile [-442,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:29.315552133Z [00:17:29] [mcdonate-coordinator-timer/INFO]: 任务 1063（tile -441, 498）派给 worker 2
+2026-11-24T05:17:29.333453296Z [00:17:29] [Server thread/INFO]: 导入任务 1040（worker 2，tile [-442,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:29.458841618Z [00:17:29] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:29.763441600Z [00:17:29] [mcdonate-coordinator-timer/INFO]: 任务 1081（tile -440, 500）派给 worker 2
+2026-11-24T05:17:29.789314842Z [00:17:29] [Server thread/INFO]: 导入任务 1057（worker 2，tile [-441,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:30.392946326Z [00:17:30] [mcdonate-coordinator-timer/INFO]: 任务 1082（tile -440, 499）派给 worker 2
+2026-11-24T05:17:30.434274549Z [00:17:30] [Server thread/INFO]: 导入任务 1058（worker 2，tile [-441,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:30.458657834Z [00:17:30] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:30.458743629Z [00:17:30] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:31.129880291Z [00:17:31] [mcdonate-coordinator-timer/INFO]: 任务 1083（tile -440, 501）派给 worker 2
+2026-11-24T05:17:31.154981302Z [00:17:31] [Server thread/INFO]: 导入任务 1059（worker 2，tile [-441,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:31.458714652Z [00:17:31] [mcdonate-coordinator-timer/INFO]: 排队的 9 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:31.585415722Z [00:17:31] [mcdonate-coordinator-timer/INFO]: 任务 1102（tile -439, 500）派给 worker 2
+2026-11-24T05:17:31.643942390Z [00:17:31] [Server thread/INFO]: 导入任务 1063（worker 2，tile [-441,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:32.043952560Z [00:17:32] [mcdonate-coordinator-timer/INFO]: 任务 1103（tile -439, 499）派给 worker 2
+2026-11-24T05:17:32.083067278Z [00:17:32] [Server thread/INFO]: 导入任务 1081（worker 2，tile [-440,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:32.458523074Z [00:17:32] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:32.690480195Z [00:17:32] [mcdonate-coordinator-timer/INFO]: 任务 1104（tile -439, 501）派给 worker 2
+2026-11-24T05:17:32.716179573Z [00:17:32] [Server thread/INFO]: 导入任务 1082（worker 2，tile [-440,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:33.240258143Z [00:17:33] [mcdonate-coordinator-timer/INFO]: 任务 1105（tile -439, 498）派给 worker 2
+2026-11-24T05:17:33.283046397Z [00:17:33] [Server thread/INFO]: 导入任务 1083（worker 2，tile [-440,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:33.461356668Z [00:17:33] [mcdonate-coordinator-timer/INFO]: 任务 [1126, 1127, 1128, 1129, 1130, 1131, 1132, 1133] 玩家已经看到了还没派出去，丢掉，交给服务器
+2026-11-24T05:17:33.817520665Z [00:17:33] [mcdonate-coordinator-timer/INFO]: 任务 1123（tile -438, 500）派给 worker 2
+2026-11-24T05:17:33.829173193Z [00:17:33] [Server thread/INFO]: 导入任务 1102（worker 2，tile [-439,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:34.459864836Z [00:17:34] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:34.459928098Z [00:17:34] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:34.678105320Z [00:17:34] [mcdonate-coordinator-timer/INFO]: 任务 1124（tile -438, 499）派给 worker 2
+2026-11-24T05:17:34.695830785Z [00:17:34] [Server thread/INFO]: 导入任务 1103（worker 2，tile [-439,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:35.403925670Z [00:17:35] [mcdonate-coordinator-timer/INFO]: 任务 1125（tile -438, 501）派给 worker 2
+2026-11-24T05:17:35.419472808Z [00:17:35] [Server thread/INFO]: 导入任务 1104（worker 2，tile [-439,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:35.458695263Z [00:17:35] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:35.458828688Z [00:17:35] [mcdonate-coordinator-timer/INFO]: 排队的 9 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:35.816054321Z [00:17:35] [mcdonate-coordinator-timer/INFO]: 任务 1150（tile -437, 500）派给 worker 2
+2026-11-24T05:17:35.837829344Z [00:17:35] [Server thread/INFO]: 导入任务 1105（worker 2，tile [-439,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:36.307285293Z [00:17:36] [mcdonate-coordinator-timer/INFO]: 任务 1151（tile -437, 499）派给 worker 2
+2026-11-24T05:17:36.361642294Z [00:17:36] [Server thread/INFO]: 导入任务 1123（worker 2，tile [-438,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:36.459284592Z [00:17:36] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:37.021830099Z [00:17:37] [mcdonate-coordinator-timer/INFO]: 任务 1152（tile -437, 501）派给 worker 2
+2026-11-24T05:17:37.034414494Z [00:17:37] [Server thread/INFO]: 导入任务 1124（worker 2，tile [-438,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:37.392699509Z [00:17:37] [mcdonate-coordinator-timer/INFO]: 任务 1165（tile -436, 500）派给 worker 2
+2026-11-24T05:17:37.458546877Z [00:17:37] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:37.458649333Z [00:17:37] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:37.479091710Z [00:17:37] [Server thread/INFO]: 导入任务 1125（worker 2，tile [-438,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:37.977066666Z [00:17:37] [mcdonate-coordinator-timer/INFO]: 任务 1166（tile -436, 499）派给 worker 2
+2026-11-24T05:17:38.028997655Z [00:17:38] [Server thread/INFO]: 导入任务 1150（worker 2，tile [-437,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:38.458614276Z [00:17:38] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:38.717089466Z [00:17:38] [mcdonate-coordinator-timer/INFO]: 任务 1167（tile -436, 501）派给 worker 2
+2026-11-24T05:17:38.758685413Z [00:17:38] [Server thread/INFO]: 导入任务 1151（worker 2，tile [-437,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:39.193273269Z [00:17:39] [mcdonate-coordinator-timer/INFO]: 任务 1189（tile -435, 500）派给 worker 2
+2026-11-24T05:17:39.242502225Z [00:17:39] [Server thread/INFO]: 导入任务 1152（worker 2，tile [-437,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:39.460250545Z [00:17:39] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:39.460350777Z [00:17:39] [mcdonate-coordinator-timer/INFO]: 排队的 2 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:39.627052684Z [00:17:39] [mcdonate-coordinator-timer/INFO]: 任务 1190（tile -435, 499）派给 worker 2
+2026-11-24T05:17:39.639637621Z [00:17:39] [Server thread/INFO]: 导入任务 1165（worker 2，tile [-436,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:40.458619035Z [00:17:40] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:41.335937534Z [00:17:41] [mcdonate-coordinator-timer/INFO]: 任务 1211（tile -434, 500）派给 worker 2
+2026-11-24T05:17:41.391676476Z [00:17:41] [Server thread/INFO]: 导入任务 1166（worker 2，tile [-436,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:41.458624125Z [00:17:41] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:41.458674051Z [00:17:41] [mcdonate-coordinator-timer/INFO]: 排队的 5 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:41.846499942Z [00:17:41] [Server thread/INFO]: 导入任务 1167（worker 2，tile [-436,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:42.435930651Z [00:17:42] [Server thread/INFO]: 导入任务 1189（worker 2，tile [-435,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:42.458955621Z [00:17:42] [mcdonate-coordinator-timer/INFO]: 任务 [1234, 1235, 1236, 1237] 玩家已经看到了还没派出去，丢掉，交给服务器
+2026-11-24T05:17:42.459124335Z [00:17:42] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:42.518895730Z [00:17:42] [Server thread/INFO]: 导入任务 1190（worker 2，tile [-435,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:42.523563032Z [00:17:42] [mcdonate-coordinator-timer/INFO]: 任务 1212（tile -434, 499）派给 worker 2
+2026-11-24T05:17:42.553521529Z [00:17:42] [Server thread/INFO]: 导入任务 1211（worker 2，tile [-434,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:43.014967817Z [00:17:43] [mcdonate-coordinator-timer/INFO]: 任务 1213（tile -434, 501）派给 worker 2
+2026-11-24T05:17:43.015020368Z [00:17:43] [mcdonate-coordinator-timer/INFO]: 任务 1231（tile -433, 500）派给 worker 2
+2026-11-24T05:17:43.015126592Z [00:17:43] [mcdonate-coordinator-timer/INFO]: 任务 1232（tile -433, 499）派给 worker 2
+2026-11-24T05:17:43.045303458Z [00:17:43] [Server thread/INFO]: 导入任务 1212（worker 2，tile [-434,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:43.458515728Z [00:17:43] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:43.458624947Z [00:17:43] [mcdonate-coordinator-timer/INFO]: 排队的 3 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:44.458969869Z [00:17:44] [mcdonate-coordinator-timer/INFO]: 排队的 10 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:44.741943134Z [00:17:44] [mcdonate-coordinator-timer/INFO]: 任务 1233（tile -433, 501）派给 worker 2
+2026-11-24T05:17:44.778476241Z [00:17:44] [Server thread/INFO]: 导入任务 1213（worker 2，tile [-434,501]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:44.787703808Z [00:17:44] [mcdonate-coordinator-timer/INFO]: 任务 1255（tile -432, 500）派给 worker 2
+2026-11-24T05:17:44.830916506Z [00:17:44] [mcdonate-coordinator-timer/INFO]: 任务 1256（tile -432, 499）派给 worker 2
+2026-11-24T05:17:44.835709719Z [00:17:44] [Server thread/INFO]: 导入任务 1231（worker 2，tile [-433,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:44.895880871Z [00:17:44] [Server thread/INFO]: 导入任务 1232（worker 2，tile [-433,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:45.286205966Z [00:17:45] [mcdonate-coordinator-timer/INFO]: 任务 1257（tile -432, 501）派给 worker 2
+2026-11-24T05:17:45.307613954Z [00:17:45] [Server thread/INFO]: 导入任务 1233（worker 2，tile [-433,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:45.458536529Z [00:17:45] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:45.458636821Z [00:17:45] [mcdonate-coordinator-timer/INFO]: 排队的 7 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:46.360075181Z [00:17:46] [mcdonate-coordinator-timer/INFO]: 任务 1265（tile -432, 498）派给 worker 2
+2026-11-24T05:17:46.433182673Z [00:17:46] [Server thread/INFO]: 导入任务 1255（worker 2，tile [-432,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:46.459474128Z [00:17:46] [mcdonate-coordinator-timer/INFO]: 排队的 1 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:46.777582288Z [00:17:46] [mcdonate-coordinator-timer/INFO]: 任务 1282（tile -431, 500）派给 worker 2
+2026-11-24T05:17:46.784726770Z [00:17:46] [Server thread/INFO]: 导入任务 1256（worker 2，tile [-432,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:47.458499700Z [00:17:47] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:47.458623677Z [00:17:47] [mcdonate-coordinator-timer/INFO]: 排队的 9 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:47.606364630Z [00:17:47] [mcdonate-coordinator-timer/INFO]: 任务 1283（tile -431, 499）派给 worker 2
+2026-11-24T05:17:47.634888456Z [00:17:47] [Server thread/INFO]: 导入任务 1257（worker 2，tile [-432,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:48.239828441Z [00:17:48] [mcdonate-coordinator-timer/INFO]: 任务 1284（tile -431, 501）派给 worker 2
+2026-11-24T05:17:48.283956274Z [00:17:48] [Server thread/INFO]: 导入任务 1265（worker 2，tile [-432,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:48.458641863Z [00:17:48] [mcdonate-coordinator-timer/INFO]: 排队的 8 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:48.599026216Z [00:17:48] [mcdonate-coordinator-timer/INFO]: 任务 1301（tile -430, 500）派给 worker 2
+2026-11-24T05:17:48.632575701Z [00:17:48] [Server thread/INFO]: 导入任务 1282（worker 2，tile [-431,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:49.059213009Z [00:17:49] [mcdonate-coordinator-timer/INFO]: 任务 1302（tile -430, 499）派给 worker 2
+2026-11-24T05:17:49.081017158Z [00:17:49] [Server thread/INFO]: 导入任务 1283（worker 2，tile [-431,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:49.458535180Z [00:17:49] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:49.906144190Z [00:17:49] [mcdonate-coordinator-timer/INFO]: 任务 1303（tile -430, 501）派给 worker 2
+2026-11-24T05:17:49.929622890Z [00:17:49] [Server thread/INFO]: 导入任务 1284（worker 2，tile [-431,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:50.324153761Z [00:17:50] [mcdonate-coordinator-timer/INFO]: 任务 1304（tile -430, 498）派给 worker 2
+2026-11-24T05:17:50.383594031Z [00:17:50] [Server thread/INFO]: 导入任务 1301（worker 2，tile [-430,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:50.811078525Z [00:17:50] [mcdonate-coordinator-timer/INFO]: 任务 1322（tile -429, 500）派给 worker 2
+2026-11-24T05:17:50.832225232Z [00:17:50] [Server thread/INFO]: 导入任务 1302（worker 2，tile [-430,499]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:51.459483872Z [00:17:51] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 8 个，撤回派出的 0 个
+2026-11-24T05:17:51.459705627Z [00:17:51] [mcdonate-coordinator-timer/INFO]: 排队的 6 个 tile 按现在的吞吐来不及，丢掉，交给服务器
+2026-11-24T05:17:51.540255294Z [00:17:51] [mcdonate-coordinator-timer/INFO]: 任务 1323（tile -429, 499）派给 worker 2
+2026-11-24T05:17:51.577260636Z [00:17:51] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:17:51.588179828Z [00:17:51] [Server thread/INFO]: 导入任务 1303（worker 2，tile [-430,501]）：written=16 overwritten=20 skipped=0
+2026-11-24T05:17:51.589896661Z [00:17:51] [Server thread/INFO]: Demobot lost connection: Killed
+2026-11-24T05:17:51.590285266Z [00:17:51] [Server thread/INFO]: Demobot left the game
+2026-11-24T05:17:51.591812064Z [00:17:51] [RCON Client /0:0:0:0:0:0:0:1 #29/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:17:51.996955179Z [00:17:51] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:17:52.022427763Z [00:17:52] [RCON Client /0:0:0:0:0:0:0:1 #30/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:17:52.126636826Z [00:17:52] [mcdonate-coordinator-timer/INFO]: 任务 1324（tile -429, 501）派给 worker 2
+2026-11-24T05:17:52.216963894Z [00:17:52] [Server thread/INFO]: 导入任务 1304（worker 2，tile [-430,498]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:52.229336052Z [00:17:52] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:17:52.267149495Z [00:17:52] [RCON Client /0:0:0:0:0:0:0:1 #31/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:17:52.458545263Z [00:17:52] [mcdonate-coordinator-timer/INFO]: 玩家已经飞过的 tile：删掉排队的 151 个，撤回派出的 0 个
+2026-11-24T05:17:52.479896152Z [00:17:52] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:17:52.481575834Z [00:17:52] [RCON Client /0:0:0:0:0:0:0:1 #32/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:17:52.591845390Z [00:17:52] [mcdonate-coordinator-timer/INFO]: 任务 1325（tile -429, 498）派给 worker 2
+2026-11-24T05:17:52.648632442Z [00:17:52] [Server thread/INFO]: 导入任务 1322（worker 2，tile [-429,500]）：written=24 overwritten=12 skipped=0
+2026-11-24T05:17:52.688224956Z [00:17:52] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:17:52.690082529Z [00:17:52] [RCON Client /0:0:0:0:0:0:0:1 #33/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:17:53.034934952Z [00:17:53] [mcdonate-coordinator-timer/INFO]: 任务 1326（tile -429, 502）派给 worker 2
+2026-11-24T05:17:53.082494957Z [00:17:53] [Server thread/INFO]: 导入任务 1323（worker 2，tile [-429,499]）：written=16 overwritten=20 skipped=0

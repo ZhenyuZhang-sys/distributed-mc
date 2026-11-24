@@ -1,0 +1,18 @@
+2026-11-24T05:09:52.252801409Z 2026-11-24T00:09:52.252-0500	INFO	mc-server-runner	gracefully stopping server...
+2026-11-24T05:09:52.252893646Z 2026/11/24 00:09:52 Stopping with rcon-cli
+2026-11-24T05:09:52.260264251Z [00:09:52] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T05:09:52.269264492Z [00:09:52] [Server thread/INFO]: [Rcon: Stopping the server]
+2026-11-24T05:09:52.269843803Z [00:09:52] [RCON Client /0:0:0:0:0:0:0:1 #2/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T05:09:52.271582087Z 2026-11-24T00:09:52.271-0500	INFO	mc-server-runner	Waiting for completion...
+2026-11-24T05:09:52.284236275Z [00:09:52] [Server thread/INFO]: Stopping server
+2026-11-24T05:09:52.284940105Z [00:09:52] [Server thread/INFO]: Saving players
+2026-11-24T05:09:52.285135340Z [00:09:52] [Server thread/INFO]: Saving worlds
+2026-11-24T05:09:55.893718314Z [00:09:55] [Server thread/INFO]: Saving chunks for level 'ServerLevel[mxc58f4caa55883c5e]'/minecraft:overworld
+2026-11-24T05:10:02.169115385Z [00:10:02] [Server thread/INFO]: Saving chunks for level 'ServerLevel[mxc58f4caa55883c5e]'/minecraft:the_end
+2026-11-24T05:10:02.170512685Z [00:10:02] [Server thread/INFO]: Saving chunks for level 'ServerLevel[mxc58f4caa55883c5e]'/minecraft:the_nether
+2026-11-24T05:10:02.174334835Z [00:10:02] [Server thread/INFO]: ThreadedAnvilChunkStorage (mxc58f4caa55883c5e): All chunks are saved
+2026-11-24T05:10:02.174511154Z [00:10:02] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM1): All chunks are saved
+2026-11-24T05:10:02.174702100Z [00:10:02] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM-1): All chunks are saved
+2026-11-24T05:10:02.174830917Z [00:10:02] [Server thread/INFO]: ThreadedAnvilChunkStorage: All dimensions are saved
+2026-11-24T05:10:02.264415604Z [00:10:02] [Server thread/INFO]: Thread RCON Listener stopped
+2026-11-24T05:10:03.113861543Z 2026-11-24T00:10:03.113-0500	INFO	mc-server-runner	Done

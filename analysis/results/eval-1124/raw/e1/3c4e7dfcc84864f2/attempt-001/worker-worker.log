@@ -1,0 +1,120 @@
+2026-11-24T05:18:17.922773510Z [init] Changing uid of minecraft to 1002
+2026-11-24T05:18:17.950042159Z [init] Changing gid of minecraft to 1002
+2026-11-24T05:18:18.027323938Z [init] Running as uid=1002 gid=1002 with /data as 'drwxrwxr-x 9 1002 1002 4096 Nov 24 00:10 /data'
+2026-11-24T05:18:18.033052605Z [init] Image info: buildtime=2026-11-06T13:16:44.017Z,version=java21,revision=e894a1d394fd0d06b937f0edc241c0cd8e18b11b
+2026-11-24T05:18:18.038318294Z [init] Resolving type given FABRIC
+2026-11-24T05:18:19.437245713Z [39m[mc-image-helper] 00:18:19.434 INFO  : Fabric launcher for minecraft 1.21.1 loader 0.16.14 is already available
+2026-11-24T05:18:22.930364652Z [0;39m[init] Copying any mods from /mods to /data/mods
+2026-11-24T05:18:23.764539680Z [init] Copying any configs from /config to /data/config
+2026-11-24T05:18:24.583172700Z [init] Setting mode
+2026-11-24T05:18:25.452538241Z [39m[mc-image-helper] 00:18:25.450 INFO  : Created/updated 1 property in /data/server.properties
+2026-11-24T05:18:25.610415464Z [0;39m[init] Setting initial memory to 4G and max to 4G
+2026-11-24T05:18:25.631068725Z [init] Starting the Minecraft server...
+2026-11-24T05:18:25.996861581Z Starting net.fabricmc.loader.impl.game.minecraft.BundlerClassPathCapture
+2026-11-24T05:18:26.622791575Z [00:18:26] [main/INFO]: Loading Minecraft 1.21.1 with Fabric Loader 0.16.14
+2026-11-24T05:18:26.774546307Z [00:18:26] [main/INFO]: Loading 49 mods:
+2026-11-24T05:18:26.774597074Z 	- carpet 1.4.147+v240613
+2026-11-24T05:18:26.774612423Z 	- chunky 1.4.23
+2026-11-24T05:18:26.774625819Z 	- fabric-api 0.116.6+1.21.1
+2026-11-24T05:18:26.774638994Z 	   |-- fabric-api-base 0.4.42+6573ed8c19
+2026-11-24T05:18:26.774650757Z 	   |-- fabric-api-lookup-api-v1 1.6.71+b559734419
+2026-11-24T05:18:26.774663571Z 	   |-- fabric-biome-api-v1 13.0.31+d527f9fd19
+2026-11-24T05:18:26.774675635Z 	   |-- fabric-block-api-v1 1.1.0+0bc3503219
+2026-11-24T05:18:26.774687908Z 	   |-- fabric-block-view-api-v2 1.0.11+ebb2264e19
+2026-11-24T05:18:26.774698368Z 	   |-- fabric-blockrenderlayer-v1 1.1.52+0af3f5a719
+2026-11-24T05:18:26.774709219Z 	   |-- fabric-client-tags-api-v1 1.1.15+6573ed8c19
+2026-11-24T05:18:26.774720370Z 	   |-- fabric-command-api-v1 1.2.49+f71b366f19
+2026-11-24T05:18:26.774731432Z 	   |-- fabric-command-api-v2 2.2.28+6ced4dd919
+2026-11-24T05:18:26.774742332Z 	   |-- fabric-commands-v0 0.2.66+df3654b319
+2026-11-24T05:18:26.774842134Z 	   |-- fabric-content-registries-v0 8.0.19+b559734419
+2026-11-24T05:18:26.774856041Z 	   |-- fabric-convention-tags-v1 2.1.5+7f945d5b19
+2026-11-24T05:18:26.774867122Z 	   |-- fabric-convention-tags-v2 2.11.1+a406e79519
+2026-11-24T05:18:26.774878153Z 	   |-- fabric-crash-report-info-v1 0.2.29+0af3f5a719
+2026-11-24T05:18:26.774889054Z 	   |-- fabric-data-attachment-api-v1 1.4.5+6116a37819
+2026-11-24T05:18:26.774931846Z 	   |-- fabric-data-generation-api-v1 20.2.33+37516cd619
+2026-11-24T05:18:26.774941244Z 	   |-- fabric-dimensions-v1 4.0.1+65213ef819
+2026-11-24T05:18:26.774950221Z 	   |-- fabric-entity-events-v1 1.8.0+2b27e0a419
+2026-11-24T05:18:26.774959058Z 	   |-- fabric-events-interaction-v0 0.7.13+ba9dae0619
+2026-11-24T05:18:26.774968176Z 	   |-- fabric-game-rule-api-v1 1.0.53+6ced4dd919
+2026-11-24T05:18:26.774977113Z 	   |-- fabric-item-api-v1 11.2.0+3b3cb2e819
+2026-11-24T05:18:26.774986310Z 	   |-- fabric-item-group-api-v1 4.1.7+def88e3a19
+2026-11-24T05:18:26.774995458Z 	   |-- fabric-key-binding-api-v1 1.0.47+0af3f5a719
+2026-11-24T05:18:26.775004866Z 	   |-- fabric-keybindings-v0 0.2.45+df3654b319
+2026-11-24T05:18:26.775014284Z 	   |-- fabric-lifecycle-events-v1 2.6.0+0865547519
+2026-11-24T05:18:26.775023371Z 	   |-- fabric-loot-api-v2 3.0.15+3f89f5a519
+2026-11-24T05:18:26.775032429Z 	   |-- fabric-loot-api-v3 1.0.3+3f89f5a519
+2026-11-24T05:18:26.775041376Z 	   |-- fabric-message-api-v1 6.0.14+8aaf3aca19
+2026-11-24T05:18:26.775050353Z 	   |-- fabric-model-loading-api-v1 2.1.0+b4d813fc19
+2026-11-24T05:18:26.775059511Z 	   |-- fabric-networking-api-v1 4.3.0+c7469b2119
+2026-11-24T05:18:26.775068398Z 	   |-- fabric-object-builder-api-v1 15.2.1+40875a9319
+2026-11-24T05:18:26.775077485Z 	   |-- fabric-particles-v1 4.0.2+6573ed8c19
+2026-11-24T05:18:26.775086653Z 	   |-- fabric-recipe-api-v1 5.0.14+248df81c19
+2026-11-24T05:18:26.775097303Z 	   |-- fabric-registry-sync-v0 5.3.1+e3eddc2119
+2026-11-24T05:18:26.775106741Z 	   |-- fabric-renderer-api-v1 3.4.1+b4d813fc19
+2026-11-24T05:18:26.775115949Z 	   |-- fabric-renderer-indigo 1.7.1+c705a49c19
+2026-11-24T05:18:26.775125187Z 	   |-- fabric-renderer-registries-v1 3.2.69+df3654b319
+2026-11-24T05:18:26.775134505Z 	   |-- fabric-rendering-data-attachment-v1 0.3.49+73761d2e19
+2026-11-24T05:18:26.775146387Z 	   |-- fabric-rendering-fluids-v1 3.1.6+1daea21519
+2026-11-24T05:18:26.775155695Z 	   |-- fabric-rendering-v0 1.1.72+df3654b319
+2026-11-24T05:18:26.775164853Z 	   |-- fabric-rendering-v1 5.1.0+ab4c25a019
+2026-11-24T05:18:26.775174351Z 	   |-- fabric-resource-conditions-api-v1 4.3.0+8dc279b119
+2026-11-24T05:18:26.775183659Z 	   |-- fabric-resource-loader-v0 1.3.1+5b5275af19
+2026-11-24T05:18:26.775193217Z 	   |-- fabric-screen-api-v1 2.0.25+8b68f1c719
+2026-11-24T05:18:26.775202675Z 	   |-- fabric-screen-handler-api-v1 1.3.90+b559734419
+2026-11-24T05:18:26.775212083Z 	   |-- fabric-sound-api-v1 1.0.23+6573ed8c19
+2026-11-24T05:18:26.775221572Z 	   |-- fabric-transfer-api-v1 5.4.3+c24bd99419
+2026-11-24T05:18:26.775238414Z 	   \-- fabric-transitive-access-wideners-v1 6.2.0+45b9699719
+2026-11-24T05:18:26.775248183Z 	- fabricloader 0.16.14
+2026-11-24T05:18:26.775257380Z 	   \-- mixinextras 0.4.1
+2026-11-24T05:18:26.775266508Z 	- java 21
+2026-11-24T05:18:26.775275615Z 	- mcdonate-bench 0.1.0-bd196f2c
+2026-11-24T05:18:26.775284613Z 	   |-- fabric-gametest-api-v1 2.0.5+6fc22b9919
+2026-11-24T05:18:26.775293980Z 	   \-- mcdonate-common 0.1.0-bd196f2c
+2026-11-24T05:18:26.775303138Z 	- mcdonate-worker 0.1.0-bd196f2c
+2026-11-24T05:18:26.775312326Z 	   \-- mcdonate-common 0.1.0-bd196f2c
+2026-11-24T05:18:26.775321634Z 	- minecraft 1.21.1
+2026-11-24T05:18:26.775330701Z 	- spark 1.10.109
+2026-11-24T05:18:26.775339648Z 	   \-- fabric-permissions-api-v0 0.3.1
+2026-11-24T05:18:26.884247182Z [00:18:26] [main/INFO]: SpongePowered MIXIN Subsystem Version=0.8.7 Source=file:/data/libraries/net/fabricmc/sponge-mixin/0.15.5+mixin.0.8.7/sponge-mixin-0.15.5+mixin.0.8.7.jar Service=Knot/Fabric Env=SERVER
+2026-11-24T05:18:26.945790787Z [00:18:26] [main/INFO]: Compatibility level set to JAVA_17
+2026-11-24T05:18:27.033084528Z [00:18:27] [main/INFO]: Compatibility level set to JAVA_21
+2026-11-24T05:18:27.639051435Z [00:18:27] [main/INFO]: Initializing MixinExtras via com.llamalad7.mixinextras.service.MixinExtrasServiceImpl(version=0.4.1).
+2026-11-24T05:18:34.588914066Z [00:18:34] [main/INFO]: mcdonate-bench loaded
+2026-11-24T05:18:34.592521825Z [00:18:34] [main/INFO]: mcdonate-worker loaded
+2026-11-24T05:18:34.748343066Z [00:18:34] [main/INFO]: 从 coordinator minecraft:25580 拿到 seed 424242
+2026-11-24T05:18:34.853895936Z [00:18:34] [main/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]
+2026-11-24T05:18:35.780735357Z [00:18:35] [main/INFO]: No existing world data, creating new world
+2026-11-24T05:18:36.720710702Z [00:18:36] [main/INFO]: Loaded 1290 recipes
+2026-11-24T05:18:36.950969106Z [00:18:36] [main/INFO]: Loaded 1399 advancements
+2026-11-24T05:18:37.610837716Z [00:18:37] [main/INFO]: Applied 0 biome modifications to 0 of 64 new biomes in 1.212 ms
+2026-11-24T05:18:37.713865878Z [00:18:37] [Server thread/INFO]: Starting background profiler...
+2026-11-24T05:18:37.864561180Z [00:18:37] [Server thread/INFO]: Starting minecraft server version 1.21.1
+2026-11-24T05:18:37.864873489Z [00:18:37] [Server thread/INFO]: Loading properties
+2026-11-24T05:18:37.865025881Z [00:18:37] [Server thread/INFO]: Default game type: SURVIVAL
+2026-11-24T05:18:37.865243128Z [00:18:37] [Server thread/INFO]: Generating keypair
+2026-11-24T05:18:37.929169382Z [00:18:37] [Server thread/INFO]: Starting Minecraft server on *:25565
+2026-11-24T05:18:38.017940888Z [00:18:38] [Server thread/INFO]: Using epoll channel type
+2026-11-24T05:18:38.118711586Z [00:18:38] [Server thread/INFO]: Preparing level "mx3c4e7dfcc84864f2"
+2026-11-24T05:18:42.519012884Z [00:18:42] [Server thread/INFO]: Preparing start region for dimension minecraft:overworld
+2026-11-24T05:18:42.590253056Z [00:18:42] [Worker-Main-1/INFO]: Preparing spawn area: 2%
+2026-11-24T05:18:43.034571851Z [00:18:43] [Worker-Main-1/INFO]: Preparing spawn area: 2%
+2026-11-24T05:18:43.529539410Z [00:18:43] [Worker-Main-1/INFO]: Preparing spawn area: 2%
+2026-11-24T05:18:44.025629064Z [00:18:44] [Worker-Main-1/INFO]: Preparing spawn area: 2%
+2026-11-24T05:18:44.561437525Z [00:18:44] [Worker-Main-4/INFO]: Preparing spawn area: 18%
+2026-11-24T05:18:45.024971019Z [00:18:45] [Worker-Main-4/INFO]: Preparing spawn area: 18%
+2026-11-24T05:18:45.524379338Z [00:18:45] [Worker-Main-4/INFO]: Preparing spawn area: 24%
+2026-11-24T05:18:46.022888222Z [00:18:46] [Worker-Main-2/INFO]: Preparing spawn area: 51%
+2026-11-24T05:18:46.531704224Z [00:18:46] [Worker-Main-2/INFO]: Preparing spawn area: 51%
+2026-11-24T05:18:47.034467267Z [00:18:47] [Server thread/INFO]: Time elapsed: 4515 ms
+2026-11-24T05:18:47.042429387Z [00:18:47] [Server thread/INFO]: Done (8.924s)! For help, type "help"
+2026-11-24T05:18:47.042584395Z [00:18:47] [Server thread/INFO]: Starting remote control listener
+2026-11-24T05:18:47.045040445Z [00:18:47] [Server thread/INFO]: Thread RCON Listener started
+2026-11-24T05:18:47.045082466Z [00:18:47] [Server thread/INFO]: RCON running on 0.0.0.0:25575
+2026-11-24T05:18:47.085296452Z MCDONATE CONNECTED 2
+2026-11-24T05:18:47.085492028Z [00:18:47] [mcdonate-worker-net/INFO]: 连上 coordinator，编号 2
+2026-11-24T05:19:03.572896414Z [00:19:03] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 2477ms or 49 ticks behind
+2026-11-24T05:19:38.152586960Z [00:19:38] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 19607ms or 392 ticks behind
+2026-11-24T05:20:01.406735091Z [00:20:01] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 8261ms or 165 ticks behind
+2026-11-24T05:20:30.958122267Z [00:20:30] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 14562ms or 291 ticks behind
+2026-11-24T05:20:42.899321421Z [00:20:42] [spark-async-sampler-worker-thread/WARN]: Timed out waiting for world statistics
+2026-11-24T05:20:55.760474331Z [00:20:55] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 9815ms or 196 ticks behind

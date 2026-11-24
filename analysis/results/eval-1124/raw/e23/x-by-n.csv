@@ -1,0 +1,2 @@
+donors,features,n_base,n_donor,x,ci_low,ci_high,stall_fraction_base,stall_fraction_donor,distance_ratio_base,distance_ratio_donor,donor_share
+1,deadline+throughput,2,2,,,,0.008341821092898691,0.0,0.991657344724991,0.9999999999999978,0.8324380165289256

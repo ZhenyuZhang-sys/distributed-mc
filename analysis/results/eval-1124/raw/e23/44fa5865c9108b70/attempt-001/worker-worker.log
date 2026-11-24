@@ -1,0 +1,20 @@
+2026-11-24T04:58:31.415807316Z 2026-11-23T23:58:31.415-0500	INFO	mc-server-runner	gracefully stopping server...
+2026-11-24T04:58:31.416056113Z 2026/11/23 23:58:31 Stopping with rcon-cli
+2026-11-24T04:58:31.423608575Z [23:58:31] [RCON Listener #1/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 started
+2026-11-24T04:58:31.440539007Z [23:58:31] [Server thread/INFO]: [Rcon: Stopping the server]
+2026-11-24T04:58:31.441876481Z [23:58:31] [RCON Client /0:0:0:0:0:0:0:1 #2/INFO]: Thread RCON Client /0:0:0:0:0:0:0:1 shutting down
+2026-11-24T04:58:31.442974447Z 2026-11-23T23:58:31.442-0500	INFO	mc-server-runner	Waiting for completion...
+2026-11-24T04:58:31.468097588Z [23:58:31] [mcdonate-worker-net/INFO]: 和 coordinator 的连接断了（coordinator 断开了），1 秒后重连
+2026-11-24T04:58:32.020249915Z [23:58:32] [Server thread/INFO]: 任务 594 已被撤掉，结果不发
+2026-11-24T04:58:32.030337106Z [23:58:32] [Server thread/INFO]: Stopping server
+2026-11-24T04:58:32.031020276Z [23:58:32] [Server thread/INFO]: Saving players
+2026-11-24T04:58:32.031127802Z [23:58:32] [Server thread/INFO]: Saving worlds
+2026-11-24T04:58:35.937633018Z [23:58:35] [Server thread/INFO]: Saving chunks for level 'ServerLevel[mx9b7520191a4b5bf1]'/minecraft:overworld
+2026-11-24T04:58:41.517363921Z [23:58:41] [Server thread/INFO]: Saving chunks for level 'ServerLevel[mx9b7520191a4b5bf1]'/minecraft:the_nether
+2026-11-24T04:58:41.519297558Z [23:58:41] [Server thread/INFO]: Saving chunks for level 'ServerLevel[mx9b7520191a4b5bf1]'/minecraft:the_end
+2026-11-24T04:58:41.524168899Z [23:58:41] [Server thread/INFO]: ThreadedAnvilChunkStorage (mx9b7520191a4b5bf1): All chunks are saved
+2026-11-24T04:58:41.524192594Z [23:58:41] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM-1): All chunks are saved
+2026-11-24T04:58:41.524203054Z [23:58:41] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM1): All chunks are saved
+2026-11-24T04:58:41.524341039Z [23:58:41] [Server thread/INFO]: ThreadedAnvilChunkStorage: All dimensions are saved
+2026-11-24T04:58:41.567777364Z [23:58:41] [Server thread/INFO]: Thread RCON Listener stopped
+2026-11-24T04:58:42.501543158Z 2026-11-23T23:58:42.501-0500	INFO	mc-server-runner	Done
