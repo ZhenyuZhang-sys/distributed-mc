@@ -1,0 +1,18 @@
+/home/zhenyu/mc-slots/k3/analysis/demo_figures.py:174: UserWarning: Tight layout not applied. The bottom and top margins cannot be made large enough to accommodate all Axes decorations.
+  fig.tight_layout(rect=(0, .04, 1, 1))
+{
+ "campaign": "analysis/results/runs-eval1124/matrix-eval1124-e3",
+ "cells": 2,
+ "passed": 2,
+ "failed": [],
+ "concurrent": [
+  "118cf8d2ca1c5ab6"
+ ],
+ "figures": {
+  "demo1_stall": "ok",
+  "demo2_ahead": "ok",
+  "demo3_sources": "ok",
+  "demo4_network": "无数据",
+  "demo5_discards": "ok"
+ }
+}

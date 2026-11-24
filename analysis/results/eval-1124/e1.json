@@ -1,0 +1,94 @@
+{
+ "name": "eval1124-e1",
+ "seed": 424242,
+ "repeats": 3,
+ "order": "paired",
+ "rerun_on_interference": false,
+ "donor_profiles": {
+  "1x4": {
+   "donors": 1,
+   "env": {}
+  }
+ },
+ "server_env": {
+  "MC_CONTAINER_MEMORY": "3g",
+  "MC_INIT_MEMORY": "512M",
+  "MC_MAX_MEMORY": "2G"
+ },
+ "note": "course project 评测 E1（11-24）：2 核服务器，烟花鞘翅直线 33.5 格/秒 120 秒，原版（不起 worker）vs 1 个 4 核 donor，交替各 3 轮。main d196f2c。并行跑，粗测。",
+ "experiments": {
+  "flight": [
+   {
+    "group": "e1",
+    "donors": [
+     0
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "v0"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "speed_bps": [
+     33.5
+    ]
+   },
+   {
+    "group": "e1",
+    "donors": [
+     1
+    ],
+    "scenario": [
+     "firework"
+    ],
+    "speed": [
+     "elytra"
+    ],
+    "server_cpus": [
+     2
+    ],
+    "latency_ms": [
+     0
+    ],
+    "features": [
+     "deadline+throughput"
+    ],
+    "bots": [
+     1
+    ],
+    "duration_s": 120,
+    "cache_radius": [
+     16
+    ],
+    "speed_bps": [
+     33.5
+    ],
+    "donor_profile": [
+     "1x4"
+    ],
+    "lookahead": [
+     16
+    ],
+    "scan_budget_us": [
+     2000
+    ]
+   }
+  ]
+ }
+}
