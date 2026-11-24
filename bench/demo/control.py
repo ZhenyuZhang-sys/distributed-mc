@@ -156,7 +156,9 @@ class Controller:
         self.runner.rcon('donor demand off')
         # 只停 compose 里有的（main 里还没有 worker3，compose stop 不认识的服务会报错）
         have = set(self.runner.services())
-        self.runner.compose('stop', *[w for w in ALL_WORKERS if w in have], timeout=300)
+        stop = [w for w in ALL_WORKERS if w in have]
+        if stop:   # 空列表时 compose stop 会把 minecraft 也停掉
+            self.runner.compose('stop', *stop, timeout=300)
         self._wait(lambda: self.status().get('workers', []) == [], 'donor 都断开')
 
     def feature(self, name, on):

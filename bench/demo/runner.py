@@ -91,7 +91,7 @@ class Runner:
 
     def services(self) -> list:
         """compose 里定义了的服务（不管起没起）。"""
-        return compose('config', '--services').split()
+        return compose('--profile', '*', 'config', '--services').split()   # worker 在 compose profiles 里，不加 --profile '*' 列不出来
 
     def script(self, name, *args, env=None, timeout=600) -> str:
         if '/' in name or not (SCRIPTS / name).is_file():
